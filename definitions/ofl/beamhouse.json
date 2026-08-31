@@ -14,7 +14,7 @@
         "createDate": "2026-09-01",
         "lastModifyDate": "2026-09-01"
       },
-      "comment": "Self-built WS2812 tube: a 60 LED/m RGB strip in a 600 mm T8 diffuser, 35 pixels, driven per pixel over Art-Net by a WLED controller in per-pixel (Multi RGB) DMX mode -- NOT WLED effect mode. Authored for the Beamhouse project (docs/research/obf26-definition-migration.md); not an upstream Open Fixture Library fixture. Pixel spacing is derived from the 60 LED/m strip pitch, not measured.",
+      "comment": "SUPERSEDED / DO NOT TRUST THE PIXEL COUNT: this was authored at 35 px, inferred from docs/DESIGN.md 4.5's diy_t8_35px class. The user has since stated an LED profile holds 23 px, and the four entries this served in OBF26 are WLED segments over one physical run, not four physical tubes. Per-pixel at the real scale (230 px x 3 = 690 ch) also overruns a 512-slot universe. Kept in place pending a follow-up ticket that decides whether to re-author or replace it. Self-built WS2812 tube: a 60 LED/m RGB strip in a 600 mm T8 diffuser, 35 pixels, driven per pixel over Art-Net by a WLED controller in per-pixel (Multi RGB) DMX mode -- NOT WLED effect mode. Authored for the Beamhouse project (docs/research/obf26-definition-migration.md); not an upstream Open Fixture Library fixture. Pixel spacing is derived from the 60 LED/m strip pitch, not measured.",
       "physical": {
         "dimensions": [
           600,

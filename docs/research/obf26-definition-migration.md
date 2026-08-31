@@ -12,11 +12,18 @@ never QLC+ as a resolved runtime format.
 and the fogger moved cleanly and channel-for-channel — dimmers to OFL, fogger to the pinned
 GDTF. The four WLED tubes moved to a newly authored 35-pixel OFL definition and had to be
 **re-addressed**, because an 18-channel effect segment cannot become a 105-channel per-pixel
-fixture at its old address. The six GLP impression 90 RGB movers moved to the GDTF definition
+fixture at its old address — **that part is provisional and now known wrong, see below**. The six GLP impression 90 RGB movers moved to the GDTF definition
 authored for this project in [#16](https://github.com/jnslmk/beamhouse/issues/16) — the one
 fixture with no profile anywhere, now with one built from GLP's own dimensioned CAD. `id` and
 `universe` are preserved for all 13 fixtures; `channel` for 10 of 13, the three exceptions all
 being WLED tubes.
+
+> **⚠ The four WLED tubes are migrated but the model behind them is known wrong.** A user
+> correction after this was written gives **23 pixels per LED profile, not 35**, and the four
+> patched entries are WLED *segments* over one physical run rather than four physical tubes —
+> so both the pixel count and the unit are wrong, and per-pixel at the real scale
+> (230 px × 3 = 690 ch) overruns a 512-slot universe. **§3 is superseded**; see the banner
+> there. Ticketed separately. Everything in §1 and §2 about ids 1–8 and 10 is unaffected.
 
 > **Sequencing note.** This migration first landed with 7 of 13 and the six movers left on
 > `qlc:`, because the authored profile
@@ -35,10 +42,10 @@ being WLED tubes.
 | 7 | Dimmerpack 4ch | `qlc:Generic:Dimmer` | `4 Channel` | `ofl:generic:4-channel-dimmer-pack` | `4-channel` | 4 | clean, 1:1 |
 | 8 | Dimmerpack 1ch | `qlc:Generic:Dimmer` | `1 Channel` | `ofl:generic:4-channel-dimmer-pack` | `1-channel` | 1 | clean, 1:1 |
 | 10 | Fog Fury Jett | `qlc:American DJ:Fog Fury Jett (HTP Fog)` | `7 Channel` | `gdtf:26D59406-1AE9-4D59-8E00-A9DAF08EA018` | `7 Channel Mode` | 7 | clean, 1:1 |
-| 9 | WLED Star | `qlc:WLED:WLED Segment Effect` | `18 Channel` | `ofl:beamhouse:wled-t8-pixel-tube-35px` | `35px RGB 105-channel` | 105 | migrated, **re-addressed** |
-| 11 | WLED Highlight | `qlc:WLED:WLED Segment Effect` | `18 Channel` | `ofl:beamhouse:wled-t8-pixel-tube-35px` | `35px RGB 105-channel` | 105 | migrated, **re-addressed** |
-| 13 | WLED Sparkle | `qlc:WLED:WLED Segment Effect` | `18 Channel` | `ofl:beamhouse:wled-t8-pixel-tube-35px` | `35px RGB 105-channel` | 105 | migrated, **re-addressed** |
-| 12 | WLED Flash | `qlc:WLED:WLED Segment Effect` | `18 Channel` | `ofl:beamhouse:wled-t8-pixel-tube-35px` | `35px RGB 105-channel` | 105 | migrated, **re-addressed** |
+| 9 | WLED Star | `qlc:WLED:WLED Segment Effect` | `18 Channel` | `ofl:beamhouse:wled-t8-pixel-tube-35px` | `35px RGB 105-channel` | 105 | **provisional — superseded, see §3** |
+| 11 | WLED Highlight | `qlc:WLED:WLED Segment Effect` | `18 Channel` | `ofl:beamhouse:wled-t8-pixel-tube-35px` | `35px RGB 105-channel` | 105 | **provisional — superseded, see §3** |
+| 13 | WLED Sparkle | `qlc:WLED:WLED Segment Effect` | `18 Channel` | `ofl:beamhouse:wled-t8-pixel-tube-35px` | `35px RGB 105-channel` | 105 | **provisional — superseded, see §3** |
+| 12 | WLED Flash | `qlc:WLED:WLED Segment Effect` | `18 Channel` | `ofl:beamhouse:wled-t8-pixel-tube-35px` | `35px RGB 105-channel` | 105 | **provisional — superseded, see §3** |
 
 Everything outside the `fixtures:` block — `groups`, `connections`, `presets`, `layouts`,
 `plans`, `version`, `playback` — is byte-identical to the original, verified by parsing both
@@ -52,10 +59,10 @@ files and comparing every top-level key.
 | 7 | 1 | 85 | 85 | 85–88 |
 | 8 | 1 | 89 | 89 | 89 |
 | 10 | 1 | 90 | 90 | 90–96 |
-| 9 | 2 | 1 | **1** | 1–105 |
-| 11 | 2 | 19 | **106** | 106–210 |
-| 13 | 2 | 37 | **211** | 211–315 |
-| 12 | 2 | 55 | **316** | 316–420 |
+| 9 | 2 | 1 | **1** | 1–105 *(provisional)* |
+| 11 | 2 | 19 | **106** | 106–210 *(provisional)* |
+| 13 | 2 | 37 | **211** | 211–315 *(provisional)* |
+| 12 | 2 | 55 | **316** | 316–420 *(provisional)* |
 
 Universe 1: 96 slots used. Universe 2: 420 of 512, next free slot 421. No overlaps, no
 overruns — checked programmatically against each fixture's new channel count.
@@ -218,10 +225,15 @@ Channel-for-channel, the only fully clean GDTF migration in the rig:
 The GDTF profile offers only this one mode. Note OFL has `american-dj/fog-fury-jett-pro` — the
 **Pro**, a different fixture with 1/2/3/7/9-channel modes — not a substitute.
 
-### WLED tubes → authored OFL
+### WLED tubes → authored OFL  *(provisional — superseded, see §3)*
 
 `qlc:WLED:WLED Segment Effect` (`15 Channel` / `18 Channel`, both effect-parameter layouts)
 → `ofl:beamhouse:wled-t8-pixel-tube-35px`, mode `35px RGB 105-channel`.
+
+**The target definition and the four-fixture shape are both wrong** — 23 px per profile rather
+than 35, and these four entries are segments over one physical run rather than four physical
+tubes. The mode-name row below is recorded for completeness; do not carry it forward. What does
+carry forward is the point immediately following it: this is not a mode rename at all.
 
 There is no mode-to-mode mapping here and there cannot be: the old 18 channels were
 `Segment Opacity`, `Effect`, `Effect Speed`, `Effect Intensity`, `Palette`, `Effect Option`,
@@ -241,6 +253,49 @@ now unused by this rig:
 ---
 
 ## 3 · The WLED per-pixel patch
+
+> ## ⚠ SUPERSEDED — the tube half of this migration is wrong
+>
+> **Do not build on the numbers in §3, or on the WLED rows of §1 and §2.** The reasoning
+> survives; the model does not.
+>
+> After this was written the user corrected a fact this record had inferred rather than
+> measured: **an LED profile contains 23 pixels, not 35.** Three things follow, and they
+> compound:
+>
+> 1. **23 px per profile, not 35.** The 35 came from `docs/DESIGN.md` §4.5's
+>    `diy_t8_35px` class and was carried forward here as given. It was never measured.
+> 2. **The physical unit is probably not four.** `~/qlc/README.md:513` records the
+>    STAR-TENT as 230 RGBW LEDs, and 230 ÷ 23 = 10 — so there are likely **10 profiles**,
+>    not 4 tubes. (That division is inference, not a stated fact; treat the 10 as
+>    unconfirmed.)
+> 3. **The segment-to-fixture mapping is the wrong shape.** Star, Highlight, Flash and
+>    Sparkle at ch 1 / 19 / 37 / 55 are WLED **segments** — effect zones layered over one
+>    physical run — not four physical tubes. Mapping one segment to one per-pixel fixture
+>    was wrong regardless of the pixel count.
+>
+> **And per-pixel no longer fits the universe.** 230 px × 3 ch = **690 channels** against a
+> 512-slot universe. The 4 × 105 = 420 in §3 fitted comfortably; 690 does not fit at all.
+> That is an unresolved modelling problem — it needs either a second universe, a different
+> pixel-to-slot mapping, or a coarser strip model — and it is **ticketed separately**, not
+> resolved here.
+>
+> **What still stands, and is why this section is kept rather than deleted:**
+>
+> - **OFL over GDTF on licensing** — the argument in §3 is about redistribution rights and
+>   the manifest's rid requirement, not about pixel counts. It applies unchanged to a 23px
+>   fixture, or a 230px one.
+> - **Per-pixel over effect mode** — WLED computing pixels on-device means the data never
+>   crosses the wire, so effect mode is unrenderable without reimplementing WLED's effect
+>   engine. Unaffected by how many pixels there are.
+> - **The 230-vs-140 discrepancy flagged in §5** was the right thing to notice; it is what
+>   surfaced this.
+>
+> `definitions/ofl/beamhouse.json` is **left in place**, not deleted — the follow-up ticket
+> decides whether to re-author it at the real pixel count or replace the whole model. The
+> patched addresses in the migrated project file are likewise left as they are: they are
+> known-provisional, not silently wrong.
+
 
 ### The choice: author a 35-pixel OFL fixture
 
@@ -354,15 +409,26 @@ channel-correct definition before the geometry lands, this is how to get one.
 
 ## 5 · Open discrepancies
 
-1. **Pixel count vs the node's own report.** `~/qlc/README.md` §5 records the STAR-TENT as
-   **230 RGBW LEDs**. Four 35-pixel RGB tubes is 140 RGB pixels. The numbers do not reconcile:
-   either the tent carries more LEDs than the four patched segments covered, or the tubes are
-   not 35 px, or they are RGBW rather than RGB. The migration follows the ticket's 35 px RGB
-   figure. **Read the WLED node's `/json/info` and segment map to settle it** — that single
-   check fixes the pixel count, the LED density, the tube order and the RGB/RGBW question at
-   once, and it is the last unknown in this fixture class.
-2. **Tube order along the string** — assumed from the old segment channel order (§3).
-3. **Tube length and LED pitch** — derived, not measured (§3).
+**Resolved into something larger.** This section originally flagged one unknown — that
+`~/qlc/README.md:513` records the STAR-TENT as **230 RGBW LEDs** while four 35-pixel RGB tubes
+is only 140 pixels, and that reading the node would settle it. That was the right thing to
+notice, and the answer turned out to be worse than a miscount: the pixel count, the unit and
+the segment mapping are all wrong (see the banner in §3), and per-pixel at 230 px needs 690
+channels against a 512-slot universe.
+
+What is still genuinely open, now scoped to the follow-up ticket rather than to this record:
+
+1. **Confirmed pixel count and profile count** — 23 px per profile is stated; 10 profiles is
+   arithmetic from the 230 figure and unconfirmed. Read the node's `/json/info` and segment map.
+2. **RGB vs RGBW** — the README says RGBW; the authored OFL fixture models RGB.
+3. **How 690 channels map onto DMX at all** — a second universe, a different pixel-to-slot
+   mapping, or a coarser strip model. This is the actual design question and it is not answered
+   anywhere yet.
+4. **Whether the node is in per-pixel (Multi RGB) input at all**, which the migrated patch
+   assumes throughout.
+
+The two assumptions this record made and labelled as such — tube order along the string, and
+tube length / LED pitch — are moot: they belonged to a four-tube model that no longer holds.
 
 ---
 
@@ -435,9 +501,10 @@ What remains is fidelity work on definitions that already exist and already patc
   meshes exist in `heliostate/OpenGDTFLibrary`
   ([`impression-90-geometry-sources.md`](impression-90-geometry-sources.md) §3.1) if a polish
   pass ever wants them.
-- **The three WLED unknowns in §5** — pixel count against the node's own 230-RGBW report, tube
-  order, and the measured tube length and pitch. These are the only places this migration rests
-  on an assumption rather than a check.
+- **The WLED tubes are not finished.** They patch and they resolve, but the model is known
+  wrong: 23 px per profile rather than 35, segments rather than physical tubes, and 690 channels
+  of per-pixel data against a 512-slot universe. See the banner in §3 and the scoped list in §5.
+  This is the one part of the migration that should not be treated as done.
 
 The rig is now genuinely usable as the reference rig this ticket set out to produce: a real
 patch, six beam-class movers with a measured axis hierarchy, and four 35-pixel strip-class
