@@ -1,0 +1,123 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<GDTF DataVersion="1.2">
+  <FixtureType CanHaveChildren="No" Description="GLP impression 90 RGB - 14ch Normal mode. Geometry measured from GLP's own dimensioned CAD drawing; see docs/research/impression-90-pivots.md." FixtureTypeID="9C7854E1-32D5-4DE9-BB8E-6D121F27CF48" LongName="GLP impression 90 RGB" Manufacturer="GLP" Name="impression 90 RGB" RefFT="" ShortName="IMP90RGB" Thumbnail="">
+    <AttributeDefinitions>
+      <ActivationGroups>
+        <ActivationGroup Name="PanTilt"/>
+        <ActivationGroup Name="ColorRGB"/>
+      </ActivationGroups>
+      <FeatureGroups>
+        <FeatureGroup Name="Dimmer" Pretty="D"><Feature Name="Dimmer"/></FeatureGroup>
+        <FeatureGroup Name="Position" Pretty="P"><Feature Name="PanTilt"/></FeatureGroup>
+        <FeatureGroup Name="Color" Pretty="C"><Feature Name="RGB"/><Feature Name="CTO"/></FeatureGroup>
+        <FeatureGroup Name="Beam" Pretty="B"><Feature Name="Beam"/></FeatureGroup>
+        <FeatureGroup Name="Control" Pretty="Ctrl"><Feature Name="Control"/></FeatureGroup>
+      </FeatureGroups>
+      <Attributes>
+        <Attribute ActivationGroup="PanTilt" Feature="Position.PanTilt" Name="Pan" PhysicalUnit="Angle" Pretty="P"/>
+        <Attribute ActivationGroup="PanTilt" Feature="Position.PanTilt" Name="Tilt" PhysicalUnit="Angle" Pretty="T"/>
+        <Attribute Feature="Position.PanTilt" Name="PositionMSpeed" PhysicalUnit="Speed" Pretty="Pos MSpeed"/>
+        <Attribute Feature="Dimmer.Dimmer" Name="Dimmer" PhysicalUnit="LuminousIntensity" Pretty="Dim"/>
+        <Attribute Feature="Beam.Beam" Name="Shutter1" PhysicalUnit="None" Pretty="Sh1"/>
+        <Attribute Feature="Beam.Beam" Name="Shutter1Strobe" PhysicalUnit="Frequency" Pretty="Strobe"/>
+        <Attribute ActivationGroup="ColorRGB" Color="1.000000,0.000000,0.000000" Feature="Color.RGB" Name="ColorAdd_R" PhysicalUnit="ColorComponent" Pretty="R"/>
+        <Attribute ActivationGroup="ColorRGB" Color="0.000000,1.000000,0.000000" Feature="Color.RGB" Name="ColorAdd_G" PhysicalUnit="ColorComponent" Pretty="G"/>
+        <Attribute ActivationGroup="ColorRGB" Color="0.000000,0.000000,1.000000" Feature="Color.RGB" Name="ColorAdd_B" PhysicalUnit="ColorComponent" Pretty="B"/>
+        <Attribute Feature="Color.CTO" Name="CTC" PhysicalUnit="Temperature" Pretty="CTC"/>
+        <Attribute Feature="Color.RGB" Name="ColorMacro1" PhysicalUnit="None" Pretty="Macro1"/>
+        <Attribute Feature="Control.Control" Name="Control1" PhysicalUnit="None" Pretty="Ctrl1"/>
+        <Attribute Feature="Control.Control" Name="Control2" PhysicalUnit="None" Pretty="Ctrl2"/>
+      </Attributes>
+    </AttributeDefinitions>
+    <Wheels/>
+    <PhysicalDescriptions/>
+    <Models>
+      <Model File="" Height="0.066000" Length="0.140000" Name="Base" PrimitiveType="Base1_1" Width="0.140000"/>
+      <Model File="" Height="0.211000" Length="0.140000" Name="Yoke" PrimitiveType="Yoke" Width="0.140000"/>
+      <Model File="" Height="0.144000" Length="0.232000" Name="Head" PrimitiveType="Head" Width="0.232000"/>
+      <Model File="" Height="0.020000" Length="0.232000" Name="Beam" PrimitiveType="Cylinder" Width="0.232000"/>
+    </Models>
+    <Geometries>
+      <Geometry Model="Base" Name="Base" Position="{1.000000,0.000000,0.000000,0.000000}{0.000000,1.000000,0.000000,0.000000}{0.000000,0.000000,1.000000,0.000000}{0,0,0,1}">
+        <Axis Model="Yoke" Name="Yoke" Position="{1.000000,0.000000,0.000000,0.000000}{0.000000,1.000000,0.000000,0.000000}{0.000000,0.000000,1.000000,0.066000}{0,0,0,1}">
+          <Axis Model="Head" Name="Head" Position="{1.000000,0.000000,0.000000,0.000000}{0.000000,1.000000,0.000000,0.000000}{0.000000,0.000000,1.000000,0.211000}{0,0,0,1}">
+            <Beam BeamAngle="10.000000" BeamRadius="0.116000" BeamType="Wash" ColorRenderingIndex="80" ColorTemperature="5600.000000" FieldAngle="10.000000" LampType="LED" LuminousFlux="3000.000000" Model="Beam" Name="Beam" PowerConsumption="300.000000" Position="{1.000000,0.000000,0.000000,0.000000}{0.000000,1.000000,0.000000,0.000000}{0.000000,0.000000,1.000000,0.080500}{0,0,0,1}" RectangleRatio="1.000000" ThrowRatio="1.000000"/>
+          </Axis>
+        </Axis>
+      </Geometry>
+    </Geometries>
+    <DMXModes>
+      <DMXMode Description="14 channel Normal mode, as patched in QLC+" Geometry="Base" Name="Normal">
+        <DMXChannels>
+          <DMXChannel DMXBreak="1" Geometry="Yoke" Highlight="None" InitialFunction="Yoke_Pan.Pan.Pan" Offset="1,2">
+            <LogicalChannel Attribute="Pan" DMXChangeTimeLimit="0.000000" Master="None" MibFade="0.000000" Snap="No">
+              <ChannelFunction Attribute="Pan" DMXFrom="0/1" Default="32768/2" Max="1.000000" Min="0.000000" Name="Pan" OriginalAttribute="" PhysicalFrom="-330.000000" PhysicalTo="330.000000" RealAcceleration="0.000000" RealFade="0.000000"/>
+            </LogicalChannel>
+          </DMXChannel>
+          <DMXChannel DMXBreak="1" Geometry="Head" Highlight="None" InitialFunction="Head_Tilt.Tilt.Tilt" Offset="3,4">
+            <LogicalChannel Attribute="Tilt" DMXChangeTimeLimit="0.000000" Master="None" MibFade="0.000000" Snap="No">
+              <ChannelFunction Attribute="Tilt" DMXFrom="0/1" Default="32768/2" Max="1.000000" Min="0.000000" Name="Tilt" OriginalAttribute="" PhysicalFrom="-150.000000" PhysicalTo="150.000000" RealAcceleration="0.000000" RealFade="0.000000"/>
+            </LogicalChannel>
+          </DMXChannel>
+          <DMXChannel DMXBreak="1" Geometry="Beam" Highlight="None" InitialFunction="Beam_ColorMacro1.ColorMacro1.Color Macro" Offset="5">
+            <LogicalChannel Attribute="ColorMacro1" DMXChangeTimeLimit="0.000000" Master="None" MibFade="0.000000" Snap="Yes">
+              <ChannelFunction Attribute="ColorMacro1" DMXFrom="0/1" Default="0/1" Max="1.000000" Min="0.000000" Name="Color Macro" OriginalAttribute="" PhysicalFrom="0.000000" PhysicalTo="1.000000"/>
+            </LogicalChannel>
+          </DMXChannel>
+          <DMXChannel DMXBreak="1" Geometry="Beam" Highlight="None" InitialFunction="Beam_ColorAdd_R.ColorAdd_R.Red" Offset="6">
+            <LogicalChannel Attribute="ColorAdd_R" DMXChangeTimeLimit="0.000000" Master="None" MibFade="0.000000" Snap="No">
+              <ChannelFunction Attribute="ColorAdd_R" DMXFrom="0/1" Default="255/1" Max="1.000000" Min="0.000000" Name="Red" OriginalAttribute="" PhysicalFrom="0.000000" PhysicalTo="1.000000"/>
+            </LogicalChannel>
+          </DMXChannel>
+          <DMXChannel DMXBreak="1" Geometry="Beam" Highlight="None" InitialFunction="Beam_ColorAdd_G.ColorAdd_G.Green" Offset="7">
+            <LogicalChannel Attribute="ColorAdd_G" DMXChangeTimeLimit="0.000000" Master="None" MibFade="0.000000" Snap="No">
+              <ChannelFunction Attribute="ColorAdd_G" DMXFrom="0/1" Default="255/1" Max="1.000000" Min="0.000000" Name="Green" OriginalAttribute="" PhysicalFrom="0.000000" PhysicalTo="1.000000"/>
+            </LogicalChannel>
+          </DMXChannel>
+          <DMXChannel DMXBreak="1" Geometry="Beam" Highlight="None" InitialFunction="Beam_ColorAdd_B.ColorAdd_B.Blue" Offset="8">
+            <LogicalChannel Attribute="ColorAdd_B" DMXChangeTimeLimit="0.000000" Master="None" MibFade="0.000000" Snap="No">
+              <ChannelFunction Attribute="ColorAdd_B" DMXFrom="0/1" Default="255/1" Max="1.000000" Min="0.000000" Name="Blue" OriginalAttribute="" PhysicalFrom="0.000000" PhysicalTo="1.000000"/>
+            </LogicalChannel>
+          </DMXChannel>
+          <DMXChannel DMXBreak="1" Geometry="Beam" Highlight="None" InitialFunction="Beam_Shutter1.Shutter1.Closed" Offset="9">
+            <LogicalChannel Attribute="Shutter1" DMXChangeTimeLimit="0.000000" Master="None" MibFade="0.000000" Snap="Yes">
+              <ChannelFunction Attribute="Shutter1" DMXFrom="0/1" Default="255/1" Max="1.000000" Min="0.000000" Name="Closed" OriginalAttribute="" PhysicalFrom="0.000000" PhysicalTo="0.000000"/>
+              <ChannelFunction Attribute="Shutter1Strobe" DMXFrom="32/1" Default="255/1" Max="1.000000" Min="0.000000" Name="Strobe" OriginalAttribute="" PhysicalFrom="0.500000" PhysicalTo="20.000000"/>
+              <ChannelFunction Attribute="Shutter1" DMXFrom="224/1" Default="255/1" Max="1.000000" Min="0.000000" Name="Open" OriginalAttribute="" PhysicalFrom="1.000000" PhysicalTo="1.000000"/>
+            </LogicalChannel>
+          </DMXChannel>
+          <DMXChannel DMXBreak="1" Geometry="Beam" Highlight="None" InitialFunction="Beam_Dimmer.Dimmer.Dimmer" Offset="10">
+            <LogicalChannel Attribute="Dimmer" DMXChangeTimeLimit="0.000000" Master="Grand" MibFade="0.000000" Snap="No">
+              <ChannelFunction Attribute="Dimmer" DMXFrom="0/1" Default="0/1" Max="1.000000" Min="0.000000" Name="Dimmer" OriginalAttribute="" PhysicalFrom="0.000000" PhysicalTo="1.000000"/>
+            </LogicalChannel>
+          </DMXChannel>
+          <DMXChannel DMXBreak="1" Geometry="Beam" Highlight="None" InitialFunction="Beam_CTC.CTC.CTC" Offset="11">
+            <LogicalChannel Attribute="CTC" DMXChangeTimeLimit="0.000000" Master="None" MibFade="0.000000" Snap="No">
+              <ChannelFunction Attribute="CTC" DMXFrom="0/1" Default="0/1" Max="1.000000" Min="0.000000" Name="CTC" OriginalAttribute="" PhysicalFrom="2700.000000" PhysicalTo="8000.000000"/>
+            </LogicalChannel>
+          </DMXChannel>
+          <DMXChannel DMXBreak="1" Geometry="Base" Highlight="None" InitialFunction="Base_Control1.Control1.Special" Offset="12">
+            <LogicalChannel Attribute="Control1" DMXChangeTimeLimit="0.000000" Master="None" MibFade="0.000000" Snap="Yes">
+              <ChannelFunction Attribute="Control1" DMXFrom="0/1" Default="0/1" Max="1.000000" Min="0.000000" Name="Special" OriginalAttribute="" PhysicalFrom="0.000000" PhysicalTo="1.000000"/>
+            </LogicalChannel>
+          </DMXChannel>
+          <DMXChannel DMXBreak="1" Geometry="Base" Highlight="None" InitialFunction="Base_Control2.Control2.Movement Macros" Offset="13">
+            <LogicalChannel Attribute="Control2" DMXChangeTimeLimit="0.000000" Master="None" MibFade="0.000000" Snap="Yes">
+              <ChannelFunction Attribute="Control2" DMXFrom="0/1" Default="0/1" Max="1.000000" Min="0.000000" Name="Movement Macros" OriginalAttribute="" PhysicalFrom="0.000000" PhysicalTo="1.000000"/>
+            </LogicalChannel>
+          </DMXChannel>
+          <DMXChannel DMXBreak="1" Geometry="Yoke" Highlight="None" InitialFunction="Yoke_PositionMSpeed.PositionMSpeed.Speed Pan Tilt" Offset="14">
+            <LogicalChannel Attribute="PositionMSpeed" DMXChangeTimeLimit="0.000000" Master="None" MibFade="0.000000" Snap="No">
+              <ChannelFunction Attribute="PositionMSpeed" DMXFrom="0/1" Default="0/1" Max="1.000000" Min="0.000000" Name="Speed Pan Tilt" OriginalAttribute="" PhysicalFrom="0.000000" PhysicalTo="1.000000"/>
+            </LogicalChannel>
+          </DMXChannel>
+        </DMXChannels>
+        <Relations/>
+        <FTMacros/>
+      </DMXMode>
+    </DMXModes>
+    <Revisions>
+      <Revision Date="2026-09-01T00:00:00" ModifiedBy="beamhouse" Text="Initial authored profile. Geometry measured from GLP's own dimensioned DWG (issue #16); channel layout from the hand-authored QLC+ definition." UserID="1"/>
+    </Revisions>
+  </FixtureType>
+</GDTF>
