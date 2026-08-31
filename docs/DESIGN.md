@@ -51,8 +51,12 @@ tier is a switch rather than a rewrite.
 - Paperwork, plots, patch sheets, MVR-xchange.
 - **Being a control surface. Beamhouse never sends DMX.** Mizer is the control surface;
   Beamhouse is the preparation visualiser. The pair is the product.
-- **QLC+ as a fixture-definition source.** GDTF is the only definition format Beamhouse
-  resolves. See §4.2.
+- **QLC+ as a fixture-definition source.** ~~GDTF is the only definition format Beamhouse
+  resolves.~~ **Under review.** Research found no confirmed GDTF profile for 5 of 13 fixtures in
+  the reference rig, no QLC+→GDTF converter in either direction, and no working generic
+  pixel-strip GDTF profile anywhere. Whether GDTF stays the sole definition format is now an
+  open decision — note that Open Fixture Library is a third option neither this document nor the
+  original framing considered, and it models pixel matrices natively. See §4.2 and §11.
 - White-channel resolution. WLED computes its own whites, and the movers are RGB. Treat every
   emitter as RGB; see §8.3 for the seam where RGBW/RGBCCT slots in later.
 
@@ -267,18 +271,41 @@ carries `FixtureID` too, so the id is the one key both sources can supply.
 
 The interesting half of the project. Three stages, all in `gdtf-ts`.
 
-### 5.0 The reference implementation is already on disk
+### 5.0 What reference implementation actually exists
 
-**[new finding]** `mizer-gdtf-provider` implements the whole resolution layer in 663 lines of
-Rust — and notably **without** the `gdtf` crate, hand-rolling it over `zip` + `hard-xml`,
-which is structurally the same approach `gdtf-ts` must take with `fflate` + `DOMParser`.
-`src/conversion.rs` walks the geometry tree (`visit_children` / `visit_child`), maps `DmxMode`
-→ `FixtureMode`, and reads `Beam` attributes. It also carries a `FIXME` hack to make the
-SGM G-1 Beam profile work — a useful signpost that real-world GDTF is messier than the spec.
+**[corrected 2026-08-31 — this section previously overstated the case badly.]**
 
-This is a better reference than gdtf-rs, which declines to provide resolution at all. Mining it
-is ticket 2, and it is the single biggest de-risking of the milestone this document calls
-"the wall".
+`mizer-gdtf-provider` implements a GDTF resolution layer in 663 lines of Rust, without the
+`gdtf` crate, hand-rolled over `zip` + `hard-xml` — structurally the same approach `gdtf-ts`
+must take with `fflate` + `DOMParser`. That much is true and useful.
+
+But it is a **console patch resolver, not a scene resolver**, and the difference is the whole
+spatial half of this milestone. Verified by grep across the crate:
+
+- `Matrix`, `Position`, `transform` — **zero occurrences**. No transform data is parsed anywhere.
+- `ChannelFunction`, `ChannelSet` — **zero occurrences**. No interpolation to physical units,
+  despite `PhysicalUnit` existing as a dead type.
+- `PhysicalDescriptions` is parsed as a literal empty struct (`definition.rs:146`), so model and
+  GLB data in the zip is never touched.
+- Virtual channels hit `if channel.offset.is_virtual() { return; }` behind a `TODO`.
+- Its tests point `GdtfProvider::new(".fixtures")` at a directory that does not exist in the
+  repo, and assert only that `load()` is `Ok` and `list_definitions()` does not panic. Against a
+  missing directory **both pass vacuously** — there is no regression coverage against real files.
+
+**What transfers to `gdtf-ts`:** the tree-walk-with-prefix pattern, channels-grouped-by-geometry-name
+lookup, offset-width inference, `GeometryReference` break-offset arithmetic, a v1 attribute list
+closely matching §5.2, and the `conversion.rs:58` `FIXME` — which drops channels whose attribute is
+named `Macro` so the SGM G-1 Beam profile works. That hack generalises to a rule: GDTF's
+Feature/Attribute taxonomy is not closed in real files, and the safe failure mode is
+**skip, don't misclassify**.
+
+**What has no reference here at all:** transform accumulation, `PrimitiveType` fallback geometry,
+GLB extraction from the zip, `GeometryReference` expansion into *positioned* nodes, `modeMaster`,
+`ChannelFunction` interpolation to physical units, virtual channels, and `colorSpace`/gamut.
+
+That is essentially all of §5.1 plus half of §5.2 — the half a visualiser needs. The M4 estimate
+was set assuming a ladder against the wall; there is one against the near side only. Finding a
+reference for the spatial half is a separate open question (BlenderDMX is the leading candidate).
 
 ### 5.1 Geometry tree → renderable nodes
 
@@ -522,6 +549,14 @@ These are the wayfinder map's tickets. See the map issue for current state.
 5. **Publishing `gdtf-ts`.** No maintained TypeScript GDTF library exists.
 6. **Transport.** sACN or Art-Net, given Mizer does both.
 7. **GDTF profile availability.** Whether profiles exist for the fixtures in hand at all.
+   Partially answered: GDTF Share has a curl-friendly REST API but is account-gated, so this is
+   blocked on obtaining access.
+8. **Is GDTF the sole definition format?** Reopened after the availability research. Open Fixture
+   Library (`ofl:`) is JSON, ungated, already supported by Mizer via a 972-line provider, and
+   carries a native `Matrix { pixels: MatrixPixels }` concept plus `BeamAngle`/`BeamPosition`
+   capabilities — the pixel-strip class GDTF has no working profile for.
+9. **What is the reference for the spatial half of resolution?** Mizer provides none; BlenderDMX
+   is the leading candidate.
 
 ## 12 · Dependencies
 
