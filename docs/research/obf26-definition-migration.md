@@ -79,7 +79,7 @@ because the patch may change.
 |-----------|----|----------------------------------------|----|----------|
 | `Normal` | 14 | `Normal Mode 20Ch` | 20 | offsets 1–8 only |
 | `Compress` | 10 | `Compress Mode 14Ch` | 14 | offsets 1–8 only |
-| `High Resolution (Extended)` | 13 | `High Resolution (Extended) Mode 21Ch` | 21 | offsets 1–4 only |
+| `High Resolution (Extended)` | 13 | `High Resolution (Extended) Mode 21Ch` | 21 | offsets 1–10 only |
 
 The impression 90 is the RGB sibling of the RGBW X4, and the divergence is exactly that one
 channel:
@@ -106,6 +106,11 @@ useless runtime substitute: patching the movers as X4s would mis-resolve Shutter
 Special, Movement and Speed onto neighbouring slots without erroring. The X4's `Compress Mode
 14Ch` is tempting because the channel *count* matches (so the 1/15/29/43/57/71 grid would
 survive), but it is wrong from offset 9 in the same way. Rejected.
+
+The same divergence explains the other two rows: `Compress` aligns through offset 8 and breaks
+where the X4 puts White; `High Resolution (Extended)` aligns further, through offset 10 (both
+carry 16-bit Pan, Tilt, R, G and B), and breaks at 11 where the X4 has 16-bit White and the
+impression 90 has Shutter.
 
 ### Generic Dimmer → OFL
 
