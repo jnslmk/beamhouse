@@ -8,15 +8,22 @@ never QLC+ as a resolved runtime format.
 - **Source (untouched, still the reference):** `~/git-projects/mizer-shows/OBF26_Bunte-Stube.yml`
 - **Migrated:** `~/git-projects/mizer-shows/OBF26_Bunte-Stube_gdtf-ofl.yml`
 
-**Headline: 7 of 13 fixtures migrated, 6 did not.** The two dimmer packs and the fogger moved
-cleanly and channel-for-channel — dimmers to OFL, fogger to the pinned GDTF. The four WLED
-tubes migrated to a newly authored 35-pixel OFL definition and had to be **re-addressed**,
-because an 18-channel effect segment cannot become a 105-channel per-pixel fixture at its old
-address. The six GLP impression 90 RGB movers **did not migrate and stay on `qlc:`** — there is
-no GDTF profile in the 12,623-revision GDTF Share catalogue, no OFL fixture, and the closest
-relative (the impression X4) is channel-incompatible from offset 9 onward, so patching against
-it would resolve silently wrong values. `id` and `universe` are preserved for all 13 fixtures;
-`channel` is preserved for 10 of 13.
+**Headline: 13 of 13 fixtures migrated. No `qlc:` id remains in the rig.** The two dimmer packs
+and the fogger moved cleanly and channel-for-channel — dimmers to OFL, fogger to the pinned
+GDTF. The four WLED tubes moved to a newly authored 35-pixel OFL definition and had to be
+**re-addressed**, because an 18-channel effect segment cannot become a 105-channel per-pixel
+fixture at its old address. The six GLP impression 90 RGB movers moved to the GDTF definition
+authored for this project in [#16](https://github.com/jnslmk/beamhouse/issues/16) — the one
+fixture with no profile anywhere, now with one built from GLP's own dimensioned CAD. `id` and
+`universe` are preserved for all 13 fixtures; `channel` for 10 of 13, the three exceptions all
+being WLED tubes.
+
+> **Sequencing note.** This migration first landed with 7 of 13 and the six movers left on
+> `qlc:`, because the authored profile
+> ([`82f422b`](https://github.com/jnslmk/beamhouse/commit/82f422b)) reached `main` after this
+> branch was cut. The impression 90 section below is written as it stands now; the reasoning
+> that made the impression X4 unusable as a substitute is **kept in full** and is still the
+> load-bearing warning, because the trap it describes has not gone away.
 
 ---
 
@@ -24,7 +31,7 @@ it would resolve silently wrong values. `id` and `universe` are preserved for al
 
 | id | Name | Was | Mode | Now | Mode | Ch | Verdict |
 |----|------|-----|------|-----|------|----|---------|
-| 1–6 | Impression 1–6 | `qlc:GLP:impression 90 RGB` | `Normal` | *unchanged* | `Normal` | 14 | **not migrated** — no definition exists |
+| 1–6 | Impression 1–6 | `qlc:GLP:impression 90 RGB` | `Normal` | `gdtf:9C7854E1-32D5-4DE9-BB8E-6D121F27CF48` | `Normal` | 14 | clean, 1:1 — **authored profile**, not from GDTF Share |
 | 7 | Dimmerpack 4ch | `qlc:Generic:Dimmer` | `4 Channel` | `ofl:generic:4-channel-dimmer-pack` | `4-channel` | 4 | clean, 1:1 |
 | 8 | Dimmerpack 1ch | `qlc:Generic:Dimmer` | `1 Channel` | `ofl:generic:4-channel-dimmer-pack` | `1-channel` | 1 | clean, 1:1 |
 | 10 | Fog Fury Jett | `qlc:American DJ:Fog Fury Jett (HTP Fog)` | `7 Channel` | `gdtf:26D59406-1AE9-4D59-8E00-A9DAF08EA018` | `7 Channel Mode` | 7 | clean, 1:1 |
@@ -41,7 +48,7 @@ files and comparing every top-level key.
 
 | id | Universe | Channel was | Channel now | Occupies |
 |----|----------|-------------|-------------|----------|
-| 1–6 | 1 | 1 / 15 / 29 / 43 / 57 / 71 | *unchanged* | 1–84 |
+| 1–6 | 1 | 1 / 15 / 29 / 43 / 57 / 71 | *unchanged* | 1–84 (14 slots each) |
 | 7 | 1 | 85 | 85 | 85–88 |
 | 8 | 1 | 89 | 89 | 89 |
 | 10 | 1 | 90 | 90 | 90–96 |
@@ -71,15 +78,68 @@ patch carried.
 QLC+ mode names survive nowhere. This is the full table, including modes not used by this rig,
 because the patch may change.
 
-### GLP impression 90 RGB — no target, mapping is hypothetical
+### GLP impression 90 RGB → authored GDTF
 
-`~/.qlcplus/fixtures/GLP-Impression-90-RGB.qxf`
+`qlc:GLP:impression 90 RGB` / `Normal` → `gdtf:9C7854E1-32D5-4DE9-BB8E-6D121F27CF48` / `Normal`.
 
-| QLC+ mode | Ch | Nearest GDTF (impression X4, rid 46490) | Ch | Aligned? |
-|-----------|----|----------------------------------------|----|----------|
-| `Normal` | 14 | `Normal Mode 20Ch` | 20 | offsets 1–8 only |
-| `Compress` | 10 | `Compress Mode 14Ch` | 14 | offsets 1–8 only |
-| `High Resolution (Extended)` | 13 | `High Resolution (Extended) Mode 21Ch` | 21 | offsets 1–10 only |
+The definition is **authored for this project**, not fetched:
+`definitions/authored/GLP@impression 90 RGB@v1.gdtf`, geometry measured from GLP's own
+dimensioned DWG in [#16](https://github.com/jnslmk/beamhouse/issues/16)
+([`impression-90-pivots.md`](impression-90-pivots.md)), channels translated from the `.qxf`.
+It declares one mode, `Normal`, described as "14 channel Normal mode, as patched in QLC+".
+
+| QLC+ mode | Ch | Authored GDTF mode | Ch |
+|-----------|----|--------------------|----|
+| `Normal` | 14 | `Normal` | 14 |
+| `Compress` | 10 | *not implemented* | — |
+| `High Resolution (Extended)` | 13 | *not implemented* | — |
+
+Only `Normal` exists, which is the only mode this rig uses. Patching a fixture in either other
+mode would fail to resolve rather than resolve wrongly — the safe failure.
+
+**Verified independently against `~/.qlcplus/fixtures/GLP-Impression-90-RGB.qxf`** before
+patching, parsing both files rather than reading them:
+
+| Off | QLC+ `Normal` | Authored GDTF | Geometry |
+|-----|---------------|---------------|----------|
+| 1–2 | Pan coarse / fine | `Pan` (`Offset="1,2"`) | Yoke |
+| 3–4 | Tilt coarse / fine | `Tilt` (`Offset="3,4"`) | Head |
+| 5 | Color (fixed) | `ColorMacro1` | Beam |
+| 6 | Red | `ColorAdd_R` | Beam |
+| 7 | Green | `ColorAdd_G` | Beam |
+| 8 | Blue | `ColorAdd_B` | Beam |
+| 9 | Shutter | `Shutter1` | Beam |
+| 10 | Dimmer | `Dimmer` | Beam |
+| 11 | Colour temperature | `CTC` | Beam |
+| 12 | Special | `Control1` | Base |
+| 13 | Movement macros | `Control2` | Base |
+| 14 | Speed Pan / Tilt | `PositionMSpeed` | Yoke |
+
+Slots occupied are contiguous 1…14 with no duplicates (12 `DMXChannel` elements, because Pan
+and Tilt each span two slots — correct GDTF modelling of a 16-bit channel, not a missing pair).
+**No White channel anywhere**, so the offset-9 slip described below does not arise. Pan is
+−330°…+330° and Tilt −150°…+150°, matching the `.qxf`'s `<Focus PanMax="660" TiltMax="300"/>`.
+The 14-slot count keeps the 1 / 15 / 29 / 43 / 57 / 71 address grid untouched.
+
+#### Fidelity gaps within correctly-placed channels
+
+These are *sub-range* differences, not misalignments — every channel sits at the right offset —
+but they change what a slot value resolves to, so they belong in the profile's backlog rather
+than in this migration:
+
+| Ch | Authored GDTF | `.qxf` | Effect |
+|----|---------------|--------|--------|
+| 9 Shutter | Closed 0–31, Strobe 32–223 @ 0.5–20 Hz, Open 224–255 | Closed 0–15, pulse/random 16–143, strobe 144–239 (200–239 = 1–10 Hz), Open 240–255 | 16–31 resolves Closed but is really pulsing; 224–239 resolves Open but is really strobing; strobe Hz range is wider than the fixture's |
+| 11 CTC | 2700–8000 K across 0–255 | 0–6 no correction, 7–255 = 3200–7200 K | no dead zone, and both endpoints overshoot |
+| 5, 12, 13, 14 | one generic 0…1 `ChannelFunction` each | enumerated capability tables (128 movement macros, 6 maintenance ranges, …) | coarse, but macros/maintenance/speed are not resolved attributes for the beam class in v1 |
+
+None of these blocks the migration. All are recorded in `definitions/authored/README.md`'s own
+"Known gaps" or follow from it.
+
+#### Why the impression X4 is still not a substitute — keep this
+
+This is the trap that made the migration land at 7 of 13 in its first pass, and it has not gone
+away: the X4 remains the obvious-looking stand-in, and it patches without erroring.
 
 The impression 90 is the RGB sibling of the RGBW X4, and the divergence is exactly that one
 channel:
@@ -107,10 +167,14 @@ Special, Movement and Speed onto neighbouring slots without erroring. The X4's `
 14Ch` is tempting because the channel *count* matches (so the 1/15/29/43/57/71 grid would
 survive), but it is wrong from offset 9 in the same way. Rejected.
 
-The same divergence explains the other two rows: `Compress` aligns through offset 8 and breaks
-where the X4 puts White; `High Resolution (Extended)` aligns further, through offset 10 (both
-carry 16-bit Pan, Tilt, R, G and B), and breaks at 11 where the X4 has 16-bit White and the
-impression 90 has Shutter.
+The other two QLC+ modes fail the same way against their X4 counterparts: `Compress` (10 ch) vs
+`Compress Mode 14Ch` aligns through offset 8 and breaks where the X4 puts White;
+`High Resolution (Extended)` (13 ch) vs `High Resolution (Extended) Mode 21Ch` aligns further,
+through offset 10 — both carry 16-bit Pan, Tilt, R, G and B — and breaks at 11, where the X4 has
+16-bit White and the impression 90 has Shutter.
+
+**The X4 (rid 46490, pinned) stays in the library as a geometry cross-check for the authored
+profile. It must never be patched as an impression 90.**
 
 ### Generic Dimmer → OFL
 
@@ -306,18 +370,33 @@ channel-correct definition before the geometry lands, this is how to get one.
 
 | Library | Repo | Machine (Mizer reads both this and its bundled library) |
 |---------|------|--------------------------------------------------------|
-| GDTF | `definitions/gdtf/` — **gitignored**, rebuilt by `tools/gdtf-share.sh restore` from `definitions/gdtf-manifest.json` | `~/Documents/Mizer/Fixture Definitions/GDTF/` |
+| GDTF (from GDTF Share) | `definitions/gdtf/` — **gitignored**, rebuilt by `tools/gdtf-share.sh restore` from `definitions/gdtf-manifest.json` | `~/Documents/Mizer/Fixture Definitions/GDTF/` |
+| GDTF (authored) | `definitions/authored/GLP@impression 90 RGB@v1.gdtf` — **tracked** | same directory, `~/Documents/Mizer/Fixture Definitions/GDTF/` |
 | OFL (authored) | `definitions/ofl/beamhouse.json` — **tracked** | `~/Documents/Mizer/Fixture Definitions/Open Fixture Library/beamhouse.json` |
 | OFL (upstream) | not vendored | ships with Mizer, `fixtures/open-fixture-library/fixtures.json` |
-| QLC+ (movers only) | not vendored | `~/Documents/Mizer/Fixture Definitions/QLC+/fixtures/` |
+| QLC+ | **no longer used by this rig** | — |
 
-All four pinned `.gdtf` files and the authored OFL file were installed to those paths as part of
-this migration.
+All four pinned `.gdtf` files, the authored impression 90 `.gdtf` and the authored OFL file were
+installed to those paths as part of this migration. The two authored definitions and the four
+fetched ones live side by side in Mizer's single GDTF directory — Mizer keys on `FixtureTypeID`,
+so provenance makes no difference at resolution time. In the repo they stay separate, because
+the licensing does: `definitions/gdtf/` is referenced-not-vendored, `definitions/authored/` is
+ours and committed.
 
-`definitions/gdtf-manifest.json` is **unchanged** — nothing new was pinned. Everything the
-migrated rig needs from GDTF Share was already there. Two pins are now unused by this rig but
-retained deliberately: rid 46490 (impression X4) is the geometry reference for the impression 90
-work, and rids 138539 / 142265 (30px strip, WLED effect mode) document the routes not taken.
+### The authored profile is deliberately *not* in `gdtf-manifest.json`
+
+The manifest is a lockfile of GDTF Share rids: `pin` refuses anything absent from the local
+catalogue, and `restore` iterates `.definitions[].rid` and downloads each one. A rid-less entry
+would be unpinnable and would break `restore` outright. More to the point, the manifest exists
+because ADR-0001 cannot vendor GDTF Share content — and that constraint does not apply to a
+definition this project wrote. So the impression 90 is committed directly under
+`definitions/authored/`, which is exactly the split
+[`definitions/authored/README.md`](../../definitions/authored/README.md) already states. **The
+manifest is unchanged by this migration and correctly so.**
+
+Two manifest pins are now unused by this rig but retained deliberately: rid 46490 (impression X4)
+is the geometry cross-check for the authored profile, and rids 138539 / 142265 (30px strip, WLED
+effect mode) document the routes not taken.
 
 ### Mizer's id formats — worth knowing before editing the patch by hand
 
@@ -338,25 +417,29 @@ unresolvable fixture:
 
 ---
 
-## 7 · What is still blocked
+## 7 · What is left
 
-The six GLP impression 90 RGB movers, and only those. They remain on `qlc:` in the migrated
-file, which keeps the show file correct and playable in Mizer but leaves them unresolvable by
-Beamhouse, since ADR-0001 does not resolve `qlc:`.
+**Nothing blocks the migration.** All 13 fixtures resolve through `gdtf:` or `ofl:`, and no
+`qlc:` id remains in the rig — the format side of ADR-0001 is fully satisfied for this show.
 
-Unblocking is an *authoring* job, not a library search — the search is finished and its answer
-is no. As of this migration every input that job needs exists:
+What remains is fidelity work on definitions that already exist and already patch:
 
-- **Pivots**: measured from GLP's own dimensioned DWG in #16 —
-  [`impression-90-pivots.md`](impression-90-pivots.md). This was the one blocking unknown; it is
-  no longer unknown.
-- **Meshes / cross-check**: MIT-licensed mesh and pivot data in `heliostate/OpenGDTFLibrary`
-  ([`impression-90-geometry-sources.md`](impression-90-geometry-sources.md) §3.1).
-- **Structure**: the impression X4's GDTF (rid 46490, pinned) — a real `Axis` chain, no meshes.
-- **Channels**: the full map in `~/.qlcplus/fixtures/GLP-Impression-90-RGB.qxf`, plus the
-  offset-by-offset correspondence with the X4 in §2 above; or run it through OFL's QLC+ importer
-  for a channel-exact conversion (§4).
+- **The impression 90's shutter and CTC sub-ranges** diverge from the `.qxf` inside otherwise
+  correctly-placed channels (§2). Worth a pass on the authored profile; not worth blocking on.
+- **`Compress` and `High Resolution (Extended)` modes** are not implemented in the authored
+  profile. This rig only patches `Normal`, so it costs nothing today, and a mode that does not
+  exist fails loudly instead of resolving wrongly.
+- **`PhysicalDescriptions` is empty** on the authored profile — no emitter spectrum, no colour
+  space — and every model is a `PrimitiveType` with no mesh. That matches what real profiles
+  ship (GLP's own X4 and ADJ's Fog Fury Jett carry no geometry either), and MIT-licensed `.3ds`
+  meshes exist in `heliostate/OpenGDTFLibrary`
+  ([`impression-90-geometry-sources.md`](impression-90-geometry-sources.md) §3.1) if a polish
+  pass ever wants them.
+- **The three WLED unknowns in §5** — pixel count against the node's own 230-RGBW report, tube
+  order, and the measured tube length and pitch. These are the only places this migration rests
+  on an assumption rather than a check.
 
-Authoring the definition was explicitly out of scope for this ticket. Once it lands, the only
-edit this rig needs is swapping six `fixture:` lines — `id`, `universe` and `channel` for the
-movers are already correct and untouched.
+The rig is now genuinely usable as the reference rig this ticket set out to produce: a real
+patch, six beam-class movers with a measured axis hierarchy, and four 35-pixel strip-class
+fixtures — one of each of the two rendering classes v1 commits to, both resolvable without
+QLC+.
