@@ -29,6 +29,8 @@ previz package.
   for pixel tape. These are *rendering* classes, not fixture models: anything with a GDTF
   `Beam` geometry is class one, any collinear run of emitter references is class two. New
   lamps land in one bucket or the other without new code.
+  **Strips are per-pixel only** (decided 2026-08-31): the tubes are driven per pixel, via gled2
+  or WLED's virtual per-pixel DMX output. See the effect-mode exclusion below.
 - **Shareable.** Live over LAN or a tunnel; or as a static bundle anyone can open later, with
   no bridge running.
 - **Coexists.** Runs on the same laptop as the console without fighting over ports or GPU.
@@ -48,6 +50,12 @@ tier is a switch rather than a rewrite.
 
 ### Genuinely out of scope
 
+- **WLED effect mode.** `~/.qlcplus/fixtures/WLED-SegmentEffect.qxf` is 18 channels of *effect
+  parameters* — `Segment Opacity`, `Effect`, `Effect Speed`, `Palette` — and the OBF26 show
+  patches four tubes that way. Under effect mode WLED computes the pixels on-device, so the
+  per-pixel data never crosses the wire and Beamhouse could only render it by reimplementing
+  WLED's effect engine. v1 therefore assumes **per-pixel drive** (gled2, or WLED's virtual
+  output) and does not attempt to visualise effect-mode output.
 - Paperwork, plots, patch sheets, MVR-xchange.
 - **Being a control surface. Beamhouse never sends DMX.** Mizer is the control surface;
   Beamhouse is the preparation visualiser. The pair is the product.
