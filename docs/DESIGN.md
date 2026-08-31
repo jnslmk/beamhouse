@@ -386,16 +386,43 @@ beam fixtures move rarely, strips change constantly.
 
 ## 06 · The bridge
 
-The draft's position: default to sACN, not Art-Net. Art-Net is UDP 6454 and only one process
-per host can bind it, which is why BlenderDMX's own docs tell you to start it first. sACN is
-multicast on UDP 5568, so any number of receivers coexist with no start-order ritual.
+**The bridge speaks both sACN and Art-Net.** Settled in
+[ADR-0002](adr/0002-bridge-speaks-both-sacn-and-artnet.md).
 
-**[corrected] Mizer supports both.** `connections/protocols/dmx/src/outputs/sacn.rs` exists
-alongside the Art-Net output, with `add_sacn_output` and `configure_sacn_output` commands. The
-existing show file uses `type: artnet` twice — broadcast to a CueCore2 at `192.168.8.255` and
-unicast to a WLED tent at `192.168.8.243` — but that is a configuration choice, not a Mizer
-limitation. **The transport decision is therefore genuinely open (ticket 3),** and the real
-question is whether switching Mizer's output to sACN disturbs the CueCore2 and WLED paths.
+**[corrected] The original argument for sACN-only was false.** The draft claimed Art-Net is
+UDP 6454 and "only one process per host can bind it". On Linux that is not true for broadcast
+Art-Net, which is what this rig uses. Measured on the target platform: three sockets bound to
+`0.0.0.0:6454` with `SO_REUSEADDR` + `SO_REUSEPORT` **all three received** the same broadcast
+frame, to both the subnet broadcast address and `255.255.255.255`. Mizer never contends for the
+port anyway — its Art-Net output binds `("0.0.0.0", 0)`, an ephemeral port, and only *sends* to
+6454.
+
+**What actually decides it is that gled2 cannot speak sACN.** It depends on `artnet_protocol`
+and the Enttec USB DMX driver, with no E1.31 anywhere in its source. Since gled2 and Mizer must
+stream to Beamhouse simultaneously, sACN-only is impossible and Art-Net support is mandatory.
+
+| Source        | Art-Net                                     | sACN                       |
+| ------------- | ------------------------------------------- | -------------------------- |
+| gled2         | only — binds 6454 exclusively on its input   | **none**                   |
+| Mizer         | output from an ephemeral port                | yes, `sacn` crate          |
+| CueCore2      | yes                                          | yes, in and out            |
+| WLED          | yes                                          | yes, E1.31                 |
+
+**The real port conflict, and it is narrow.** gled2 binds `("0.0.0.0", 6454)` *without* reuse
+options — its source comments that the input "actually needs to own 6454" — and falls back to an
+ephemeral port if that fails. So the conflict exists **only when gled2's Art-Net input is in
+use**; as a pure source, 6454 stays free and the bridge can share it. Three mitigations, in
+order of preference:
+
+1. **Give gled2 sACN output.** Removes the contention entirely rather than working around it,
+   and puts both sources on multicast. External to this repo but the cleanest end state.
+2. **Set `SO_REUSEADDR`/`SO_REUSEPORT` on gled2's socket** — two lines, and the measurement above
+   shows sharing then works. Every socket must set them, so this requires the gled2-side change.
+3. **Send gled2's Art-Net to a non-standard port.** Its output destination is a configurable
+   `SocketAddr`. Works without touching gled2, at the cost of a non-standard setup.
+
+Prefer sACN where a source supports it: multicast means any number of receivers with no
+start-order ritual, and group join/leave maps directly onto the `subscribe` message in §07.
 
 ### The whole job
 
