@@ -21,7 +21,7 @@ previz package.
 
 ### Goals
 
-- **Generic.** Any rig, from an MVR file plus GDTF profiles. No hard-coded fixtures.
+- **Generic.** Any rig, from an MVR file plus GDTF definitions. No hard-coded fixtures.
 - **Fast to open.** Under two seconds to a rendered rig. You will open it fifty times a night.
 - **Editable while running.** Move a fixture, repatch, reload a GDTF — without restarting
   anything or losing the live connection.
@@ -45,7 +45,7 @@ tier is a switch rather than a rewrite.
 - Higher-fidelity rendering. PBR is free from glTF; the missing pieces are haze, soft shadows,
   and a slower "render" tier.
 - Gobos, prisms, framing shutters. GDTF carries wheel media in the same zip.
-- The agent surface — a fourth `source.ts` implementation injecting state directly. Undecided
+- The agent surface — a fourth feed implementation injecting state directly. Undecided
   for v1.
 
 ### Genuinely out of scope
@@ -59,10 +59,10 @@ tier is a switch rather than a rewrite.
 - Paperwork, plots, patch sheets, MVR-xchange.
 - **Being a control surface. Beamhouse never sends DMX.** Mizer is the control surface;
   Beamhouse is the preparation visualiser. The pair is the product.
-- **QLC+ as a fixture-definition source.** ~~GDTF is the only definition format Beamhouse
-  resolves.~~ **Under review.** Research found no confirmed GDTF profile for 5 of 13 fixtures in
+- **QLC+ as a definition library.** ~~GDTF is the only library Beamhouse
+  resolves against.~~ **Under review.** Research found no confirmed GDTF definition for 5 of 13 fixtures in
   the reference rig, no QLC+→GDTF converter in either direction, and no working generic
-  pixel-strip GDTF profile anywhere. Whether GDTF stays the sole definition format is now an
+  pixel-strip GDTF definition anywhere. Whether GDTF stays the sole definition library is now an
   open decision — note that Open Fixture Library is a third option neither this document nor the
   original framing considered, and it models pixel matrices natively. See §4.2 and §11.
 - White-channel resolution. WLED computes its own whites, and the movers are RGB. Treat every
@@ -129,7 +129,7 @@ beamhouse/
 ├─ src/
 │  ├─ mvr.ts            # MVR scene reader
 │  ├─ scene.ts          # rig state, overrides, persistence
-│  ├─ source.ts         # pluggable: live | relay | recorded
+│  ├─ feed.ts           # pluggable: live | relay | recorded
 │  ├─ resolve.ts        # DMX buffers → fixture attributes, 30 Hz
 │  ├─ render/
 │  │  ├─ fixture.ts     # GLB instance + axis rig (pan/tilt)
@@ -201,7 +201,7 @@ resolving via the `qlc:` provider — `qlc:GLP:impression 90 RGB` ×6,
 and zero `.mvr` files on disk.
 
 That rig is a past show, not a constraint. The decision is to **move off QLC+**: Beamhouse
-resolves GDTF only, and the OBF26 rig gets migrated onto `gdtf:` profiles where profiles exist
+resolves GDTF only, and the OBF26 rig gets migrated onto `gdtf:` definitions where definitions exist
 (ticket 5), primarily to serve as a real test rig. Future rigs may use entirely different
 lamps, which is exactly why the generic-from-GDTF goal is the first goal.
 
@@ -246,8 +246,9 @@ supplied the patch. Re-reading a changed Mizer project or a re-exported MVR then
 than destroying an evening of positioning. This one decision is what makes the whole import
 path survivable.
 
-Use the fixture id rather than a UUID: Mizer's `FixtureConfig.id` is a plain integer and MVR
-carries `FixtureID` too, so the id is the one key both sources can supply.
+Use the fixture id rather than a UUID, and use it *everywhere* a fixture is referenced —
+overrides, array members, selections. Mizer's `FixtureConfig.id` is a plain integer and MVR
+carries `FixtureID` too, so the id is the one key both patch formats can supply.
 
 ```json
 {
@@ -258,11 +259,11 @@ carries `FixtureID` too, so the id is the one key both sources can supply.
   },
   "arrays": [{
     "id": "star",
-    "members": ["tube-01", "..."],
+    "members": [12, 13, 14, 15],
     "kind": "radial",
     "center": [0, 3.2, 0], "radius": 2.4, "tilt": 90
   }],
-  "emitters": { "diy_t8_35px": { "kind": "strip", "pixels": 35 } }
+  "classes": { "diy_t8_35px": { "kind": "strip", "pixels": 35 } }
 }
 ```
 
@@ -303,7 +304,7 @@ spatial half of this milestone. Verified by grep across the crate:
 **What transfers to `gdtf-ts`:** the tree-walk-with-prefix pattern, channels-grouped-by-geometry-name
 lookup, offset-width inference, `GeometryReference` break-offset arithmetic, a v1 attribute list
 closely matching §5.2, and the `conversion.rs:58` `FIXME` — which drops channels whose attribute is
-named `Macro` so the SGM G-1 Beam profile works. That hack generalises to a rule: GDTF's
+named `Macro` so the SGM G-1 Beam definition works. That hack generalises to a rule: GDTF's
 Feature/Attribute taxonomy is not closed in real files, and the safe failure mode is
 **skip, don't misclassify**.
 
@@ -374,7 +375,8 @@ shifted by its break offset.
 
 A 35-pixel RGB tube resolves to 35 nodes × 3 bindings = 105 channels. The renderer should then
 recognise that a run of collinear emitter nodes is a strip, not 35 separate beams — the
-detection heuristic is ticket 7, with the `.bhs` `emitters` block as an explicit override.
+detection heuristic is ticket 7, with the `.bhs` `classes` block as an explicit override,
+keyed by definition id.
 
 **Performance.** Resolve on a fixed 30 Hz tick, not per packet. Diff against the previous frame:
 beam fixtures move rarely, strips change constantly.
@@ -415,7 +417,7 @@ Thin, because the browser does the thinking. Text frames for control, binary for
 
 // bridge → browser, control
 { "op": "stale",  "universes": [4] }
-{ "op": "source", "universe": 1, "priority": 100, "preview": false }
+{ "op": "sacn_source", "universe": 1, "priority": 100, "preview": false }
 { "op": "reload", "path": "shows/warehouse.mvr" }
 ```
 
@@ -429,7 +431,7 @@ u16   universe_count
     u8[512] slots
 ```
 
-Keep a `source.ts` interface in front of it with three implementations — `live`, `relay`,
+Keep a `feed.ts` interface in front of it with three implementations — `live`, `relay`,
 `recorded`. A fourth, injected-state implementation is the agent surface (ticket 4).
 
 ## 08 · Rendering
@@ -501,8 +503,8 @@ UI rather than silently producing a broken URL.
 
 ### 9.2 What a URL cannot carry
 
-Geometry and recordings. The viewer degrades in layers: a bundled library of recurring profiles
-in `public/gdtf/`; **proxy geometry** rendered from `PrimitiveType` when no profile is
+Geometry and recordings. The viewer degrades in layers: a bundled set of recurring definitions
+in `public/gdtf/`; **proxy geometry** rendered from `PrimitiveType` when no definition is
 available (schematic but correct — right positions, right beam angles, right colours); and
 drag-and-drop for the recipient's own GDTF or MVR.
 
@@ -552,17 +554,17 @@ These are the wayfinder map's tickets. See the map issue for current state.
 2. **Colour space.** GDTF carries `colorSpace` and gamut per channel function. v1 assumes
    linear sRGB — note every place the assumption is made so correcting it is not archaeology.
 3. **Agent surface.** The renderer taking injected state directly, bypassing DMX, would let an
-   agent set a look and screenshot it with no console running. Nearly free given `source.ts`.
+   agent set a look and screenshot it with no console running. Nearly free given `feed.ts`.
 4. **Bridge language.** Rust gives a single static binary; Node keeps one toolchain.
 5. **Publishing `gdtf-ts`.** No maintained TypeScript GDTF library exists.
 6. **Transport.** sACN or Art-Net, given Mizer does both.
-7. **GDTF profile availability.** Whether profiles exist for the fixtures in hand at all.
+7. **GDTF definition availability.** Whether definitions exist for the fixtures in hand at all.
    Partially answered: GDTF Share has a curl-friendly REST API but is account-gated, so this is
    blocked on obtaining access.
-8. **Is GDTF the sole definition format?** Reopened after the availability research. Open Fixture
+8. **Is GDTF the sole definition library?** Reopened after the availability research. Open Fixture
    Library (`ofl:`) is JSON, ungated, already supported by Mizer via a 972-line provider, and
    carries a native `Matrix { pixels: MatrixPixels }` concept plus `BeamAngle`/`BeamPosition`
-   capabilities — the pixel-strip class GDTF has no working profile for.
+   capabilities — the pixel-strip class GDTF has no working definition for.
 9. **What is the reference for the spatial half of resolution?** Mizer provides none; BlenderDMX
    is the leading candidate.
 
