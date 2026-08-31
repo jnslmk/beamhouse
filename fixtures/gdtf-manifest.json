@@ -1,6 +1,14 @@
 {
   "fixtures": [
     {
+      "rid": 46490,
+      "manufacturer": "GLP",
+      "fixture": "impression X4",
+      "revision": "HR Mode richtig geschrieben",
+      "version": "1.2",
+      "uuid": "26221110-16BC-4216-B9D6-67881CF7C962"
+    },
+    {
       "rid": 105377,
       "manufacturer": "ADJ",
       "fixture": "Fog Fury Jett",
