@@ -21,7 +21,10 @@ previz package.
 
 ### Goals
 
-- **Generic.** Any rig, from an MVR file plus GDTF definitions. No hard-coded fixtures.
+- **Generic.** Any rig, from a patch source plus **GDTF or OFL** definitions. No hard-coded
+  fixtures. MVR has no opinion about which definition format a fixture's spec reference
+  points at, so the second format is additive rather than a change to the MVR path.
+  See [ADR-0001](adr/0001-gdtf-and-ofl-as-definition-formats.md).
 - **Fast to open.** Under two seconds to a rendered rig. You will open it fifty times a night.
 - **Editable while running.** Move a fixture, repatch, reload a GDTF — without restarting
   anything or losing the live connection.
@@ -59,12 +62,12 @@ tier is a switch rather than a rewrite.
 - Paperwork, plots, patch sheets, MVR-xchange.
 - **Being a control surface. Beamhouse never sends DMX.** Mizer is the control surface;
   Beamhouse is the preparation visualiser. The pair is the product.
-- **QLC+ as a definition library.** ~~GDTF is the only library Beamhouse
-  resolves against.~~ **Under review.** Research found no confirmed GDTF definition for 5 of 13 fixtures in
-  the reference rig, no QLC+→GDTF converter in either direction, and no working generic
-  pixel-strip GDTF definition anywhere. Whether GDTF stays the sole definition library is now an
-  open decision — note that Open Fixture Library is a third option neither this document nor the
-  original framing considered, and it models pixel matrices natively. See §4.2 and §11.
+- **QLC+ as a *resolved runtime* format.** Settled in
+  [ADR-0001](adr/0001-gdtf-and-ofl-as-definition-formats.md): Beamhouse resolves **GDTF and OFL**,
+  not QLC+. Every capability QLC+ has that matters to a visualiser is present in OFL in a strictly
+  richer form, so a third parser and a third id namespace buy no coverage. QLC+'s value is as a
+  **one-time migration source** for the rig already patched against `qlc:` ids. Note this is
+  separate from moving off QLC+ the *application*, which was never in question.
 - White-channel resolution. WLED computes its own whites, and the movers are RGB. Treat every
   emitter as RGB; see §8.3 for the seam where RGBW/RGBCCT slots in later.
 
