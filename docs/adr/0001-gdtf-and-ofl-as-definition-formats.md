@@ -73,7 +73,7 @@ schema (`open-fixture-library/src/lib.rs:480`, `:12-16`).
 - Goal #1 is reworded: "any rig, from a patch source plus GDTF **or OFL** profiles."
 - **#8 narrows.** Strip detection no longer needs a collinearity heuristic — GDTF ships explicit
   positions and OFL declares layout. What remains is a grouping rule.
-- GDTF profiles stay **referenced, not vendored** — `fixtures/gdtf-manifest.json` records rids and
+- GDTF profiles stay **referenced, not vendored** — `definitions/gdtf-manifest.json` records rids and
   `gdtf-share.sh restore` rebuilds the library.
 - "Moving off QLC+" still holds and is unaffected. QLC+ the *application* and QLC+ the
   *definition library* were always separate questions; conflating them is what made this

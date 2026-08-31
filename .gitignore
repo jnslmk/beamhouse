@@ -1,5 +1,5 @@
 .claude/
 .env
 .gdtf-session.txt
-fixtures/gdtf/*.gdtf
-fixtures/gdtf-share-list.json
+definitions/gdtf/*.gdtf
+definitions/gdtf-share-list.json

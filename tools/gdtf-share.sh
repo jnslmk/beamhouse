@@ -6,9 +6,9 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ENV_FILE="$ROOT/.env"
 COOKIE="$ROOT/.gdtf-session.txt"
-LIST="$ROOT/fixtures/gdtf-share-list.json"
-MANIFEST="$ROOT/fixtures/gdtf-manifest.json"
-OUTDIR="$ROOT/fixtures/gdtf"
+LIST="$ROOT/definitions/gdtf-share-list.json"
+MANIFEST="$ROOT/definitions/gdtf-manifest.json"
+OUTDIR="$ROOT/definitions/gdtf"
 API="https://gdtf-share.com/apis/public"
 
 die() { echo "error: $*" >&2; exit 1; }
@@ -81,7 +81,7 @@ get() {
 }
 
 # Record a dependency by reference. We deliberately do NOT commit .gdtf files:
-# GDTF Share grants no redistribution right (T&C 36-38) and profiles carry no
+# GDTF Share grants no redistribution right (T&C 36-38) and definitions carry no
 # licence field, so provenance is unstated. The manifest is a lockfile - it
 # names what we depend on so `restore` can rebuild the library from the source.
 pin() {
@@ -91,8 +91,8 @@ pin() {
   entry=$(jq --arg r "$rid" '.list[] | select(.rid|tostring == $r)
           | {rid, manufacturer, fixture, revision, version, uuid}' "$LIST")
   [ -n "$entry" ] || die "rid $rid not in the local list"
-  [ -f "$MANIFEST" ] || echo '{"fixtures":[]}' > "$MANIFEST"
-  jq --argjson e "$entry" '.fixtures |= (map(select(.rid != $e.rid)) + [$e] | sort_by(.rid))' \
+  [ -f "$MANIFEST" ] || echo '{"definitions":[]}' > "$MANIFEST"
+  jq --argjson e "$entry" '.definitions |= (map(select(.rid != $e.rid)) + [$e] | sort_by(.rid))' \
     "$MANIFEST" > "$MANIFEST.tmp" && mv "$MANIFEST.tmp" "$MANIFEST"
   echo "pinned $(jq -r '"\(.manufacturer) \(.fixture)"' <<<"$entry")"
 }
@@ -100,8 +100,8 @@ pin() {
 restore() {
   [ -f "$MANIFEST" ] || die "no manifest at ${MANIFEST#$ROOT/}"
   local n=0
-  while read -r rid; do get "$rid"; n=$((n+1)); done < <(jq -r '.fixtures[].rid' "$MANIFEST")
-  echo "restored $n profiles from the manifest"
+  while read -r rid; do get "$rid"; n=$((n+1)); done < <(jq -r '.definitions[].rid' "$MANIFEST")
+  echo "restored $n definitions from the manifest"
 }
 
 case "${1:-}" in
@@ -114,11 +114,11 @@ case "${1:-}" in
   *) cat <<USAGE
 usage: $0 <command>
   login           authenticate and store the session cookie
-  sync            download the full revision list to fixtures/gdtf-share-list.json
+  sync            download the full revision list to definitions/gdtf-share-list.json
   search <term>   grep the local list (manufacturer / fixture / revision)
-  get <rid>       download one profile into fixtures/gdtf/
-  pin <rid>       record a profile in fixtures/gdtf-manifest.json (committed)
-  restore         re-download every pinned profile (rebuilds the library)
+  get <rid>       download one definition into definitions/gdtf/
+  pin <rid>       record a definition in definitions/gdtf-manifest.json (committed)
+  restore         re-download every pinned definition (rebuilds the local library)
 USAGE
   ;;
 esac

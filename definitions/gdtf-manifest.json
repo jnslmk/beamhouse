@@ -1,9 +1,9 @@
 {
-  "fixtures": [
+  "definitions": [
     {
       "rid": 46490,
       "manufacturer": "GLP",
-      "fixture": "impression X4",
+      "model": "impression X4",
       "revision": "HR Mode richtig geschrieben",
       "version": "1.2",
       "uuid": "26221110-16BC-4216-B9D6-67881CF7C962"
@@ -11,7 +11,7 @@
     {
       "rid": 105377,
       "manufacturer": "ADJ",
-      "fixture": "Fog Fury Jett",
+      "model": "Fog Fury Jett",
       "revision": "Release 1",
       "version": "1.2",
       "uuid": "26D59406-1AE9-4D59-8E00-A9DAF08EA018"
@@ -19,7 +19,7 @@
     {
       "rid": 138539,
       "manufacturer": "MarkeEigenbau",
-      "fixture": "RGB LED Pixel Strip 30px 1m",
+      "model": "RGB LED Pixel Strip 30px 1m",
       "revision": "TMSv01",
       "version": "1.2",
       "uuid": "7EF856AD-6CC0-40AB-896D-387DB55CEA93"
@@ -27,7 +27,7 @@
     {
       "rid": 142265,
       "manufacturer": "WLED Project",
-      "fixture": "WLED RGB Effect Mode",
+      "model": "WLED RGB Effect Mode",
       "revision": "rev-09",
       "version": "1.2",
       "uuid": "B40119E9-7D0A-47D2-A0EE-FA5D19739E74"
