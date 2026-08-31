@@ -344,9 +344,19 @@ The six GLP impression 90 RGB movers, and only those. They remain on `qlc:` in t
 file, which keeps the show file correct and playable in Mizer but leaves them unresolvable by
 Beamhouse, since ADR-0001 does not resolve `qlc:`.
 
-Unblocking is #15/#16/#17's geometry work, not a library search — the search is finished and its
-answer is no. What exists to build on: the impression X4's GDTF (rid 46490, pinned, real `Axis`
-chain but no meshes), MIT-licensed mesh and pivot data in `heliostate/OpenGDTFLibrary`
-([`impression-90-geometry-sources.md`](impression-90-geometry-sources.md) §3.1), the full
-channel map in `~/.qlcplus/fixtures/GLP-Impression-90-RGB.qxf`, and the offset-by-offset
-correspondence with the X4 in §2 above.
+Unblocking is an *authoring* job, not a library search — the search is finished and its answer
+is no. As of this migration every input that job needs exists:
+
+- **Pivots**: measured from GLP's own dimensioned DWG in #16 —
+  [`impression-90-pivots.md`](impression-90-pivots.md). This was the one blocking unknown; it is
+  no longer unknown.
+- **Meshes / cross-check**: MIT-licensed mesh and pivot data in `heliostate/OpenGDTFLibrary`
+  ([`impression-90-geometry-sources.md`](impression-90-geometry-sources.md) §3.1).
+- **Structure**: the impression X4's GDTF (rid 46490, pinned) — a real `Axis` chain, no meshes.
+- **Channels**: the full map in `~/.qlcplus/fixtures/GLP-Impression-90-RGB.qxf`, plus the
+  offset-by-offset correspondence with the X4 in §2 above; or run it through OFL's QLC+ importer
+  for a channel-exact conversion (§4).
+
+Authoring the definition was explicitly out of scope for this ticket. Once it lands, the only
+edit this rig needs is swapping six `fixture:` lines — `id`, `universe` and `channel` for the
+movers are already correct and untouched.
