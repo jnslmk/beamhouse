@@ -1,0 +1,79 @@
+# ADR-0004: `gdtf-ts` is a published package that parses and resolves GDTF, and nothing else
+
+- **Status:** Accepted
+- **Date:** 2026-09-01
+- **Decides:** [#7](https://github.com/jnslmk/beamhouse/issues/7)
+
+## Context
+
+`DESIGN.md` §4 placed `gdtf-ts` at `packages/gdtf-ts/` and required it to be free of Beamhouse
+types and free of three.js, but left publishing open. Three findings since then decided it.
+
+**The ecosystem is empty, not merely underserved.** `mvr-parser` on npm is still `1.0.1-alpha2`,
+last published 2022-08-22, and [#11](https://github.com/jnslmk/beamhouse/issues/11) found **no
+browser or WebGL GDTF implementation at any licence**. The npm names `gdtf-ts`, `gdtf` and
+`gdtf-parser` are all unregistered.
+
+**Resolution is the half nobody has got right.** #11 established that `GeometryReference`
+expansion is wrong in both reference implementations, and
+[#20](https://github.com/jnslmk/beamhouse/issues/20) proved both also transpose the rotation
+sub-matrix. A parse-only package would duplicate `pygdtf` in another language and add nothing.
+
+**`ADR-0001` collided with the "no Beamhouse types" rule.** ADR-0001 says both readers converge on
+one internal fixture model so the renderer never learns a fixture's source format. That model
+cannot live in `gdtf-ts` without making the rule false.
+
+## Decision
+
+**`gdtf-ts` is a published, MIT-licensed TypeScript package that parses and resolves GDTF.**
+
+1. **Parse *and* resolve.** Resolution is the valuable half. Fixture-specific workarounds do not
+   live in the resolver: they live in a **quirks table**, plain data, exported separately so a
+   consumer can inspect, extend or disable it. A quirk that cannot be expressed as data is
+   evidence the resolver is wrong, not the file.
+2. **Runtime-agnostic core.** The entry point takes a `Uint8Array`. No `fetch`, no `fs`, no
+   `File`, no DOM. Callers bring the bytes.
+3. **MIT**, for this repository and the package alike. This makes the copying rule a bright line:
+   Clay Paky's importer is MIT and **may** be read and copied; BlenderDMX and the ASLS beam shader
+   are GPL-3 and **may be read but never copied**.
+4. **GDTF only.** OFL is JSON — a schema mapping, not a parser — so it earns no package. The
+   converged **fixture model** is a Beamhouse domain type, defined in `CONTEXT.md`; `gdtf-ts`
+   emits a GDTF-shaped result and Beamhouse converges. Treating the two formats as symmetric
+   siblings would be a false symmetry costing a package.
+5. **No renderer types, and no mesh decoding.** `gdtf-ts` returns raw GLB `Uint8Array` buffers,
+   the resolved transform tree, and a `PrimitiveType` enum for the mesh-less cases — which #2
+   showed is the *normal* case in the wild, not a fallback. Beamhouse owns three.js, including
+   the canonical-mesh cache.
+6. **MVR stays out**, in Beamhouse's `src/mvr.ts`. MVR is a scene format, GDTF a device format,
+   and #11 found they do not even share a matrix convention despite sharing the word: MVR's is
+   4×3, millimetres, translation in the 4th **row**; GDTF's is 4×4, metres, 4th **column**.
+   Convert once at the MVR boundary, with a test. Because of (2), an MVR reader can pull an
+   embedded `.gdtf` out of the outer zip and hand the bytes over with no coupling.
+7. **Published to npm proper, gated on M4.** Not GitHub Packages: its own documentation states
+   *"You need an access token to publish, install, and delete private, internal, and public
+   packages"*, and anonymous requests to `npm.pkg.github.com` return `401` where
+   `registry.npmjs.org` returns `200`. A token wall defeats the only reason to publish. The first
+   publish waits for M4 — *"an arbitrary GDTF patches and its real GLB renders with working
+   pan/tilt"* — because npm is close to irreversible: after 72 hours a version can only be
+   unpublished with no dependents, under 300 weekly downloads and a single maintainer, and a
+   version number is burned permanently. Version `0.x`. Name `gdtf-ts`, unscoped; the bare `gdtf`
+   is the format's own name and is not ours to take, nor to squat defensively.
+8. **Tooling: bun workspaces**, package at `packages/gdtf-ts/`, in this repository. New bun
+   workspaces default to the **isolated** linker, so an undeclared import fails rather than
+   resolving through hoisting — which makes rule (5) toolchain-enforced rather than remembered.
+   **A Node CI job is mandatory**: the package targets Node and browser consumers, and bun is a
+   third runtime that is not a target. Correctness claims must be evidenced under a runtime
+   consumers actually run.
+
+## Consequences
+
+- The boundary is now enforced in three places at once — the linker, the licence, and the absence
+  of renderer types — rather than by discipline alone.
+- Beamhouse carries a mapping layer from the GDTF-shaped result into the fixture model, and owns
+  the OFL reader outright. That is the price of (4), paid deliberately.
+- Publishing pressure arrives only at M4, but the *shape* that makes publishing possible is paid
+  for from the first line of code. Deciding to publish is therefore free today and expensive to
+  reverse later, which is the right way round.
+- `gdtf-ts` will ship a correct rotation convention and a documented list of what is unverified
+  (#11 §10). Being first, correct where two shipped renderers were not, and candid about the rest
+  is a stronger debut than a larger surface.

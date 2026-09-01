@@ -95,6 +95,15 @@ applying a fixture's channel bindings. Always this word; never "decode" or "pars
 about bytes and XML respectively.
 _Avoid_: decode, interpret, apply
 
+**Fixture model**:
+The format-neutral internal representation both definition readers converge on — geometry tree
+plus channel bindings — so the renderer never learns whether a fixture came from GDTF or OFL
+([ADR-0001](docs/adr/0001-gdtf-and-ofl-as-definition-formats.md)). It is a **Beamhouse** type, not
+a `gdtf-ts` one: `gdtf-ts` emits a GDTF-shaped result and Beamhouse converges it
+([ADR-0004](docs/adr/0004-gdtf-ts-is-a-published-gdtf-only-package.md)).
+_Avoid_: fixture definition (that is the file), resolved fixture (collides with **resolve**),
+internal model
+
 **Emitter**:
 Any geometry in a definition that gives off light — a beam origin or a single pixel. The unit
 colour is resolved for, which is why "every emitter is RGB in v1" covers movers and tape alike.
@@ -102,7 +111,7 @@ _Avoid_: light, lamp, LED
 
 **Pixel**:
 An emitter that belongs to a strip-class fixture, arising from a repeated geometry in the
-definition. A 35-pixel tube has 35 of them. Not a screen pixel and not a texel.
+definition. A tube of N pixels has N of them. Not a screen pixel and not a texel.
 _Avoid_: LED, segment, cell
 
 **Beam class**:
