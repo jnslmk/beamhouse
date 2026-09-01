@@ -30,7 +30,9 @@ previz package.
   anything or losing the live connection.
 - **Two fixture classes done well.** Volumetric beams for movers; continuous emissive strips
   for pixel tape. These are *rendering* classes, not fixture models: anything with a GDTF
-  `Beam` geometry is class one, any collinear run of emitter references is class two. New
+  `Beam` geometry is class one; a pixel run grouped by constant DMX offset stride is class two,
+  in its 1D (strip) or 2D (matrix) form. Grouping is *not* by even spatial spacing — real
+  definitions are not evenly spaced (ADR-0005). New
   lamps land in one bucket or the other without new code.
   **Strips are per-pixel only** (decided 2026-08-31): the tubes are driven per pixel, via gled2
   or WLED's virtual per-pixel DMX output. See the effect-mode exclusion below.
@@ -468,9 +470,13 @@ Keep a `feed.ts` interface in front of it with three implementations — `live`,
 
 ### 8.1 Strips: one texture, not thirty-five objects
 
-Render each tube as a single cylinder or quad carrying a 1D `DataTexture` of N texels sampled
-along its length, `LinearFilter` on. Interpolation gives the continuous COB glow for free, and
-it is one draw call per fixture rather than thirty-five.
+Render each tube as **the geometry its definition declares** — the declared `PrimitiveType`, or a
+real mesh where the definition ships one — carrying a `DataTexture` of N texels sampled along the
+run's axis, `LinearFilter` on. Interpolation gives the continuous COB glow for free, and it is one
+draw call per fixture rather than thirty-five. A 2D matrix is the same path with an `M × N`
+texture (ADR-0005). Do not substitute a cylinder for a declared `Cube`: the real
+`MarkeEigenbau` strip declares a 25 x 50 x 1000 mm cube, and overriding that is the renderer
+claiming to know better than the definition.
 
 ```ts
 const tex = new THREE.DataTexture(

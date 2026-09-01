@@ -116,13 +116,23 @@ _Avoid_: LED, segment, cell
 
 **Beam class**:
 The rendering class for a fixture whose definition declares a `Beam` geometry: rendered as a
-volumetric cone from that emitter's origin. One of the two classes v1 handles.
+volumetric cone from that emitter's origin. One of the two *rendering paths* v1 handles; the
+other is the emissive surface shared by **strip class** and **matrix class**.
 _Avoid_: mover, moving head, spot (those are fixture kinds, not rendering classes)
 
 **Strip class**:
-The rendering class for a collinear run of emitters: rendered as one continuous emissive surface
-sampled along its length, not as N separate lamps. The other class v1 handles.
-_Avoid_: tape, tube, bar, pixel bar (those are fixture kinds), matrix
+The rendering class for a **one-dimensional** pixel run: rendered as one continuous emissive
+surface sampled along its length, not as N separate lamps. A run is grouped by **constant DMX
+offset stride** among sibling emitters of one fixture — never by even spatial spacing, which real
+definitions do not have ([ADR-0005](docs/adr/0005-emitter-grouping-is-by-dmx-stride.md)). A strip
+never crosses a fixture boundary.
+_Avoid_: tape, tube, bar, pixel bar (those are fixture kinds)
+
+**Matrix class**:
+The rendering class for a **two-dimensional** pixel grid — the same emissive surface carrying an
+`M × N` texture rather than an `N` one. Distinct from **strip class** to a human describing a rig,
+identical to the renderer: one shader, one draw call per fixture, interpolation across both axes.
+_Avoid_: panel, grid, pixel map, third rendering class (there is no third path)
 
 **Proxy geometry**:
 The stand-in mesh generated from a definition's declared primitive when no real model is
