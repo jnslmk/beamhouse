@@ -121,8 +121,8 @@ costs nothing, so there is no argument for resolving server-side.
 
 ```
 beamhouse/
-├─ bridge/              # the only native code. ~150 LOC.
-│   └─ src/main.rs      # sACN multicast → WebSocket
+├─ bridge/              # bun workspace package. TypeScript, isolated linker.
+│   └─ src/main.ts      # sACN + Art-Net → WebSocket (ADR-0006)
 ├─ packages/
 │  └─ gdtf-ts/          # standalone; publishable is an open question (§11)
 │      ├─ zip.ts        # fflate wrapper, lazy entries
@@ -149,6 +149,11 @@ beamhouse/
 
 Keep `gdtf-ts` free of any Beamhouse types and free of three.js. It should parse and resolve,
 and hand back plain data.
+
+`bridge/` is under the same discipline for the opposite reason: it depends on neither the app nor
+`gdtf-ts`, so §02's ignorance is enforced by the isolated linker rather than by being a different
+language ([ADR-0006](adr/0006-bridge-is-typescript-on-bun.md)). Its one permitted shared surface
+is the §07 frame codec, so bridge and `feed.ts` cannot drift.
 
 ## 04 · The scene: where it comes from and how you edit it
 
@@ -391,6 +396,12 @@ beam fixtures move rarely, strips change constantly.
 **The bridge speaks both sACN and Art-Net.** Settled in
 [ADR-0002](adr/0002-bridge-speaks-both-sacn-and-artnet.md).
 
+**It is TypeScript on Bun**, settled in [ADR-0006](adr/0006-bridge-is-typescript-on-bun.md) —
+`sacn` npm 4.6.2 for E1.31, a hand-rolled 25-line ArtDmx receiver on `Bun.udpSocket` (a passive
+listener that never announces itself, which `dmxnet` gets wrong), and `Bun.serve` plus `fs.watch`
+with no dependencies for the rest. **[corrected] It is not ~150 lines and not "the only native
+code".** Both of those framings predate ADR-0002 and the job list below.
+
 **[corrected] The original argument for sACN-only was false.** The draft claimed Art-Net is
 UDP 6454 and "only one process per host can bind it". On Linux that is not true for broadcast
 Art-Net, which is what this rig uses. Measured on the target platform: three sockets bound to
@@ -434,7 +445,12 @@ start-order ritual, and group join/leave maps directly onto the `subscribe` mess
 4. Mark a universe stale after ~2.5 s of silence and say so. Silent frozen output is the worst
    failure mode, because you debug the console instead of the network.
 5. Pass through the priority and `Preview_Data` flags — a free blind-mode indicator.
-6. Optionally serve the static app and watch `shows/` for changes.
+6. **Merge both transports into one universe space**, sACN-numbered: an Art-Net Port-Address *p*
+   is forwarded as universe *p* + 1 ([ADR-0007](adr/0007-one-universe-space-sacn-numbered.md)).
+   This is the only place that mapping may live, and it is worth a test.
+7. Serve the static app and watch `shows/` and Mizer's project YAML for changes. **Not optional**
+   — serving over `http://localhost` is what sidesteps §9.4's mixed-content trap rather than
+   merely documenting it.
 
 Confirm exact options-flag bit positions, priority range and data-loss timeout against
 ANSI E1.31-2018 before relying on them.
@@ -459,9 +475,14 @@ u32   magic  'BHU1'
 u32   t_ms
 u16   universe_count
   per universe:
-    u16   universe
+    u16   universe        // sACN-numbered, transport-independent — ADR-0007
     u8[512] slots
 ```
+
+The frame carries no transport field, and that is deliberate: the bridge has already merged sACN
+and Art-Net into one universe space before anything is written here
+([ADR-0007](adr/0007-one-universe-space-sacn-numbered.md)). Nothing downstream can tell, or needs
+to tell, how a universe arrived.
 
 Keep a `feed.ts` interface in front of it with three implementations — `live`, `relay`,
 `recorded`. A fourth, injected-state implementation is the agent surface (ticket 4).
@@ -591,7 +612,11 @@ These are the wayfinder map's tickets. See the map issue for current state.
    linear sRGB — note every place the assumption is made so correcting it is not archaeology.
 3. **Agent surface.** The renderer taking injected state directly, bypassing DMX, would let an
    agent set a look and screenshot it with no console running. Nearly free given `feed.ts`.
-4. **Bridge language.** Rust gives a single static binary; Node keeps one toolchain.
+4. ~~**Bridge language.**~~ **Answered:** TypeScript on Bun
+   ([ADR-0006](adr/0006-bridge-is-typescript-on-bun.md)). The Rust-vs-Node framing was wrong on
+   both sides — ADR-0004 had already made the TS option Bun rather than Node, and the static
+   binary was never a requirement. Surfaced the universe-space collision
+   ([ADR-0007](adr/0007-one-universe-space-sacn-numbered.md)).
 5. **Publishing `gdtf-ts`.** No maintained TypeScript GDTF library exists.
 6. **Transport.** sACN or Art-Net, given Mizer does both.
 7. **GDTF definition availability.** Whether definitions exist for the fixtures in hand at all.
@@ -606,8 +631,9 @@ These are the wayfinder map's tickets. See the map issue for current state.
 
 ## 12 · Dependencies
 
-**Nothing in this table is settled** — versions and choices fall out of the open questions
-above.
+The **browser** table below is still unsettled — versions and choices fall out of the open
+questions above. The **bridge** table is settled
+([ADR-0006](adr/0006-bridge-is-typescript-on-bun.md)).
 
 | Package                | Version | Role                                    | Licence |
 | ---------------------- | ------- | --------------------------------------- | ------- |
@@ -617,11 +643,17 @@ above.
 | `vite`                 | ≥6      | dev server, HMR, static build           | MIT     |
 | `vite-plugin-singlefile`| ≥2     | inline everything into one `.html`      | MIT     |
 
-Bridge — pick one side:
+Bridge — **settled** ([ADR-0006](adr/0006-bridge-is-typescript-on-bun.md)):
 
-| `sacn` (crate)      | 0.11.1 | ANSI E1.31 receive, Rust    | —          |
-| `artnet_protocol`   | 0.4.4  | Art-Net fallback            | —          |
-| `sacn` (npm)        | 4.6.2  | ANSI E1.31 receive, Node    | Apache-2.0 |
+| Package             | Version | Role                                     | Licence    |
+| ------------------- | ------- | ---------------------------------------- | ---------- |
+| `sacn` (npm)        | 4.6.2   | ANSI E1.31 receive                       | Apache-2.0 |
+| —                   | —       | ArtDmx receive is ~25 lines of our own   | —          |
+| —                   | —       | WebSocket, static serving, file watching are `Bun.serve` / `fs.watch` | — |
+
+The Rust crates (`sacn` 0.11.1, `artnet_protocol` 0.4.4) are out. Both are good — the `sacn`
+crate is a more complete E1.31 receiver than the npm package — but see ADR-0006 for why that did
+not carry the decision.
 
 Check each licence before depending on it. The one that bites is ASLS's beam shader: GPL-3.
 

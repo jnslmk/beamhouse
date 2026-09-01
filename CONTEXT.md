@@ -63,7 +63,18 @@ _Avoid_: group (that is a console-side selection concept), pattern
 ### Addressing
 
 **Universe**:
-512 slots of DMX, identified by a number, delivered as one packet per frame.
+512 slots of DMX, identified by a number, delivered as one packet per frame. **The number is
+always the sACN one** — a flat 1–63999, counting from 1 ([ADR-0007](docs/adr/0007-one-universe-space-sacn-numbered.md)).
+Beamhouse has exactly one universe space, so a universe number never depends on which transport
+carried it.
+_Avoid_: port-address (that is Art-Net's own number, and a different one)
+
+**Port-Address**:
+Art-Net's own name for a universe number: 15 bits as Net : Sub-Net : Universe, counting from
+**0**. Always written with the `Art-Net` prefix when the concept rather than the universe is
+meant, because it is off by one from the **universe** it maps to — Port-Address *p* is universe
+*p* + 1. Only the **bridge** ever sees one.
+_Avoid_: universe (that is the merged, sACN-numbered one), art-net address
 
 **Slot**:
 One byte within a universe, identified by its 1-based position. What travels on the wire.
@@ -142,10 +153,12 @@ _Avoid_: placeholder, fallback mesh, stub
 ### The pipeline
 
 **Bridge**:
-The native process that joins the sACN multicast groups and forwards raw universes over a
-WebSocket. It knows nothing about fixtures, definitions or the scene — that ignorance is the
-design.
-_Avoid_: server, sidecar, daemon, backend
+The process that listens on the show network and forwards raw universes to the browser, merging
+every transport into one **universe space**. It knows nothing about fixtures, definitions or the
+scene — that ignorance is the design, and it is enforced by the toolchain rather than by
+language ([ADR-0006](docs/adr/0006-bridge-is-typescript-on-bun.md)). The only component that
+knows how a universe arrived.
+_Avoid_: server, sidecar, daemon, backend, native process (it is no longer one)
 
 **Feed**:
 Where frames come from, as one pluggable interface with three implementations — live, relay,
