@@ -1,0 +1,1429 @@
+{
+  "version": "1.0.0",
+  "fixtures": [
+    {
+      "name": "WLED T8 Pixel Tube 35px",
+      "shortName": "WLEDT8-35",
+      "categories": [
+        "Pixel Bar"
+      ],
+      "meta": {
+        "authors": [
+          "Beamhouse"
+        ],
+        "createDate": "2026-09-01",
+        "lastModifyDate": "2026-09-01"
+      },
+      "comment": "SUPERSEDED / DO NOT TRUST THE PIXEL COUNT: this was authored at 35 px, inferred from docs/DESIGN.md 4.5's diy_t8_35px class. The user has since stated an LED profile holds 23 px, and the four entries this served in OBF26 are WLED segments over one physical run, not four physical tubes. Per-pixel at the real scale (230 px x 3 = 690 ch) also overruns a 512-slot universe. Kept in place pending a follow-up ticket that decides whether to re-author or replace it. Self-built WS2812 tube: a 60 LED/m RGB strip in a 600 mm T8 diffuser, 35 pixels, driven per pixel over Art-Net by a WLED controller in per-pixel (Multi RGB) DMX mode -- NOT WLED effect mode. Authored for the Beamhouse project (docs/research/obf26-definition-migration.md); not an upstream Open Fixture Library fixture. Pixel spacing is derived from the 60 LED/m strip pitch, not measured.",
+      "physical": {
+        "dimensions": [
+          600,
+          26,
+          26
+        ],
+        "bulb": {
+          "type": "WS2812B"
+        },
+        "matrixPixels": {
+          "dimensions": [
+            16.667,
+            26,
+            26
+          ],
+          "spacing": [
+            16.667,
+            0,
+            0
+          ]
+        }
+      },
+      "matrix": {
+        "pixelCount": [
+          35,
+          1,
+          1
+        ]
+      },
+      "availableChannels": {
+        "Red 1": {
+          "pixelKey": "1",
+          "capabilities": [
+            {
+              "type": "ColorIntensity",
+              "color": "Red",
+              "brightnessStart": "off",
+              "brightnessEnd": "bright"
+            }
+          ],
+          "singleCapability": true
+        },
+        "Green 1": {
+          "pixelKey": "1",
+          "capabilities": [
+            {
+              "type": "ColorIntensity",
+              "color": "Green",
+              "brightnessStart": "off",
+              "brightnessEnd": "bright"
+            }
+          ],
+          "singleCapability": true
+        },
+        "Blue 1": {
+          "pixelKey": "1",
+          "capabilities": [
+            {
+              "type": "ColorIntensity",
+              "color": "Blue",
+              "brightnessStart": "off",
+              "brightnessEnd": "bright"
+            }
+          ],
+          "singleCapability": true
+        },
+        "Red 2": {
+          "pixelKey": "2",
+          "capabilities": [
+            {
+              "type": "ColorIntensity",
+              "color": "Red",
+              "brightnessStart": "off",
+              "brightnessEnd": "bright"
+            }
+          ],
+          "singleCapability": true
+        },
+        "Green 2": {
+          "pixelKey": "2",
+          "capabilities": [
+            {
+              "type": "ColorIntensity",
+              "color": "Green",
+              "brightnessStart": "off",
+              "brightnessEnd": "bright"
+            }
+          ],
+          "singleCapability": true
+        },
+        "Blue 2": {
+          "pixelKey": "2",
+          "capabilities": [
+            {
+              "type": "ColorIntensity",
+              "color": "Blue",
+              "brightnessStart": "off",
+              "brightnessEnd": "bright"
+            }
+          ],
+          "singleCapability": true
+        },
+        "Red 3": {
+          "pixelKey": "3",
+          "capabilities": [
+            {
+              "type": "ColorIntensity",
+              "color": "Red",
+              "brightnessStart": "off",
+              "brightnessEnd": "bright"
+            }
+          ],
+          "singleCapability": true
+        },
+        "Green 3": {
+          "pixelKey": "3",
+          "capabilities": [
+            {
+              "type": "ColorIntensity",
+              "color": "Green",
+              "brightnessStart": "off",
+              "brightnessEnd": "bright"
+            }
+          ],
+          "singleCapability": true
+        },
+        "Blue 3": {
+          "pixelKey": "3",
+          "capabilities": [
+            {
+              "type": "ColorIntensity",
+              "color": "Blue",
+              "brightnessStart": "off",
+              "brightnessEnd": "bright"
+            }
+          ],
+          "singleCapability": true
+        },
+        "Red 4": {
+          "pixelKey": "4",
+          "capabilities": [
+            {
+              "type": "ColorIntensity",
+              "color": "Red",
+              "brightnessStart": "off",
+              "brightnessEnd": "bright"
+            }
+          ],
+          "singleCapability": true
+        },
+        "Green 4": {
+          "pixelKey": "4",
+          "capabilities": [
+            {
+              "type": "ColorIntensity",
+              "color": "Green",
+              "brightnessStart": "off",
+              "brightnessEnd": "bright"
+            }
+          ],
+          "singleCapability": true
+        },
+        "Blue 4": {
+          "pixelKey": "4",
+          "capabilities": [
+            {
+              "type": "ColorIntensity",
+              "color": "Blue",
+              "brightnessStart": "off",
+              "brightnessEnd": "bright"
+            }
+          ],
+          "singleCapability": true
+        },
+        "Red 5": {
+          "pixelKey": "5",
+          "capabilities": [
+            {
+              "type": "ColorIntensity",
+              "color": "Red",
+              "brightnessStart": "off",
+              "brightnessEnd": "bright"
+            }
+          ],
+          "singleCapability": true
+        },
+        "Green 5": {
+          "pixelKey": "5",
+          "capabilities": [
+            {
+              "type": "ColorIntensity",
+              "color": "Green",
+              "brightnessStart": "off",
+              "brightnessEnd": "bright"
+            }
+          ],
+          "singleCapability": true
+        },
+        "Blue 5": {
+          "pixelKey": "5",
+          "capabilities": [
+            {
+              "type": "ColorIntensity",
+              "color": "Blue",
+              "brightnessStart": "off",
+              "brightnessEnd": "bright"
+            }
+          ],
+          "singleCapability": true
+        },
+        "Red 6": {
+          "pixelKey": "6",
+          "capabilities": [
+            {
+              "type": "ColorIntensity",
+              "color": "Red",
+              "brightnessStart": "off",
+              "brightnessEnd": "bright"
+            }
+          ],
+          "singleCapability": true
+        },
+        "Green 6": {
+          "pixelKey": "6",
+          "capabilities": [
+            {
+              "type": "ColorIntensity",
+              "color": "Green",
+              "brightnessStart": "off",
+              "brightnessEnd": "bright"
+            }
+          ],
+          "singleCapability": true
+        },
+        "Blue 6": {
+          "pixelKey": "6",
+          "capabilities": [
+            {
+              "type": "ColorIntensity",
+              "color": "Blue",
+              "brightnessStart": "off",
+              "brightnessEnd": "bright"
+            }
+          ],
+          "singleCapability": true
+        },
+        "Red 7": {
+          "pixelKey": "7",
+          "capabilities": [
+            {
+              "type": "ColorIntensity",
+              "color": "Red",
+              "brightnessStart": "off",
+              "brightnessEnd": "bright"
+            }
+          ],
+          "singleCapability": true
+        },
+        "Green 7": {
+          "pixelKey": "7",
+          "capabilities": [
+            {
+              "type": "ColorIntensity",
+              "color": "Green",
+              "brightnessStart": "off",
+              "brightnessEnd": "bright"
+            }
+          ],
+          "singleCapability": true
+        },
+        "Blue 7": {
+          "pixelKey": "7",
+          "capabilities": [
+            {
+              "type": "ColorIntensity",
+              "color": "Blue",
+              "brightnessStart": "off",
+              "brightnessEnd": "bright"
+            }
+          ],
+          "singleCapability": true
+        },
+        "Red 8": {
+          "pixelKey": "8",
+          "capabilities": [
+            {
+              "type": "ColorIntensity",
+              "color": "Red",
+              "brightnessStart": "off",
+              "brightnessEnd": "bright"
+            }
+          ],
+          "singleCapability": true
+        },
+        "Green 8": {
+          "pixelKey": "8",
+          "capabilities": [
+            {
+              "type": "ColorIntensity",
+              "color": "Green",
+              "brightnessStart": "off",
+              "brightnessEnd": "bright"
+            }
+          ],
+          "singleCapability": true
+        },
+        "Blue 8": {
+          "pixelKey": "8",
+          "capabilities": [
+            {
+              "type": "ColorIntensity",
+              "color": "Blue",
+              "brightnessStart": "off",
+              "brightnessEnd": "bright"
+            }
+          ],
+          "singleCapability": true
+        },
+        "Red 9": {
+          "pixelKey": "9",
+          "capabilities": [
+            {
+              "type": "ColorIntensity",
+              "color": "Red",
+              "brightnessStart": "off",
+              "brightnessEnd": "bright"
+            }
+          ],
+          "singleCapability": true
+        },
+        "Green 9": {
+          "pixelKey": "9",
+          "capabilities": [
+            {
+              "type": "ColorIntensity",
+              "color": "Green",
+              "brightnessStart": "off",
+              "brightnessEnd": "bright"
+            }
+          ],
+          "singleCapability": true
+        },
+        "Blue 9": {
+          "pixelKey": "9",
+          "capabilities": [
+            {
+              "type": "ColorIntensity",
+              "color": "Blue",
+              "brightnessStart": "off",
+              "brightnessEnd": "bright"
+            }
+          ],
+          "singleCapability": true
+        },
+        "Red 10": {
+          "pixelKey": "10",
+          "capabilities": [
+            {
+              "type": "ColorIntensity",
+              "color": "Red",
+              "brightnessStart": "off",
+              "brightnessEnd": "bright"
+            }
+          ],
+          "singleCapability": true
+        },
+        "Green 10": {
+          "pixelKey": "10",
+          "capabilities": [
+            {
+              "type": "ColorIntensity",
+              "color": "Green",
+              "brightnessStart": "off",
+              "brightnessEnd": "bright"
+            }
+          ],
+          "singleCapability": true
+        },
+        "Blue 10": {
+          "pixelKey": "10",
+          "capabilities": [
+            {
+              "type": "ColorIntensity",
+              "color": "Blue",
+              "brightnessStart": "off",
+              "brightnessEnd": "bright"
+            }
+          ],
+          "singleCapability": true
+        },
+        "Red 11": {
+          "pixelKey": "11",
+          "capabilities": [
+            {
+              "type": "ColorIntensity",
+              "color": "Red",
+              "brightnessStart": "off",
+              "brightnessEnd": "bright"
+            }
+          ],
+          "singleCapability": true
+        },
+        "Green 11": {
+          "pixelKey": "11",
+          "capabilities": [
+            {
+              "type": "ColorIntensity",
+              "color": "Green",
+              "brightnessStart": "off",
+              "brightnessEnd": "bright"
+            }
+          ],
+          "singleCapability": true
+        },
+        "Blue 11": {
+          "pixelKey": "11",
+          "capabilities": [
+            {
+              "type": "ColorIntensity",
+              "color": "Blue",
+              "brightnessStart": "off",
+              "brightnessEnd": "bright"
+            }
+          ],
+          "singleCapability": true
+        },
+        "Red 12": {
+          "pixelKey": "12",
+          "capabilities": [
+            {
+              "type": "ColorIntensity",
+              "color": "Red",
+              "brightnessStart": "off",
+              "brightnessEnd": "bright"
+            }
+          ],
+          "singleCapability": true
+        },
+        "Green 12": {
+          "pixelKey": "12",
+          "capabilities": [
+            {
+              "type": "ColorIntensity",
+              "color": "Green",
+              "brightnessStart": "off",
+              "brightnessEnd": "bright"
+            }
+          ],
+          "singleCapability": true
+        },
+        "Blue 12": {
+          "pixelKey": "12",
+          "capabilities": [
+            {
+              "type": "ColorIntensity",
+              "color": "Blue",
+              "brightnessStart": "off",
+              "brightnessEnd": "bright"
+            }
+          ],
+          "singleCapability": true
+        },
+        "Red 13": {
+          "pixelKey": "13",
+          "capabilities": [
+            {
+              "type": "ColorIntensity",
+              "color": "Red",
+              "brightnessStart": "off",
+              "brightnessEnd": "bright"
+            }
+          ],
+          "singleCapability": true
+        },
+        "Green 13": {
+          "pixelKey": "13",
+          "capabilities": [
+            {
+              "type": "ColorIntensity",
+              "color": "Green",
+              "brightnessStart": "off",
+              "brightnessEnd": "bright"
+            }
+          ],
+          "singleCapability": true
+        },
+        "Blue 13": {
+          "pixelKey": "13",
+          "capabilities": [
+            {
+              "type": "ColorIntensity",
+              "color": "Blue",
+              "brightnessStart": "off",
+              "brightnessEnd": "bright"
+            }
+          ],
+          "singleCapability": true
+        },
+        "Red 14": {
+          "pixelKey": "14",
+          "capabilities": [
+            {
+              "type": "ColorIntensity",
+              "color": "Red",
+              "brightnessStart": "off",
+              "brightnessEnd": "bright"
+            }
+          ],
+          "singleCapability": true
+        },
+        "Green 14": {
+          "pixelKey": "14",
+          "capabilities": [
+            {
+              "type": "ColorIntensity",
+              "color": "Green",
+              "brightnessStart": "off",
+              "brightnessEnd": "bright"
+            }
+          ],
+          "singleCapability": true
+        },
+        "Blue 14": {
+          "pixelKey": "14",
+          "capabilities": [
+            {
+              "type": "ColorIntensity",
+              "color": "Blue",
+              "brightnessStart": "off",
+              "brightnessEnd": "bright"
+            }
+          ],
+          "singleCapability": true
+        },
+        "Red 15": {
+          "pixelKey": "15",
+          "capabilities": [
+            {
+              "type": "ColorIntensity",
+              "color": "Red",
+              "brightnessStart": "off",
+              "brightnessEnd": "bright"
+            }
+          ],
+          "singleCapability": true
+        },
+        "Green 15": {
+          "pixelKey": "15",
+          "capabilities": [
+            {
+              "type": "ColorIntensity",
+              "color": "Green",
+              "brightnessStart": "off",
+              "brightnessEnd": "bright"
+            }
+          ],
+          "singleCapability": true
+        },
+        "Blue 15": {
+          "pixelKey": "15",
+          "capabilities": [
+            {
+              "type": "ColorIntensity",
+              "color": "Blue",
+              "brightnessStart": "off",
+              "brightnessEnd": "bright"
+            }
+          ],
+          "singleCapability": true
+        },
+        "Red 16": {
+          "pixelKey": "16",
+          "capabilities": [
+            {
+              "type": "ColorIntensity",
+              "color": "Red",
+              "brightnessStart": "off",
+              "brightnessEnd": "bright"
+            }
+          ],
+          "singleCapability": true
+        },
+        "Green 16": {
+          "pixelKey": "16",
+          "capabilities": [
+            {
+              "type": "ColorIntensity",
+              "color": "Green",
+              "brightnessStart": "off",
+              "brightnessEnd": "bright"
+            }
+          ],
+          "singleCapability": true
+        },
+        "Blue 16": {
+          "pixelKey": "16",
+          "capabilities": [
+            {
+              "type": "ColorIntensity",
+              "color": "Blue",
+              "brightnessStart": "off",
+              "brightnessEnd": "bright"
+            }
+          ],
+          "singleCapability": true
+        },
+        "Red 17": {
+          "pixelKey": "17",
+          "capabilities": [
+            {
+              "type": "ColorIntensity",
+              "color": "Red",
+              "brightnessStart": "off",
+              "brightnessEnd": "bright"
+            }
+          ],
+          "singleCapability": true
+        },
+        "Green 17": {
+          "pixelKey": "17",
+          "capabilities": [
+            {
+              "type": "ColorIntensity",
+              "color": "Green",
+              "brightnessStart": "off",
+              "brightnessEnd": "bright"
+            }
+          ],
+          "singleCapability": true
+        },
+        "Blue 17": {
+          "pixelKey": "17",
+          "capabilities": [
+            {
+              "type": "ColorIntensity",
+              "color": "Blue",
+              "brightnessStart": "off",
+              "brightnessEnd": "bright"
+            }
+          ],
+          "singleCapability": true
+        },
+        "Red 18": {
+          "pixelKey": "18",
+          "capabilities": [
+            {
+              "type": "ColorIntensity",
+              "color": "Red",
+              "brightnessStart": "off",
+              "brightnessEnd": "bright"
+            }
+          ],
+          "singleCapability": true
+        },
+        "Green 18": {
+          "pixelKey": "18",
+          "capabilities": [
+            {
+              "type": "ColorIntensity",
+              "color": "Green",
+              "brightnessStart": "off",
+              "brightnessEnd": "bright"
+            }
+          ],
+          "singleCapability": true
+        },
+        "Blue 18": {
+          "pixelKey": "18",
+          "capabilities": [
+            {
+              "type": "ColorIntensity",
+              "color": "Blue",
+              "brightnessStart": "off",
+              "brightnessEnd": "bright"
+            }
+          ],
+          "singleCapability": true
+        },
+        "Red 19": {
+          "pixelKey": "19",
+          "capabilities": [
+            {
+              "type": "ColorIntensity",
+              "color": "Red",
+              "brightnessStart": "off",
+              "brightnessEnd": "bright"
+            }
+          ],
+          "singleCapability": true
+        },
+        "Green 19": {
+          "pixelKey": "19",
+          "capabilities": [
+            {
+              "type": "ColorIntensity",
+              "color": "Green",
+              "brightnessStart": "off",
+              "brightnessEnd": "bright"
+            }
+          ],
+          "singleCapability": true
+        },
+        "Blue 19": {
+          "pixelKey": "19",
+          "capabilities": [
+            {
+              "type": "ColorIntensity",
+              "color": "Blue",
+              "brightnessStart": "off",
+              "brightnessEnd": "bright"
+            }
+          ],
+          "singleCapability": true
+        },
+        "Red 20": {
+          "pixelKey": "20",
+          "capabilities": [
+            {
+              "type": "ColorIntensity",
+              "color": "Red",
+              "brightnessStart": "off",
+              "brightnessEnd": "bright"
+            }
+          ],
+          "singleCapability": true
+        },
+        "Green 20": {
+          "pixelKey": "20",
+          "capabilities": [
+            {
+              "type": "ColorIntensity",
+              "color": "Green",
+              "brightnessStart": "off",
+              "brightnessEnd": "bright"
+            }
+          ],
+          "singleCapability": true
+        },
+        "Blue 20": {
+          "pixelKey": "20",
+          "capabilities": [
+            {
+              "type": "ColorIntensity",
+              "color": "Blue",
+              "brightnessStart": "off",
+              "brightnessEnd": "bright"
+            }
+          ],
+          "singleCapability": true
+        },
+        "Red 21": {
+          "pixelKey": "21",
+          "capabilities": [
+            {
+              "type": "ColorIntensity",
+              "color": "Red",
+              "brightnessStart": "off",
+              "brightnessEnd": "bright"
+            }
+          ],
+          "singleCapability": true
+        },
+        "Green 21": {
+          "pixelKey": "21",
+          "capabilities": [
+            {
+              "type": "ColorIntensity",
+              "color": "Green",
+              "brightnessStart": "off",
+              "brightnessEnd": "bright"
+            }
+          ],
+          "singleCapability": true
+        },
+        "Blue 21": {
+          "pixelKey": "21",
+          "capabilities": [
+            {
+              "type": "ColorIntensity",
+              "color": "Blue",
+              "brightnessStart": "off",
+              "brightnessEnd": "bright"
+            }
+          ],
+          "singleCapability": true
+        },
+        "Red 22": {
+          "pixelKey": "22",
+          "capabilities": [
+            {
+              "type": "ColorIntensity",
+              "color": "Red",
+              "brightnessStart": "off",
+              "brightnessEnd": "bright"
+            }
+          ],
+          "singleCapability": true
+        },
+        "Green 22": {
+          "pixelKey": "22",
+          "capabilities": [
+            {
+              "type": "ColorIntensity",
+              "color": "Green",
+              "brightnessStart": "off",
+              "brightnessEnd": "bright"
+            }
+          ],
+          "singleCapability": true
+        },
+        "Blue 22": {
+          "pixelKey": "22",
+          "capabilities": [
+            {
+              "type": "ColorIntensity",
+              "color": "Blue",
+              "brightnessStart": "off",
+              "brightnessEnd": "bright"
+            }
+          ],
+          "singleCapability": true
+        },
+        "Red 23": {
+          "pixelKey": "23",
+          "capabilities": [
+            {
+              "type": "ColorIntensity",
+              "color": "Red",
+              "brightnessStart": "off",
+              "brightnessEnd": "bright"
+            }
+          ],
+          "singleCapability": true
+        },
+        "Green 23": {
+          "pixelKey": "23",
+          "capabilities": [
+            {
+              "type": "ColorIntensity",
+              "color": "Green",
+              "brightnessStart": "off",
+              "brightnessEnd": "bright"
+            }
+          ],
+          "singleCapability": true
+        },
+        "Blue 23": {
+          "pixelKey": "23",
+          "capabilities": [
+            {
+              "type": "ColorIntensity",
+              "color": "Blue",
+              "brightnessStart": "off",
+              "brightnessEnd": "bright"
+            }
+          ],
+          "singleCapability": true
+        },
+        "Red 24": {
+          "pixelKey": "24",
+          "capabilities": [
+            {
+              "type": "ColorIntensity",
+              "color": "Red",
+              "brightnessStart": "off",
+              "brightnessEnd": "bright"
+            }
+          ],
+          "singleCapability": true
+        },
+        "Green 24": {
+          "pixelKey": "24",
+          "capabilities": [
+            {
+              "type": "ColorIntensity",
+              "color": "Green",
+              "brightnessStart": "off",
+              "brightnessEnd": "bright"
+            }
+          ],
+          "singleCapability": true
+        },
+        "Blue 24": {
+          "pixelKey": "24",
+          "capabilities": [
+            {
+              "type": "ColorIntensity",
+              "color": "Blue",
+              "brightnessStart": "off",
+              "brightnessEnd": "bright"
+            }
+          ],
+          "singleCapability": true
+        },
+        "Red 25": {
+          "pixelKey": "25",
+          "capabilities": [
+            {
+              "type": "ColorIntensity",
+              "color": "Red",
+              "brightnessStart": "off",
+              "brightnessEnd": "bright"
+            }
+          ],
+          "singleCapability": true
+        },
+        "Green 25": {
+          "pixelKey": "25",
+          "capabilities": [
+            {
+              "type": "ColorIntensity",
+              "color": "Green",
+              "brightnessStart": "off",
+              "brightnessEnd": "bright"
+            }
+          ],
+          "singleCapability": true
+        },
+        "Blue 25": {
+          "pixelKey": "25",
+          "capabilities": [
+            {
+              "type": "ColorIntensity",
+              "color": "Blue",
+              "brightnessStart": "off",
+              "brightnessEnd": "bright"
+            }
+          ],
+          "singleCapability": true
+        },
+        "Red 26": {
+          "pixelKey": "26",
+          "capabilities": [
+            {
+              "type": "ColorIntensity",
+              "color": "Red",
+              "brightnessStart": "off",
+              "brightnessEnd": "bright"
+            }
+          ],
+          "singleCapability": true
+        },
+        "Green 26": {
+          "pixelKey": "26",
+          "capabilities": [
+            {
+              "type": "ColorIntensity",
+              "color": "Green",
+              "brightnessStart": "off",
+              "brightnessEnd": "bright"
+            }
+          ],
+          "singleCapability": true
+        },
+        "Blue 26": {
+          "pixelKey": "26",
+          "capabilities": [
+            {
+              "type": "ColorIntensity",
+              "color": "Blue",
+              "brightnessStart": "off",
+              "brightnessEnd": "bright"
+            }
+          ],
+          "singleCapability": true
+        },
+        "Red 27": {
+          "pixelKey": "27",
+          "capabilities": [
+            {
+              "type": "ColorIntensity",
+              "color": "Red",
+              "brightnessStart": "off",
+              "brightnessEnd": "bright"
+            }
+          ],
+          "singleCapability": true
+        },
+        "Green 27": {
+          "pixelKey": "27",
+          "capabilities": [
+            {
+              "type": "ColorIntensity",
+              "color": "Green",
+              "brightnessStart": "off",
+              "brightnessEnd": "bright"
+            }
+          ],
+          "singleCapability": true
+        },
+        "Blue 27": {
+          "pixelKey": "27",
+          "capabilities": [
+            {
+              "type": "ColorIntensity",
+              "color": "Blue",
+              "brightnessStart": "off",
+              "brightnessEnd": "bright"
+            }
+          ],
+          "singleCapability": true
+        },
+        "Red 28": {
+          "pixelKey": "28",
+          "capabilities": [
+            {
+              "type": "ColorIntensity",
+              "color": "Red",
+              "brightnessStart": "off",
+              "brightnessEnd": "bright"
+            }
+          ],
+          "singleCapability": true
+        },
+        "Green 28": {
+          "pixelKey": "28",
+          "capabilities": [
+            {
+              "type": "ColorIntensity",
+              "color": "Green",
+              "brightnessStart": "off",
+              "brightnessEnd": "bright"
+            }
+          ],
+          "singleCapability": true
+        },
+        "Blue 28": {
+          "pixelKey": "28",
+          "capabilities": [
+            {
+              "type": "ColorIntensity",
+              "color": "Blue",
+              "brightnessStart": "off",
+              "brightnessEnd": "bright"
+            }
+          ],
+          "singleCapability": true
+        },
+        "Red 29": {
+          "pixelKey": "29",
+          "capabilities": [
+            {
+              "type": "ColorIntensity",
+              "color": "Red",
+              "brightnessStart": "off",
+              "brightnessEnd": "bright"
+            }
+          ],
+          "singleCapability": true
+        },
+        "Green 29": {
+          "pixelKey": "29",
+          "capabilities": [
+            {
+              "type": "ColorIntensity",
+              "color": "Green",
+              "brightnessStart": "off",
+              "brightnessEnd": "bright"
+            }
+          ],
+          "singleCapability": true
+        },
+        "Blue 29": {
+          "pixelKey": "29",
+          "capabilities": [
+            {
+              "type": "ColorIntensity",
+              "color": "Blue",
+              "brightnessStart": "off",
+              "brightnessEnd": "bright"
+            }
+          ],
+          "singleCapability": true
+        },
+        "Red 30": {
+          "pixelKey": "30",
+          "capabilities": [
+            {
+              "type": "ColorIntensity",
+              "color": "Red",
+              "brightnessStart": "off",
+              "brightnessEnd": "bright"
+            }
+          ],
+          "singleCapability": true
+        },
+        "Green 30": {
+          "pixelKey": "30",
+          "capabilities": [
+            {
+              "type": "ColorIntensity",
+              "color": "Green",
+              "brightnessStart": "off",
+              "brightnessEnd": "bright"
+            }
+          ],
+          "singleCapability": true
+        },
+        "Blue 30": {
+          "pixelKey": "30",
+          "capabilities": [
+            {
+              "type": "ColorIntensity",
+              "color": "Blue",
+              "brightnessStart": "off",
+              "brightnessEnd": "bright"
+            }
+          ],
+          "singleCapability": true
+        },
+        "Red 31": {
+          "pixelKey": "31",
+          "capabilities": [
+            {
+              "type": "ColorIntensity",
+              "color": "Red",
+              "brightnessStart": "off",
+              "brightnessEnd": "bright"
+            }
+          ],
+          "singleCapability": true
+        },
+        "Green 31": {
+          "pixelKey": "31",
+          "capabilities": [
+            {
+              "type": "ColorIntensity",
+              "color": "Green",
+              "brightnessStart": "off",
+              "brightnessEnd": "bright"
+            }
+          ],
+          "singleCapability": true
+        },
+        "Blue 31": {
+          "pixelKey": "31",
+          "capabilities": [
+            {
+              "type": "ColorIntensity",
+              "color": "Blue",
+              "brightnessStart": "off",
+              "brightnessEnd": "bright"
+            }
+          ],
+          "singleCapability": true
+        },
+        "Red 32": {
+          "pixelKey": "32",
+          "capabilities": [
+            {
+              "type": "ColorIntensity",
+              "color": "Red",
+              "brightnessStart": "off",
+              "brightnessEnd": "bright"
+            }
+          ],
+          "singleCapability": true
+        },
+        "Green 32": {
+          "pixelKey": "32",
+          "capabilities": [
+            {
+              "type": "ColorIntensity",
+              "color": "Green",
+              "brightnessStart": "off",
+              "brightnessEnd": "bright"
+            }
+          ],
+          "singleCapability": true
+        },
+        "Blue 32": {
+          "pixelKey": "32",
+          "capabilities": [
+            {
+              "type": "ColorIntensity",
+              "color": "Blue",
+              "brightnessStart": "off",
+              "brightnessEnd": "bright"
+            }
+          ],
+          "singleCapability": true
+        },
+        "Red 33": {
+          "pixelKey": "33",
+          "capabilities": [
+            {
+              "type": "ColorIntensity",
+              "color": "Red",
+              "brightnessStart": "off",
+              "brightnessEnd": "bright"
+            }
+          ],
+          "singleCapability": true
+        },
+        "Green 33": {
+          "pixelKey": "33",
+          "capabilities": [
+            {
+              "type": "ColorIntensity",
+              "color": "Green",
+              "brightnessStart": "off",
+              "brightnessEnd": "bright"
+            }
+          ],
+          "singleCapability": true
+        },
+        "Blue 33": {
+          "pixelKey": "33",
+          "capabilities": [
+            {
+              "type": "ColorIntensity",
+              "color": "Blue",
+              "brightnessStart": "off",
+              "brightnessEnd": "bright"
+            }
+          ],
+          "singleCapability": true
+        },
+        "Red 34": {
+          "pixelKey": "34",
+          "capabilities": [
+            {
+              "type": "ColorIntensity",
+              "color": "Red",
+              "brightnessStart": "off",
+              "brightnessEnd": "bright"
+            }
+          ],
+          "singleCapability": true
+        },
+        "Green 34": {
+          "pixelKey": "34",
+          "capabilities": [
+            {
+              "type": "ColorIntensity",
+              "color": "Green",
+              "brightnessStart": "off",
+              "brightnessEnd": "bright"
+            }
+          ],
+          "singleCapability": true
+        },
+        "Blue 34": {
+          "pixelKey": "34",
+          "capabilities": [
+            {
+              "type": "ColorIntensity",
+              "color": "Blue",
+              "brightnessStart": "off",
+              "brightnessEnd": "bright"
+            }
+          ],
+          "singleCapability": true
+        },
+        "Red 35": {
+          "pixelKey": "35",
+          "capabilities": [
+            {
+              "type": "ColorIntensity",
+              "color": "Red",
+              "brightnessStart": "off",
+              "brightnessEnd": "bright"
+            }
+          ],
+          "singleCapability": true
+        },
+        "Green 35": {
+          "pixelKey": "35",
+          "capabilities": [
+            {
+              "type": "ColorIntensity",
+              "color": "Green",
+              "brightnessStart": "off",
+              "brightnessEnd": "bright"
+            }
+          ],
+          "singleCapability": true
+        },
+        "Blue 35": {
+          "pixelKey": "35",
+          "capabilities": [
+            {
+              "type": "ColorIntensity",
+              "color": "Blue",
+              "brightnessStart": "off",
+              "brightnessEnd": "bright"
+            }
+          ],
+          "singleCapability": true
+        }
+      },
+      "modes": [
+        {
+          "name": "35px RGB 105-channel",
+          "shortName": "35pxRGB",
+          "channels": [
+            "Red 1",
+            "Green 1",
+            "Blue 1",
+            "Red 2",
+            "Green 2",
+            "Blue 2",
+            "Red 3",
+            "Green 3",
+            "Blue 3",
+            "Red 4",
+            "Green 4",
+            "Blue 4",
+            "Red 5",
+            "Green 5",
+            "Blue 5",
+            "Red 6",
+            "Green 6",
+            "Blue 6",
+            "Red 7",
+            "Green 7",
+            "Blue 7",
+            "Red 8",
+            "Green 8",
+            "Blue 8",
+            "Red 9",
+            "Green 9",
+            "Blue 9",
+            "Red 10",
+            "Green 10",
+            "Blue 10",
+            "Red 11",
+            "Green 11",
+            "Blue 11",
+            "Red 12",
+            "Green 12",
+            "Blue 12",
+            "Red 13",
+            "Green 13",
+            "Blue 13",
+            "Red 14",
+            "Green 14",
+            "Blue 14",
+            "Red 15",
+            "Green 15",
+            "Blue 15",
+            "Red 16",
+            "Green 16",
+            "Blue 16",
+            "Red 17",
+            "Green 17",
+            "Blue 17",
+            "Red 18",
+            "Green 18",
+            "Blue 18",
+            "Red 19",
+            "Green 19",
+            "Blue 19",
+            "Red 20",
+            "Green 20",
+            "Blue 20",
+            "Red 21",
+            "Green 21",
+            "Blue 21",
+            "Red 22",
+            "Green 22",
+            "Blue 22",
+            "Red 23",
+            "Green 23",
+            "Blue 23",
+            "Red 24",
+            "Green 24",
+            "Blue 24",
+            "Red 25",
+            "Green 25",
+            "Blue 25",
+            "Red 26",
+            "Green 26",
+            "Blue 26",
+            "Red 27",
+            "Green 27",
+            "Blue 27",
+            "Red 28",
+            "Green 28",
+            "Blue 28",
+            "Red 29",
+            "Green 29",
+            "Blue 29",
+            "Red 30",
+            "Green 30",
+            "Blue 30",
+            "Red 31",
+            "Green 31",
+            "Blue 31",
+            "Red 32",
+            "Green 32",
+            "Blue 32",
+            "Red 33",
+            "Green 33",
+            "Blue 33",
+            "Red 34",
+            "Green 34",
+            "Blue 34",
+            "Red 35",
+            "Green 35",
+            "Blue 35"
+          ]
+        }
+      ],
+      "fixtureKey": "wled-t8-pixel-tube-35px",
+      "manufacturer": {
+        "name": "Beamhouse",
+        "comment": "Definitions authored for the Beamhouse project, not part of the upstream Open Fixture Library."
+      }
+    }
+  ]
+}
