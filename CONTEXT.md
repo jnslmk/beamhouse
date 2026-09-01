@@ -106,6 +106,19 @@ applying a fixture's channel bindings. Always this word; never "decode" or "pars
 about bytes and XML respectively.
 _Avoid_: decode, interpret, apply
 
+**Colour space**:
+Which real-world colours a definition's `R`, `G`, `B` name — primaries plus white point. GDTF
+declares it per definition and defaults it to sRGB; OFL has no equivalent concept. Distinct from
+**transfer function**, and the two are never called "colour handling" jointly.
+_Avoid_: gamut (that is the polygon a colour space encloses, which GDTF names separately), colour
+profile
+
+**Transfer function**:
+Whether a channel value is proportional to radiance or perceptually encoded. Independent of
+**colour space**: a definition can name sRGB primaries and still be linear in radiance
+([ADR-0008](docs/adr/0008-colour-space-is-assumed-transfer-function-is-read.md)).
+_Avoid_: gamma, colour curve, linearity
+
 **Fixture model**:
 The format-neutral internal representation both definition readers converge on — geometry tree
 plus channel bindings — so the renderer never learns whether a fixture came from GDTF or OFL

@@ -530,14 +530,36 @@ Drive strobe from a shader uniform on wall time, not by dropping frames.
 ### 8.3 Colour: RGB now, white channels later
 
 v1 resolves `ColorAdd_R/G/B` and stops. Keep the seam explicit anyway — one function, one call
-site. Whether v1 also honours GDTF's `colorSpace`/gamut is ticket 8.
+site.
+
+**v1 assumes the colour space and reads the transfer function**
+([ADR-0008](adr/0008-colour-space-is-assumed-transfer-function-is-read.md)). Primaries are assumed
+sRGB, which is what GDTF's `<ColorSpace>` defaults to anyway; the fixture model carries no
+`colorSpace` field, so there is nothing to half-consult. `PhysicalFrom`/`PhysicalTo` *is* read
+wherever the `PhysicalUnit` gives it meaning — `Dimmer` declares `LuminousIntensity`, so its
+linearity is a stated fact, not an assumption (#25).
+
+**Exactly one assumption is made, at exactly one site:** `ColorComponent` 0..1 is proportional to
+radiance. GDTF is genuinely silent there. `resolveColor` is the sole minter of `LinearRGB`, so
+every consumer of colour is a compiler-visible correction site.
 
 ```ts
-export function resolveColor(ch: ColorChannels): RGB {
-  return [ch.r, ch.g, ch.b];
+/** Radiance-linear, sRGB primaries. Only `resolveColor` may mint this. */
+export type LinearRGB = readonly [number, number, number] & { readonly __linear: unique symbol };
+
+export function resolveColor(ch: ColorChannels): LinearRGB {
+  // ASSUMPTION (ADR-0008): PhysicalUnit `ColorComponent` is undefined photometrically;
+  // v1 reads 0..1 as proportional to radiance. The only such assumption in the codebase.
+  return [ch.r, ch.g, ch.b] as unknown as LinearRGB;
   // later: blend warm/cool by ratio → kelvin → linear RGB, add to RGB, clamp.
 }
 ```
+
+Both render paths consume that type and no other. The strip's `DataTexture` is annotated
+`LinearSRGBColorSpace` **explicitly** — it matches three.js's default for a float texture, and
+that is the point: a deliberate default documents the assumption where a silent one hides it. The
+conversion happens in `resolveColor`, **before** anything reaches `ACESFilmicToneMapping`; the
+tone mapper on unconverted input is the compounding error §8.2 risks.
 
 ## 09 · Sharing
 
@@ -608,8 +630,12 @@ These are the wayfinder map's tickets. See the map issue for current state.
 
 1. **Strip detection heuristic.** Collinear-references-become-a-strip holds for tape and bars,
    breaks on a matrix panel. Future rigs may add fixture kinds that fit neither class.
-2. **Colour space.** GDTF carries `colorSpace` and gamut per channel function. v1 assumes
-   linear sRGB — note every place the assumption is made so correcting it is not archaeology.
+2. ~~**Colour space.**~~ **Answered:** the colour space is assumed, the transfer function is read
+   ([ADR-0008](adr/0008-colour-space-is-assumed-transfer-function-is-read.md)). "Linear sRGB" was
+   two assumptions under one name; GDTF's `<ColorSpace>` defaults to sRGB, and `Dimmer` declares
+   `LuminousIntensity`, so only the `ColorComponent` → radiance reading is genuinely assumed. The
+   enumeration is a branded `LinearRGB` type rather than a marker convention, so correcting it is
+   a compiler error, not archaeology. Surfaced #25.
 3. **Agent surface.** The renderer taking injected state directly, bypassing DMX, would let an
    agent set a look and screenshot it with no console running. Nearly free given `feed.ts`.
 4. ~~**Bridge language.**~~ **Answered:** TypeScript on Bun
