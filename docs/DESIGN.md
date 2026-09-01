@@ -55,12 +55,31 @@ tier is a switch rather than a rewrite.
 
 ### Genuinely out of scope
 
-- **WLED effect mode.** `~/.qlcplus/fixtures/WLED-SegmentEffect.qxf` is 18 channels of *effect
-  parameters* — `Segment Opacity`, `Effect`, `Effect Speed`, `Palette` — and the OBF26 show
-  patches four tubes that way. Under effect mode WLED computes the pixels on-device, so the
-  per-pixel data never crosses the wire and Beamhouse could only render it by reimplementing
-  WLED's effect engine. v1 therefore assumes **per-pixel drive** (gled2, or WLED's virtual
-  output) and does not attempt to visualise effect-mode output.
+- **WLED effect mode, as a render source.** `~/.qlcplus/fixtures/WLED-SegmentEffect.qxf` is 18
+  channels of *effect parameters* — `Segment Opacity`, `Effect`, `Effect Speed`, `Palette` — and
+  the OBF26 show patches four tubes that way. v1 assumes **per-pixel drive** (gled2, or WLED's
+  virtual output) and does not visualise effect-mode output.
+
+  **[corrected 2026-09-01]** The original reason — WLED computes pixels on-device, so the data
+  never crosses the wire — is **false**. WLED's **Live LED Stream** (send `{"lv":true}` on
+  `ws://[node]/ws`) hands the computed buffer straight back, at most one binary frame every
+  40 ms. The exclusion stands on entirely different grounds, settled in #18 by reading
+  `wled00/ws.cpp`:
+
+  - It needs the **node powered and on the rig network** — precisely the case Beamhouse exists
+    to cover *without*. If the tent is lit you can look at the tent.
+  - It is **not the device's output**: `bri ? qadd8(w, r) : 0` reads the segment buffer *before*
+    master brightness, so it shows full value at 1% and black only at zero.
+  - White is folded by **saturating addition**, not colorimetry — it clips on an RGBW node, and
+    arrives outside the one seam ADR-0008 allows colour to be minted at.
+  - It **downsamples** above 256 LEDs (ESP8266) or 1024 (ESP32), serving every n'th LED.
+  - **One client only**: `wsLiveClientId` is a single id, so opening Peek in WLED's own web UI
+    silently starves whoever had it.
+  - `ws://` only, so it can never work from the Pages deployment (§9.4).
+
+  What survives is that `strip.getPixelColor()` reflects **any** input source, E1.31 and Art-Net
+  included — which makes the stream a **conformance oracle** for the strip class rather than a
+  feature. See the prototype ticket on the map.
 - Paperwork, plots, patch sheets, MVR-xchange.
 - **Being a control surface. Beamhouse never sends DMX.** Mizer is the control surface;
   Beamhouse is the preparation visualiser. The pair is the product.

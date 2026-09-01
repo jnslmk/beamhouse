@@ -285,9 +285,11 @@ now unused by this rig:
 > - **OFL over GDTF on licensing** — the argument in §3 is about redistribution rights and
 >   the manifest's rid requirement, not about pixel counts. It applies unchanged to a 23px
 >   fixture, or a 230px one.
-> - **Per-pixel over effect mode** — WLED computing pixels on-device means the data never
->   crosses the wire, so effect mode is unrenderable without reimplementing WLED's effect
->   engine. Unaffected by how many pixels there are.
+> - **Per-pixel over effect mode** — the conclusion stands, but **not for the reason given
+>   here.** “The data never crosses the wire” is false: WLED's Live LED Stream returns the
+>   computed buffer on request. #18 re-grounded the exclusion on the stream being
+>   node-present-only, pre-brightness, white-clipping and single-client — see `docs/DESIGN.md`
+>   §01. Unaffected by how many pixels there are, under either reasoning.
 > - **The 230-vs-140 discrepancy flagged in §5** was the right thing to notice; it is what
 >   surfaced this.
 >
