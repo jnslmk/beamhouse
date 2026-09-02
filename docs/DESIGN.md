@@ -137,15 +137,28 @@ tier is a switch rather than a rewrite.
 
   **The ceiling that buys is explicit:** Beamhouse can be half of the Mizer pair and cannot
   appear in a multi-tool room. §4.3's MVR *file* import is now the legacy path rather than the
-  current one. #30 settles the wording and whether the patch reader gets a defined source
-  interface.
+  current one.
 
   **[strengthened 2026-09-02 — #33]** The "no station" argument was expected to weaken once
   Beamhouse looked past Mizer. It did the opposite. Of MVR-xchange's six named peers **only
   grandMA3 is a console** — the rest are design and previz tools — and neither of the two other
   consoles measured on this machine speaks the protocol either: BlinderKitten has no MVR export at
-  all, and MagicQ links Vectorworks' `libMVRgdtf` for *reading* only, with no xchange station. #30
-  is no longer blocked.
+  all, and MagicQ links Vectorworks' `libMVRgdtf` for *reading* only, with no xchange station.
+
+  **[settled 2026-09-02 — [#30](https://github.com/jnslmk/beamhouse/issues/30),
+  [ADR-0021](adr/0021-mvr-xchange-is-out-of-scope-the-patch-seam-is-format.md)]** **Out of scope,
+  not deferred.** The deciding ground is neither the trust boundary nor the file watcher: it is
+  that MVR-xchange is a protocol **between stations**, and the population it would reach —
+  BlenderDMX, Vectorworks, Production Assist, zactrack, DMXRouter; every peer but grandMA3 is a
+  design or previz tool — **already reaches Beamhouse through MVR file import**. A second door onto
+  a population that has one buys nothing.
+
+  **The one condition that reopens it:** a patch source Beamhouse wants that has an xchange station
+  and **no watchable file**. That is a multi-tool room, which is a redrawn destination and a fresh
+  effort rather than a resumption — the same shape as ADR-0017's simulated atmosphere.
+
+  What makes that re-entry *cheap* if it ever happens is §4.3's seam: MVR-xchange would be a
+  **delivery**, a station pushing bytes, reusing the `mvr` parser unchanged.
 - **Being a control surface. Beamhouse never sends DMX.** Mizer is the control surface;
   Beamhouse is the preparation visualiser. The pair is the product.
 - **QLC+ as a *resolved runtime* format.** Settled in
@@ -216,7 +229,11 @@ beamhouse/
 │      ├─ pixels.ts     # GeometryReference expansion
 │      └─ models.ts     # GLB entry → ArrayBuffer
 ├─ src/
-│  ├─ mvr.ts            # MVR scene reader
+│  ├─ patch/            # parse(bytes) -> Patch; delivery is not in here (ADR-0021)
+│  │  ├─ patch.ts       # the interface, and the merge pass
+│  │  ├─ mizer.ts       # Mizer project YAML
+│  │  ├─ mvr.ts         # GeneralSceneDescription.xml, plus the id ladder
+│  │  └─ snapshot.ts    # a resolved patch, inline JSON — what a share link carries
 │  ├─ scene.ts          # rig state, overrides, persistence
 │  ├─ feed.ts           # pluggable: live | recorded | generated (ADR-0014)
 │  ├─ command.ts        # the one scene-mutation path — UI and agent (ADR-0016)
@@ -353,6 +370,49 @@ Depence, Capture. Consoles reach Beamhouse through the live repatch loop (§4.2,
 all. Two doors, two populations, and ADR-0020 states the predicate that decides which door a given
 source comes through.
 
+#### The seam: format, not delivery
+
+**[settled 2026-09-02 — [#30](https://github.com/jnslmk/beamhouse/issues/30),
+[ADR-0021](adr/0021-mvr-xchange-is-out-of-scope-the-patch-seam-is-format.md)]** MVR is one parser
+of three behind one interface:
+
+```ts
+parse(bytes: Uint8Array): Patch
+```
+
+| Implementation | Reads                                              | Earned by  |
+| -------------- | -------------------------------------------------- | ---------- |
+| `mizer`        | Mizer project YAML                                 | §4.2, M5a  |
+| `mvr`          | `GeneralSceneDescription.xml` out of an MVR zip     | §4.3, M5b  |
+| `snapshot`     | a resolved patch, inline JSON                      | §9.1, M3a  |
+
+**Delivery is deliberately outside it.** Watched, one-shot and inline are §4.6's file watcher plus
+a byte source, not members of this enum — and they do not factor into it. ADR-0020's live predicate
+is satisfied by *any* patch file on a watchable path, so an MVR dropped in `shows/` is **live**;
+the same parser reached by drag-and-drop in the Pages viewer is not. Naming those two as different
+implementations would be naming two points on a grid as if they were two values of one thing.
+
+Three things follow, and they are the reason the seam is worth drawing:
+
+- **Drag-and-drop is a transport, not a source.** §9.2 offers the recipient's own GDTF *or* MVR —
+  the GDTF half is a **Library** input and never touches this interface at all.
+- **Watching a re-exported MVR is free.** It is a byte source change, not a fourth member.
+- **MVR-xchange, if §01's reopening condition ever fires, is a delivery** — a station pushing bytes
+  into the `mvr` parser unchanged. A new implementation, never a refactor, which is the whole test
+  #30 set for itself.
+
+**The MVR id ladder lives inside the `mvr` parser**, not in a shared normalisation step:
+`FixtureIDNumeric` → parsed `FixtureID` → `UnitNumber` → synthesised-and-surfaced
+([ADR-0020](adr/0020-the-live-loop-serves-patch-files-not-consoles.md)) has no meaning for a format
+that supplies a `u32` directly. Every parser emits a `Patch` whose ids are already integers, so the
+merge pass below knows nothing about formats — §02's discipline for transports, ADR-0008's for
+colour.
+
+**`bhs:` local fixtures are a contribution, not a source.** They arrive from the `.bhs` after
+whatever parser ran and merge into the patch alongside the override layer — same file, same merge
+pass. ADR-0012's phrase "a limited patch source" is loose: a source *produces* a patch, and a local
+fixture can never be the only thing present.
+
 | Element   | Use                                            |
 | --------- | ---------------------------------------------- |
 | Fixture   | uuid, name, GDTF spec filename, DMX mode name  |
@@ -453,6 +513,20 @@ MVR that omits it has its integer id synthesised, and without the hint a re-impo
 different integers and silently drops every override. Nothing resolves, selects or arrays on the
 hint; it is written on ingest and read only by the next ingest. A synthesised id is **surfaced**,
 like the extent mismatch above.
+
+**[added 2026-09-02 — [#30](https://github.com/jnslmk/beamhouse/issues/30)]** `patch` is a **tagged
+union**, one variant per §4.3 parser, and **only one of them is shareable**:
+
+```json
+"patch": { "kind": "mizer",    "path": "~/mizer/warehouse.yml" }
+"patch": { "kind": "mvr",      "path": "shows/warehouse.mvr" }
+"patch": { "kind": "snapshot", "fixtures": [ ... ] }
+```
+
+The path-bearing variants name files on the *sender's* disk; the inline `snapshot` is what a share
+link carries (§9.1) and what makes M3a satisfiable at all. This is a fixed point on the `.bhs`
+schema, not the schema — recorded the way ADR-0012's `definitions` block and ADR-0013's scene
+density were, and it is the first statement anywhere of what "share" means for the patch half.
 
 ### 4.6 Persistence and hot reload
 
@@ -952,11 +1026,26 @@ colours); and drag-and-drop for the recipient's own GDTF or MVR.
 **[corrected 2026-09-02 — #27]** This previously read "when no definition is available", which is
 self-contradictory: `PrimitiveType` *is* a field of the definition, so with no definition there is
 no primitive, no beam angle and no emitter count to render. The real strip profile
-(`MarkeEigenbau`, ships `description.xml` and zero meshes) is the case this covers. A genuinely
-definition-less share would need a resolved-digest format — a separate decision, and not reachable
-today, since a `.bhs` carries `patch` and `gdtfDir` as **local paths** the recipient cannot
-resolve. The one fixture kind immune to that is a `bhs:` definition, which carries no path at all
-([ADR-0012](adr/0012-beamhouse-may-define-pixels-placement-mints-nothing.md)).
+(`MarkeEigenbau`, ships `description.xml` and zero meshes) is the case this covers.
+
+**[split 2026-09-02 — [#30](https://github.com/jnslmk/beamhouse/issues/30),
+[ADR-0021](adr/0021-mvr-xchange-is-out-of-scope-the-patch-seam-is-format.md)]** This paragraph used
+to treat the patch and the definitions as one undecided problem — "a resolved-digest format, a
+separate decision, not reachable today, since a `.bhs` carries `patch` and `gdtfDir` as **local
+paths** the recipient cannot resolve". **They degrade differently and only one of them was ever
+blocked:**
+
+- **The patch half is solved.** §4.5's `snapshot` variant carries a resolved patch inline, with no
+  path. Without it M3a's own done-when — "opens the rig on a phone" — was unsatisfiable, because
+  the phone would have been handed `~/mizer/warehouse.yml`.
+- **The definition half is unchanged.** A snapshot still names `gdtf:` ids the recipient may not
+  have, and `gdtfDir` is still a local path. It degrades exactly as the ladder above describes:
+  bundled definitions, then proxy geometry, then drag-and-drop. The one kind immune is a `bhs:`
+  definition, carried inline and holding no path at all
+  ([ADR-0012](adr/0012-beamhouse-may-define-pixels-placement-mints-nothing.md)).
+
+**Drag-and-drop is a transport, not a patch source** (§4.3): a dropped `.mvr` is bytes for the
+`mvr` parser, and a dropped `.gdtf` is a **Library** entry that never reaches the patch path.
 
 Worth building early: give a shared link a **demo motion mode** — a canned chase generated from
 a seed, running on the real rig geometry. **[owned 2026-09-02 — #5]** This is not its own
@@ -997,11 +1086,23 @@ cube move.
 | M3b | Agent surface | An agent configures the STAR-TENT's ten spokes in 3D and screenshots it | 1 d   |
 | M4  | gdtf-ts       | An arbitrary GDTF patches and its real GLB renders with working pan/tilt| 3–5 d |
 | M5a | Mizer patch   | Beamhouse reads the project YAML; repatching updates the rig live       | ½ d   |
-| M5b | MVR import    | A rig exported from BlenderDMX loads, overrides merge cleanly           | 1 d   |
+| M5b | MVR import    | The committed MVR in `shows/` loads and its overrides merge cleanly     | 1 d   |
 | M6  | Beams         | Six movers in haze, cones and strobe correct; an X4 patched in for zoom | 1–2 d |
 | M7  | Record/replay | A committed `.bhr` plays back through the same shared link              | 1 d   |
 
 M4 is the wall; §5.0 is what makes it survivable.
+
+**[M5b re-targeted again 2026-09-02 — [#30](https://github.com/jnslmk/beamhouse/issues/30)]** Its
+clause read *"a rig exported from BlenderDMX loads"* and was **unsatisfiable**: BlenderDMX is not
+on this disk. Blender 5.2.0 LTS is installed at `/usr/bin/blender` with `print3d_toolbox` as its
+only extension, and `import pymvr` fails. ADR-0020 had just re-targeted M5b off BlinderKitten for
+having the same defect, and reproduced it in the same commit. The done-when now names a **committed
+file** — an MVR generated once and checked into `shows/` — so it is checkable from a clean clone
+forever. Installing BlenderDMX is a bench decision, not a milestone gate.
+
+**The rule, since this is the third instance** (M6's zoom, M5b twice): a milestone's done-when may
+name a **file in this repo** or a **capability**, never a third-party tool that has to be installed
+for the clause to parse.
 
 **[M6 rewritten 2026-09-02 — #28]** Its clause read "six movers, volumetric cones, **zoom** and
 strobe correct" and was **unsatisfiable**: the six movers are impression 90s with a fixed 10° lens
@@ -1099,9 +1200,14 @@ These are the wayfinder map's tickets. See the map issue for current state.
     hand-written surface is **one** pair rather than two — the strip is a texture `map` — and the
     ADR-0013 tier is fragment-shader raymarching WebGL2 reaches. Closes §12 outright rather than
     half of it: `postprocessing` leaves the table and `three` pins exactly.
-13. **Is MVR-xchange a ceiling we accept, and where is the seam?** (#30) **Unblocked** by
-    [ADR-0020](adr/0020-the-live-loop-serves-patch-files-not-consoles.md), and handed the
-    admission criterion plus the finding that only grandMA3 is a console among its six peers.
+13. ~~**Is MVR-xchange a ceiling we accept, and where is the seam?**~~ **Answered: out of scope,
+    and the seam is format rather than delivery** (#30,
+    [ADR-0021](adr/0021-mvr-xchange-is-out-of-scope-the-patch-seam-is-format.md)). Excluded, not
+    deferred — every peer but grandMA3 is a design tool, and that population already has a door.
+    The seam is `parse(bytes) -> Patch` with `mizer`, `mvr` and `snapshot`; delivery stays outside
+    it, so a pushing station would be a byte source reusing the `mvr` parser. The ticket's "three
+    real sources" **counted drag-and-drop**, which is a transport, and **missed the URL fragment** —
+    which is what exposed M3a as unsatisfiable. Also re-targets M5b, again.
 14. ~~**Which consoles does Beamhouse serve?**~~ **Answered: the live repatch loop serves patch
     files, not consoles** (#33, [ADR-0020](adr/0020-the-live-loop-serves-patch-files-not-consoles.md)).
     Any patch file on a watchable path whose definitions name a library Beamhouse resolves. Mizer is

@@ -54,14 +54,25 @@ exception, the **local fixture**
 _Avoid_: patch sheet, fixture list
 
 **Patch source**:
-Where a patch is read from. Beamhouse has two kinds and they serve different populations
-([ADR-0020](docs/adr/0020-the-live-loop-serves-patch-files-not-consoles.md)). A **live** source is
-any patch file that (i) sits on a watchable path and (ii) names its definitions in a **Library**
-Beamhouse resolves — repatch, save, and the rig updates with the socket still live. Mizer's project
-YAML is the only one that passes today; BlinderKitten and MagicQ fail (ii), because both flatten a
-definition into their own channel model. An **imported** source is an MVR file, which carries no
-watch and serves design and previz tools rather than consoles — no console measured writes one.
-Say "patch source", not "console": the predicate is about the file, not the product.
+Where a patch comes from. Two independent axes, and conflating them is the mistake
+([ADR-0021](docs/adr/0021-mvr-xchange-is-out-of-scope-the-patch-seam-is-format.md)).
+
+**Format** is the interface — `parse(bytes) -> Patch`, with `mizer`, `mvr` and `snapshot`.
+**Delivery** is how the bytes arrive — watched, one-shot or inline — and is deliberately *not* part
+of it, which is why watching an MVR in `shows/` costs nothing and why a pushing station would reuse
+the `mvr` parser unchanged.
+
+The **live** predicate cuts across both: any patch file that (i) sits on a watchable path and (ii)
+names its definitions in a **Library** Beamhouse resolves — repatch, save, and the rig updates with
+the socket still live ([ADR-0020](docs/adr/0020-the-live-loop-serves-patch-files-not-consoles.md)).
+Mizer's project YAML is the only *console* source that passes; BlinderKitten and MagicQ fail (ii),
+because both flatten a definition into their own channel model. An MVR **file** serves design and
+previz tools rather than consoles — no console measured writes one — and is live or not depending
+only on whether it sits somewhere watchable.
+
+A source **produces** a patch. Drag-and-drop is a *delivery* onto the `mvr` parser, and `bhs:`
+local fixtures are a **merge contribution** — they add to a patch and can never be the only thing
+present. Say "patch source", not "console": the predicate is about the file, not the product.
 _Avoid_: console (when the file is meant), import path, patch reader
 
 **Placement**:
