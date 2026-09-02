@@ -878,6 +878,35 @@ fixture on that universe; and **the replacement must speak sACN**, or universe 1
 and ADR-0029 decision 9's cross-transport collision comes back on exactly the universe it left.
 The tent is network-native and unaffected.
 
+**[added 2026-09-02 — [#44](https://github.com/jnslmk/beamhouse/issues/44)] The sACN move carries a
+network requirement Art-Net did not, and it is not written anywhere else.** Mizer's `SacnOutput`
+has **no unicast path** — the `sacn` crate's `universe_to_ip` always targets
+`239.255.{hi}.{lo}:5568` — so sACN reaches a receiver **only where a multicast route exists between
+the Mizer host and that receiver**. Art-Net was unicast/broadcast and needed no such thing.
+Measured: from a Wi-Fi host to the wired STAR-TENT on this LAN, E1.31 multicast does not arrive,
+while byte-identical unicast packets to 5568 do — same packets, same port, same universes, only
+the destination address differing. **The cause is the node, not the LAN** — chased to ground: both
+OpenWrt devices in the path have bridge multicast snooping *off* (so they flood), sending from the
+wired router fails identically, and a second universe joined by a different code path fails too,
+while mDNS multicast to the same node works. The tent is Ethernet-only, and the reading that fits
+is that WLED's E1.31 group join is not effective on its Ethernet interface. So **Mizer cannot drive
+this node over sACN at all** — not a network fix, and moving Mizer to the wired segment does not
+help. The failure is silent and looks like a dead rig. **[reverted 2026-09-02]** The rig is back on
+Art-Net — one connection, unicast to the tent, node at `uni 1` / port 6454 / multicast off, all
+verified. So ADR-0029 decision 9 is **deferred, not abandoned**, behind two tracked issues:
+[#52](https://github.com/jnslmk/beamhouse/issues/52) gives Mizer's sACN a unicast destination,
+[#53](https://github.com/jnslmk/beamhouse/issues/53) is the WLED Ethernet-multicast defect. Either
+one unblocks it.
+
+The general lesson outlasts this rig, and belongs with the ADR-0002 preference rather than with the
+tent: **"prefer sACN" silently assumes every receiver can join a multicast group.** Art-Net asks
+nothing of a receiver but an address. A visualiser that only ever *listens* never meets this, which
+is why it took a cutover of the sending side to surface it. So "sACN is preferred wherever a source
+supports it" ([ADR-0002](adr/0002-bridge-speaks-both-sacn-and-artnet.md)) has an unstated
+precondition, and it is about the **receiver**, not the network: **every receiver must be able to
+join a multicast group.** An earlier draft of this paragraph gave the precondition as "run Mizer on
+the same wired segment", which the measurement disproved — the wired router failed identically.
+
 **The real port conflict, and it is narrow.** gled2 binds `("0.0.0.0", 6454)` *without* reuse
 options — its source comments that the input "actually needs to own 6454" — and falls back to an
 ephemeral port if that fails. So the conflict exists **only when gled2's Art-Net input is in

@@ -1,0 +1,38 @@
+{
+  "after": {
+    "en": true,
+    "mso": false,
+    "rlm": true,
+    "port": 6454,
+    "mc": false,
+    "dmx": {
+      "uni": 1,
+      "seqskip": false,
+      "e131prio": 0,
+      "addr": 30,
+      "dss": 0,
+      "mode": 4,
+      "inputRxPin": -1,
+      "inputTxPin": -1,
+      "inputEnablePin": -1,
+      "dmxInputPort": 2
+    },
+    "timeout": 25,
+    "maxbri": true,
+    "no-gc": true,
+    "offset": 0
+  },
+  "artnet": {
+    "led_0": [
+      255,
+      0,
+      0
+    ],
+    "led_161": [
+      0,
+      0,
+      255
+    ]
+  },
+  "confirmed": true
+}

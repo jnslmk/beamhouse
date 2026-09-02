@@ -1,0 +1,70 @@
+{
+  "before": {
+    "en": true,
+    "mso": false,
+    "rlm": true,
+    "port": 6454,
+    "mc": false,
+    "dmx": {
+      "uni": 1,
+      "seqskip": false,
+      "e131prio": 0,
+      "addr": 30,
+      "dss": 0,
+      "mode": 4,
+      "inputRxPin": -1,
+      "inputTxPin": -1,
+      "inputEnablePin": -1,
+      "dmxInputPort": 2
+    },
+    "timeout": 25,
+    "maxbri": true,
+    "no-gc": true,
+    "offset": 0
+  },
+  "after": {
+    "en": true,
+    "mso": false,
+    "rlm": true,
+    "port": 5568,
+    "mc": true,
+    "dmx": {
+      "uni": 2,
+      "seqskip": false,
+      "e131prio": 0,
+      "addr": 30,
+      "dss": 0,
+      "mode": 4,
+      "inputRxPin": -1,
+      "inputTxPin": -1,
+      "inputEnablePin": -1,
+      "dmxInputPort": 2
+    },
+    "timeout": 25,
+    "maxbri": true,
+    "no-gc": true,
+    "offset": 0
+  },
+  "sacn_multicast": {
+    "led_0": [
+      255,
+      150,
+      40
+    ],
+    "led_161": [
+      255,
+      150,
+      40
+    ],
+    "ok": false
+  },
+  "artnet_negative_control": {
+    "led_0": [
+      255,
+      150,
+      40
+    ],
+    "deaf": true
+  },
+  "confirmed": false
+}

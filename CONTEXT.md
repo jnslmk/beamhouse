@@ -362,6 +362,17 @@ heat map, dimmer view
 
 ### The pipeline
 
+**Gateway**:
+A device that converts a network universe into wired DMX — what the retired CueCore2 was. It is
+**not** a **Bridge**: a gateway carries a universe *outward* to fixtures, a bridge carries it
+*inward* to the browser, and only the bridge is Beamhouse's. Nothing in Beamhouse addresses,
+configures or models a gateway; it matters only because a universe with no gateway reaches no
+wired fixture — which is Beamhouse universe 1's state since the CueCore2 was retired
+([#44](https://github.com/jnslmk/beamhouse/issues/44)). A replacement must speak **sACN**, or that
+universe returns to Art-Net and reopens the cross-transport collision
+[ADR-0029](docs/adr/0029-the-bridge-detects-contention-and-never-arbitrates.md) closed.
+_Avoid_: bridge (that is the Beamhouse process), node, interface, DMX box
+
 **Bridge**:
 The process that listens on the show network and forwards raw universes to the browser, merging
 every transport into one **universe space**. It knows nothing about fixtures, definitions or the
