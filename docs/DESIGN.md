@@ -298,8 +298,13 @@ carries `FixtureID` too, so the id is the one key both patch formats can supply.
 
 ### 4.6 Persistence and hot reload
 
-- Working state auto-saves to IndexedDB every few seconds.
-- Explicit save writes the `.bhs` JSON via the File System Access API where available.
+- Working state auto-saves to IndexedDB every few seconds — **except in the single-file
+  deployment**, which persists nothing automatically
+  ([ADR-0009](adr/0009-deployment-is-inferred-from-origin.md)). A `file://` page's storage is one
+  bucket shared by every `file://` document the user ever opens, so two exports — or two versions
+  of one export — collide, and a neighbouring local page can read them.
+- Explicit save writes the `.bhs` JSON via the File System Access API where available. This *does*
+  work in the single file: `file://` is a secure context and `showSaveFilePicker` is present.
 - **Watched files.** When served by the bridge, have it watch `shows/` and push a reload
   message on change.
 - **Never reload the socket.** Rig changes rebuild the scene graph in place. The DMX stream is
@@ -503,8 +508,10 @@ and Art-Net into one universe space before anything is written here
 ([ADR-0007](adr/0007-one-universe-space-sacn-numbered.md)). Nothing downstream can tell, or needs
 to tell, how a universe arrived.
 
-Keep a `feed.ts` interface in front of it with three implementations — `live`, `relay`,
-`recorded`. A fourth, injected-state implementation is the agent surface (ticket 4).
+Keep a `feed.ts` interface in front of it with two implementations — `live` and `recorded`.
+`relay` was removed by [ADR-0009](adr/0009-deployment-is-inferred-from-origin.md): nothing ever
+defined it, and §9.4's tunnel is `live` at a different URL rather than a different
+implementation. A third, injected-state implementation is the agent surface (ticket 4).
 
 ## 08 · Rendering
 
@@ -582,13 +589,26 @@ tone mapper on unconverted input is the compounding error §8.2 risks.
 
 ## 09 · Sharing
 
-One build, three deployments.
+**One source, two builds, three deployments**
+([ADR-0009](adr/0009-deployment-is-inferred-from-origin.md)). "One build" was not true — §12's
+`vite-plugin-singlefile` already contradicted it — but the line falls in one place only, and
+bridge-local and Pages are byte-identical.
 
-| Deployment    | Serves                                        | Live data? |
-| ------------- | --------------------------------------------- | ---------- |
-| Bridge, local | `http://localhost:7070` — LAN too              | yes        |
-| GitHub Pages  | public viewer: shared links, hosted recordings | no         |
-| Single file   | one self-contained `.html`                     | no         |
+| Deployment    | Build    | Serves                                        | Live data? |
+| ------------- | -------- | --------------------------------------------- | ---------- |
+| Bridge, local | `app`    | `http://localhost:7070` — LAN too              | yes        |
+| GitHub Pages  | `app`    | public viewer: shared links, hosted recordings | no         |
+| Single file   | `single` | one self-contained `.html`                     | no — by decision, not by limitation |
+
+**Which deployment a page is in is inferred at runtime from its own origin**, never compiled in:
+the bridge-served page finds its bridge at `location.host` by construction, an `https` Pages
+origin never has a same-origin bridge, and `file://` has no host at all. `base` is relative so
+the same `app` bytes sit under Pages' `/beamhouse/` path.
+
+The single file's "no" is a choice: a `file://` page *can* open `ws://localhost:7070` — measured,
+see [`docs/research/file-url-capabilities.md`](research/file-url-capabilities.md). It is declined
+because the bridge would see `Origin: null`, and trusting that means trusting every local file on
+the machine.
 
 ### 9.1 The scene travels in the URL fragment
 
@@ -622,6 +642,11 @@ clean split avoids the question: the bridge serves the app over `http://localhos
 work, and Pages serves the viewer for sharing, where there is no live socket. For live data
 through a public URL, terminate TLS properly with a cloudflared or Tailscale Funnel tunnel.
 Never expose the bridge's WebSocket unauthenticated.
+
+[ADR-0009](adr/0009-deployment-is-inferred-from-origin.md) makes the split **structural rather
+than documented**: the socket URL is derived from the page's own origin, so an `https` page never
+constructs a `ws://` URL at all — it never had a same-origin bridge to derive one from. The
+tunnel case rides an explicit fragment override, so it does not weaken the default.
 
 ## 10 · Milestones
 
@@ -687,6 +712,13 @@ questions above. The **bridge** table is settled
 | `fflate`               | ≥0.8    | unzip GDTF and MVR in the browser       | MIT     |
 | `vite`                 | ≥6      | dev server, HMR, static build           | MIT     |
 | `vite-plugin-singlefile`| ≥2     | inline everything into one `.html`      | MIT     |
+
+Two Vite settings are **not** free choices, per
+[ADR-0009](adr/0009-deployment-is-inferred-from-origin.md): `base` is relative (`'./'`), and
+workers must be emitted **classic/`iife`**. A Blob-URL classic worker runs from `file://`; a
+Blob-URL *module* worker fails there **with no error message at all**, which is the kind of
+defect that ships. The dev server also proxies the WebSocket path to the bridge, without which
+origin inference breaks in the setup development happens in daily.
 
 Bridge — **settled** ([ADR-0006](adr/0006-bridge-is-typescript-on-bun.md)):
 

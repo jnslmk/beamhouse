@@ -174,10 +174,11 @@ knows how a universe arrived.
 _Avoid_: server, sidecar, daemon, backend, native process (it is no longer one)
 
 **Feed**:
-Where frames come from, as one pluggable interface with three implementations — live, relay,
-recorded. Distinct from an **sACN source**, which is E1.31's own term for a transmitting device
-and is always written with the `sACN` prefix.
-_Avoid_: source (unqualified), stream, input
+Where frames come from, as one pluggable interface with two implementations in v1 — live and
+recorded ([ADR-0009](docs/adr/0009-deployment-is-inferred-from-origin.md) removed the undefined
+third, `relay`). Distinct from an **sACN source**, which is E1.31's own term for a transmitting
+device and is always written with the `sACN` prefix.
+_Avoid_: source (unqualified), stream, input, relay
 
 **Frame**:
 One tick's worth of slot values for every subscribed universe, timestamped. The unit a feed
@@ -187,3 +188,26 @@ _Avoid_: packet (that is one universe on the wire), update
 **Recording**:
 A stored sequence of frames, replayable through the same feed interface as live data.
 _Avoid_: capture, playback file, track
+
+### Delivery
+
+**Build**:
+One output of the toolchain. There are exactly two — the `app` build, whose bytes serve both the
+bridge and Pages, and the `single` build, which inlines everything into one `.html`
+([ADR-0009](docs/adr/0009-deployment-is-inferred-from-origin.md)). Never a synonym for
+**deployment**: two builds serve three deployments, and conflating them is what made
+`DESIGN.md` §09's "one build, three deployments" unfalsifiable.
+_Avoid_: bundle, target, artifact
+
+**Deployment**:
+The situation a running Beamhouse page finds itself in — bridge-local, Pages viewer, or single
+file — which fixes what it may assume is reachable. **Inferred at runtime from the page's own
+origin, never compiled in**, so it is a property of where the page came from rather than of how
+it was built.
+_Avoid_: environment, mode, build, target
+
+**Viewer**:
+Any **deployment** with no live **feed** — the Pages one and the single file. Names the pair
+without implying a separate **build**: viewer capabilities ship in every build and are merely
+unreachable where a bridge is present.
+_Avoid_: static build, share build, read-only mode
