@@ -1136,6 +1136,11 @@ Render each tube as **the geometry its definition declares** — the declared `P
 real mesh where the definition ships one — carrying a `DataTexture` of N texels sampled along the
 run's axis, `LinearFilter` on.
 
+An OFL strip has no geometry tree to texture, so its extent is the emissive body ADR-0043
+rule 5 sizes from `physical.dimensions`, and the N texels tile it along the declared axis
+([ADR-0044](adr/0044-an-ofl-strips-extent-is-its-declared-body.md)) — the cell is UV math, never
+a minted pitch.
+
 **Which geometry, when a definition declares more than one.** The textured geometry is the
 strided run's **common parent**
 ([ADR-0022](adr/0022-beamtype-selects-the-path-stride-aggregates-within-it.md)). "The geometry its

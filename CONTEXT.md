@@ -339,7 +339,10 @@ definitions do not have ([ADR-0005](docs/adr/0005-emitter-grouping-is-by-dmx-str
 never crosses a fixture boundary. Grouping runs **only within the non-cone set** — `BeamType`
 selects the path first, stride aggregates within it, so the two rules never claim the same emitter
 ([ADR-0022](docs/adr/0022-beamtype-selects-the-path-stride-aggregates-within-it.md)). The geometry
-that carries the run's texture is the run's **common parent**, not the referenced emitter.
+that carries the run's texture is the run's **common parent**, not the referenced emitter. Where the fixture came from OFL there is no geometry tree, so the extent is the emissive
+body ADR-0043 rule 5 sizes from `physical.dimensions`, and the count tiles it
+([ADR-0044](docs/adr/0044-an-ofl-strips-extent-is-its-declared-body.md)) — the strip class places no
+lamps, so nothing else is inferred.
 _Avoid_: tape, tube, bar, pixel bar (those are fixture kinds)
 
 **Matrix class**:

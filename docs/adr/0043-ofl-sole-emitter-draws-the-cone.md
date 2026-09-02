@@ -7,6 +7,7 @@
   [ADR-0005](0005-emitter-grouping-is-by-dmx-stride.md) rule 1,
   [ADR-0008](0008-colour-space-is-assumed-transfer-function-is-read.md) rule 5
 - **Confirms:** [ADR-0001](0001-gdtf-and-ofl-as-definition-formats.md), [ADR-0034](0034-an-unresolved-definition-is-a-marked-fixture-not-a-missing-one.md), [ADR-0037](0037-a-dimmer-pack-is-not-a-fixture-its-loads-are.md)
+- **Amended by:** [ADR-0044](0044-an-ofl-strips-extent-is-its-declared-body.md) rules 5 and 7
 
 ## Context
 
