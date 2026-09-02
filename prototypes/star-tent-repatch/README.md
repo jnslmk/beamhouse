@@ -51,6 +51,12 @@ The seam moved from LED 169 -> 170 (what #26 observed at `DMXAddress 1`) to LED 
 is exactly the spoke 6 -> spoke 7 boundary. Universe 2 fills to the byte: spoke 6 ends at slot
 512.
 
+**Reproduced after a power cycle.** The node dropped off and came back mid-session; the run above
+is the post-reboot one. WLED persists `cfg.json` to flash, so `addr 30` / `mode 4` survived, and
+the round-trip is identical. That makes the cutover durable rather than a runtime setting -- and
+it is also the failure mode ADR-0009 decision 4 guards against, since the day someone reflashes
+or factory-resets the node it comes back at `DMXAddress 1` and this patch is silently wrong.
+
 ## Preconditions
 
 The script **refuses to run** unless the node is already in DMX mode 4 (`MULTIPLE_RGB`) at

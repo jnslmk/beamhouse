@@ -158,8 +158,9 @@ def main():
               f"{'OK' if sp['exact'] else 'MISMATCH'}")
     for i in (0, 22, 23, 160, 161, 229):
         tag = ""
-        if i == 160: tag = "  <- last LED of universe 1 (ch 510-512)"
-        if i == 161: tag = "  <- first LED of universe 2 (ch 1-3)"
+        # Beamhouse numbering (ADR-0007): these are Port-Addresses 1 and 2.
+        if i == 160: tag = "  <- last LED of universe 2 (ch 510-512)"
+        if i == 161: tag = "  <- first LED of universe 3 (ch 1-3)"
         print(f"  LED {i:>3}: sent {tuple(PIXELS[i])} got {readback[i]}{tag}")
 
     (OUT / "peek-frames.bin").write_bytes(b"".join(captured))

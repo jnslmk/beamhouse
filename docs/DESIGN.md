@@ -36,9 +36,20 @@ previz package.
   lamps land in one bucket or the other without new code.
   **Strips are per-pixel only** (decided 2026-08-31): the tubes are driven per pixel, via gled2
   or WLED's virtual per-pixel DMX output. See the effect-mode exclusion below.
+- **Unmetered.** Any number of universes, any pixel count, no tier. A fixture is addressed
+  **per break** and may therefore span universes ([ADR-0009a](adr/0009-a-fixture-is-addressed-per-break.md)) —
+  the STAR-TENT's 230 pixels are 690 slots across two universes and that is a normal rig, not an
+  edge case. **[added 2026-09-02]** Stated as a goal because the paid field prices exactly this:
+  Capture meters universes per edition, from one at €395 to unlimited at €2,195, with the limit
+  reaching into documentation; ETC's Eos cannot build a multi-cell fixture from a GDTF import at
+  all. Pixel-heavy DIY rigs are the case the market serves worst.
 - **Shareable.** Live over LAN or a tunnel; or as a static bundle anyone can open later, with
-  no bridge running.
+  no bridge running. **[sharpened 2026-09-02]** No product surveyed lets a third party open a
+  link and watch a rig move — Vectorworks Cloud's Web View is the nearest and is static geometry
+  on a two-week expiry. This is the only capability in the design with no competitor, which is
+  why §10 no longer leaves it to the end.
 - **Coexists.** Runs on the same laptop as the console without fighting over ports or GPU.
+  Assumes the console *is* on this laptop; #33 asks whether that stays true.
 
 ### Not in v1 — but do not architect them out
 
