@@ -64,5 +64,33 @@ writing it again will silently delete every angle-bracketed token and entity-enc
 This matters most for the **wayfinder map** (#1), which is long, full of `<Tag>` references, and
 edited on every ticket resolution.
 
-In such an environment, either drive body edits some other way, or hand the human the exact
-snippet to paste. Comments and labels are safe to write; whole-body rewrites are not.
+Comments and labels are safe to write blind. A **whole-body rewrite is only safe with the
+procedure below**, which was used to append the #24 decision to the map and verified end to end.
+
+### Safe whole-body edit without `gh`
+
+1. **Get the body into a file, not into context.** Ask for more than the tool will return
+   inline — `list_issues` with `fields: [number, title, body, state]` and `perPage: 100`
+   overflows and is spilled to a `tool-results/*.txt` file. Parse that JSON with a script. This
+   also avoids retyping 30 KB by hand, which is its own corruption risk.
+2. **Reverse the entity escaping** with `html.unescape`. It is deterministic and complete —
+   check that no `&…;` entities remain afterwards.
+3. **Find the stripped tags.** They leave an **empty backtick pair** behind. Locate every
+   occurrence and recover the real token from the *rendered* issue page
+   (`https://github.com/<owner>/<repo>/issues/<n>`) — this repo is public, and GitHub renders a
+   tag inside backticks as literal text, so the true token is readable there. **Do not guess
+   them**: one such spot looked like `<Matrix>` from context and was actually `<Position>`.
+4. **Assert, don't hope.** Make each repair a `replace` guarded by `count(old) == 1`, and assert
+   no empty backtick pair remains before writing.
+5. **Check for a concurrent edit** immediately before writing: re-fetch (step 1 again, still free
+   of context cost) and compare byte-for-byte against your snapshot. Other sessions work this
+   tracker in parallel, and a stale write silently destroys their resolutions — the #24 session
+   caught #21 and #26 landing mid-flight this way.
+6. **Verify after writing** by re-fetching and diffing the server's rendering against your
+   pre-write snapshot. Because both sides pass through the same sanitiser, the diff must show
+   *only* your intended changes — this catches any transcription slip regardless of what the
+   sanitiser does. Then confirm on the rendered page that the restored tags survived.
+
+A tag written *outside* backticks cannot be recovered this way, since GitHub treats it as HTML
+and it is absent from the rendered page too. Keeping tags inside backticks keeps them
+recoverable.
