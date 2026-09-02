@@ -227,6 +227,14 @@ The stand-in mesh generated from a definition's declared primitive when no real 
 available. Schematic but positionally correct.
 _Avoid_: placeholder, fallback mesh, stub
 
+**Intensity map**:
+The diagnostic render mode that shades each emitter by its **resolved per-emitter intensity**, for
+spotting a fixture at 3% that should be at 30%. Explicitly **relative** — it compares emitters
+within one frame, carries no unit, and makes no photometric prediction, because v1 renders no venue
+geometry for lux to land on ([ADR-0019](docs/adr/0019-the-intensity-map-is-relative-not-photometric.md)).
+_Avoid_: **false colour** (the field's term for an illuminance reading Beamhouse cannot compute),
+heat map, dimmer view
+
 ### The pipeline
 
 **Bridge**:
@@ -267,6 +275,22 @@ _Avoid_: packet (that is one universe on the wire), update
 **Recording**:
 A stored sequence of frames, replayable through the same feed interface as live data.
 _Avoid_: capture, playback file, track
+
+**Stale**:
+A universe the bridge has heard nothing on for longer than **its transport's** threshold — 2.5 s
+for sACN, ~6 s for Art-Net, which differ because Art-Net re-transmits an unchanging input only
+every ~4 s ([ADR-0018](docs/adr/0018-signal-health-is-one-per-universe-snapshot.md)). A **fixture**
+is stale if *any* of its breaks' universes is stale, and renders wholly stale
+([ADR-0011](docs/adr/0011-a-fixture-is-addressed-per-break.md)). It is a **trust** signal — "do not
+believe this" — never a statement that the fixture is dark.
+_Avoid_: offline, disconnected, dead, timed out, dropped
+
+**Signal health**:
+The collected facts about a universe's arrival — stale, transport, rate, priority, blind,
+out-of-order drops. A property of the **feed**, not the renderer: unreachable rather than false on
+a recorded or generated feed, and absent entirely in the Pages viewer, which has no bridge to ask
+([ADR-0018](docs/adr/0018-signal-health-is-one-per-universe-snapshot.md)).
+_Avoid_: status, diagnostics (that is the wider panel), telemetry, monitoring
 
 **Control channel**:
 The non-frame traffic on the bridge's socket — file-reload notices, and the **command** envelopes

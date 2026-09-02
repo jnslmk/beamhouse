@@ -10,7 +10,7 @@ Every accepted decision on this project, newest last. The **map** ([#1](https://
 | **0004** | [`gdtf-ts` is a published package that parses and resolves GDTF, and nothing else](0004-gdtf-ts-is-a-published-gdtf-only-package.md) | 2026-09-01 | [#7](https://github.com/jnslmk/beamhouse/issues/7) |
 | **0005** | [Emitter grouping is by DMX stride, and the strip path generalises to matrices](0005-emitter-grouping-is-by-dmx-stride.md) | 2026-09-01 | [#8](https://github.com/jnslmk/beamhouse/issues/8) |
 | **0006** | [The bridge is TypeScript on Bun](0006-bridge-is-typescript-on-bun.md) | 2026-09-01 | [#10](https://github.com/jnslmk/beamhouse/issues/10) |
-| **0007** | [One universe space, sACN-numbered](0007-one-universe-space-sacn-numbered.md) | 2026-09-01 | surfaced by [#10](https://github.com/jnslmk/beamhouse/issues/10) |
+| **0007** | [One universe space, sACN-numbered](0007-one-universe-space-sacn-numbered.md) | 2026-09-01 | surfaced by [#10](https://github.com/jnslmk/beamhouse/issues/10) · amended by ADR-0018 |
 | **0008** | [Colour space is assumed, the transfer function is read](0008-colour-space-is-assumed-transfer-function-is-read.md) | 2026-09-01 | [#9](https://github.com/jnslmk/beamhouse/issues/9) · amended by ADR-0010 |
 | **0009** | [Deployment is inferred from origin, and only the single file is a separate build](0009-deployment-is-inferred-from-origin.md) | 2026-09-02 | [#24](https://github.com/jnslmk/beamhouse/issues/24) |
 | **0010** | [Resolution is total, and the renderer selects by attribute](0010-resolution-is-total-the-renderer-selects-by-attribute.md) | 2026-09-02 | [#25](https://github.com/jnslmk/beamhouse/issues/25) · amends ADR-0008 · amended by ADR-0013 |
@@ -21,6 +21,8 @@ Every accepted decision on this project, newest last. The **map** ([#1](https://
 | **0015** | [Agent control is an MCP server over the bridge's control channel](0015-agent-control-is-mcp-over-the-bridge-control-channel.md) | 2026-09-02 | surfaced by [#5](https://github.com/jnslmk/beamhouse/issues/5) |
 | **0016** | [Every scene mutation is one undo-grained command](0016-every-scene-mutation-is-one-undo-grained-command.md) | 2026-09-02 | surfaced by [#5](https://github.com/jnslmk/beamhouse/issues/5) |
 | **0017** | [Shaders are hand-written GLSL, and WebGPU is out of scope](0017-shaders-are-hand-written-glsl-webgpu-is-out-of-scope.md) | 2026-09-02 | [#29](https://github.com/jnslmk/beamhouse/issues/29) · amends ADR-0013 |
+| **0018** | [Signal health is one per-universe snapshot, and it belongs to the feed](0018-signal-health-is-one-per-universe-snapshot.md) | 2026-09-02 | [#31](https://github.com/jnslmk/beamhouse/issues/31) · amends ADR-0007 |
+| **0019** | [The intensity map is relative, per-emitter, and not photometric](0019-the-intensity-map-is-relative-not-photometric.md) | 2026-09-02 | surfaced by [#31](https://github.com/jnslmk/beamhouse/issues/31) |
 
 ## What each one actually says
 
@@ -41,6 +43,8 @@ Every accepted decision on this project, newest last. The **map** ([#1](https://
 - **[ADR-0015](0015-agent-control-is-mcp-over-the-bridge-control-channel.md)** — An agent arranges the rig through an **MCP server** speaking the bridge's control channel. The bridge forwards **opaque envelopes it never opens**, so ADR-0006's ignorance survives; exactly one client owns the scene, commands are loopback-only, and capture is a command.
 - **[ADR-0016](0016-every-scene-mutation-is-one-undo-grained-command.md)** — One command layer, with the UI and the agent as two front-ends. A command is **undo-grained** — one command, one undo entry, one thing a person would say out loud. Constrains #35.
 - **[ADR-0017](0017-shaders-are-hand-written-glsl-webgpu-is-out-of-scope.md)** — Hand-written GLSL on `WebGLRenderer`, and **one** shader pair: the strip is a texture `map`, not a shader. WebGPU is **out of scope**, because the ADR-0013 tier is fragment-shader raymarching that WebGL2 reaches; only a *simulated* atmosphere would reopen it. `postprocessing` leaves the dependency table and `three` pins exactly.
+- **[ADR-0018](0018-signal-health-is-one-per-universe-snapshot.md)** — One `universes` snapshot replaces `stale` and `sacn_source`. Blind and priority are **sACN-only** and report `null` on Art-Net, which means *unknown*, not *not blind*; the stale threshold is **per transport**, because 2.5 s is E1.31's and Art-Net re-transmits an idle input only every ~4 s. Signal health belongs to the **feed**, so it is unreachable — not false — off a live one. Amends ADR-0007's reach: the transport returns on the **control channel**, never in the frame.
+- **[ADR-0019](0019-the-intensity-map-is-relative-not-photometric.md)** — The mode ships in v1, reads **resolved per-emitter intensity**, and is **not called false colour**. Measured: every `Dimmer` `ChannelFunction` in all six profiles is `PhysicalUnit="None"` over 0 → 1, and no profile carries a credible `LuminousFlux` — so v1 makes **no photometric prediction**, stated as a non-claim rather than left as a gap.
 
 ## Writing a new one
 

@@ -6,6 +6,9 @@
   [ADR-0006](0006-bridge-is-typescript-on-bun.md) decides. No ticket asked this question;
   it was found while answering that one, and is a bug
   [ADR-0002](0002-bridge-speaks-both-sacn-and-artnet.md) assumed away.
+- **Amended by:** [ADR-0018](0018-signal-health-is-one-per-universe-snapshot.md) — in **reach**,
+  not in principle. The transport stays out of the binary frame, so nothing in the render path can
+  branch on it; it returns on the **control** channel, for diagnostics only.
 
 ## Context
 

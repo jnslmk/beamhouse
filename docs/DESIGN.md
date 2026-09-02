@@ -357,13 +357,19 @@ Showcase solve it, with screenshots, and produces a design canvas. Four things i
 document should adopt on sight: **`universe.address` as one token** (Capture and BlenderDMX
 converged on it independently), **a second break as suffixed columns** with `Unpatched` as a
 literal value, **patch errors as in-cell glyphs rather than modals**, and **state chips that show
-their value and open on click**, which is where §06's unconsumed signals (#31) can live for free.
+their value and open on click**, which is where §13's signals can live for free.
 
 It also found the four things nobody has solved for us: the rig moves while you edit it (we never
 send DMX, so we cannot hold a fixture still); the transport is wanted in the diagnostics and is
-deliberately absent from the §07 frame (ADR-0007) — if it returns it must return on the control
-channel, not in the frame; the M3a viewer's degradation ladder (§9.2) is entirely a UI problem with
-no design; and the override layer, this design's most load-bearing idea, is invisible.
+deliberately absent from the §07 frame (ADR-0007); the M3a viewer's degradation ladder (§9.2) is
+entirely a UI problem with no design; and the override layer, this design's most load-bearing idea,
+is invisible.
+
+**[one of the four settled 2026-09-02 — #31]** The transport has returned, on the **control**
+channel, before #35 runs ([ADR-0018](adr/0018-signal-health-is-one-per-universe-snapshot.md)) —
+ADR-0007's rule was about the frame and is unchanged. #35 inherits it as a fact rather than a
+question, along with §13's whole signal inventory: **what** must be visible is settled, **where** it
+sits is #35's.
 
 ### 4.5 Overrides are stored separately — this matters
 
@@ -608,18 +614,30 @@ start-order ritual, and group join/leave maps directly onto the `subscribe` mess
 1. Accept a WebSocket; read a `subscribe` message listing universes.
 2. Join those multicast groups; forward each universe's 512 bytes.
 3. Drop out-of-order packets by sequence number rather than flickering.
-4. Mark a universe stale after ~2.5 s of silence and say so. Silent frozen output is the worst
+4. Mark a universe stale after silence and say so. Silent frozen output is the worst
    failure mode, because you debug the console instead of the network.
-5. Pass through the priority and `Preview_Data` flags — a free blind-mode indicator.
 
-   **[gap noted 2026-09-02 — #31]** Jobs 3, 4 and 5 all produce signals that **nothing in this
-   document consumes**: staleness, sACN priority, `Preview_Data`, and the out-of-order drop
-   count. The bridge prevents the silence job 4 warns about; the UI is where it stops being
-   silent, and there is no UI section. #31 writes one, covering a universe read-out, whole-fixture
-   staleness (a multi-break fixture with one stale break renders **wholly** stale per ADR-0011 —
-   a strip half live and half frozen is job 4's failure made *more* convincing by the live half),
-   blind indication, and a false-colour mode over resolved `Dimmer`, which ADR-0010 makes nearly
-   free.
+   **[corrected 2026-09-02 — #31] The threshold is per transport, and 2.5 s was E1.31's number
+   applied to both.** 2.5 s is right for sACN — it is E1.31's network data loss timeout. It is
+   wrong for Art-Net, whose specification has an input that is *active but not changing*
+   re-transmit its last valid ArtDmx at **approximately 4-second intervals**. A flat 2.5 s marks a
+   live gled2 holding a static look as stale, which is this job's failure mode inverted into a
+   false alarm — and a false staleness alarm is worse than none, because it teaches you to ignore
+   the one indicator that matters. **~6 s for Art-Net**, the spec interval plus margin
+   ([ADR-0018](adr/0018-signal-health-is-one-per-universe-snapshot.md)).
+
+5. Pass through the priority and `Preview_Data` flags. **[corrected 2026-09-02 — #31] Not "a free
+   blind-mode indicator" — free on sACN and unavailable on Art-Net.** E1.31 carries a priority
+   octet and a `Preview_Data` options bit; ArtDmx carries neither. The table above records that
+   gled2 has **no sACN at all**, so blind indication is missing on exactly the universes gled2
+   sends. The bridge reports those fields as `null` there, and `null` means *this transport cannot
+   tell you* — which the UI must not render as *not blind*
+   ([ADR-0018](adr/0018-signal-health-is-one-per-universe-snapshot.md)).
+
+   **Priority is reported, not enforced.** Job 2 forwards; nothing here merges or arbitrates, so
+   two sACN sources on one universe is last-writer-wins flicker with a priority number beside it.
+   Whether the bridge should arbitrate is [#38](https://github.com/jnslmk/beamhouse/issues/38);
+   until it lands, §13's read-out labels priority as claimed and flags the universe as contended.
 6. **Merge both transports into one universe space**, sACN-numbered: an Art-Net Port-Address *p*
    is forwarded as universe *p* + 1 ([ADR-0007](adr/0007-one-universe-space-sacn-numbered.md)).
    This is the only place that mapping may live, and it is worth a test.
@@ -639,10 +657,23 @@ Thin, because the browser does the thinking. Text frames for control, binary for
 { "op": "subscribe", "universes": [1, 2, 3, 4] }
 
 // bridge → browser, control
-{ "op": "stale",  "universes": [4] }
-{ "op": "sacn_source", "universe": 1, "priority": 100, "preview": false }
+{ "op": "universes", "universes": [
+    { "universe": 1, "transport": "sacn",   "stale": false, "drops": 3,
+      "priority": 100, "preview": false },
+    { "universe": 2, "transport": "artnet", "stale": true,  "drops": 0,
+      "priority": null, "preview": null }
+]}
 { "op": "reload", "path": "shows/warehouse.mvr" }
 ```
+
+**[revised 2026-09-02 — #31]** `universes` replaces both `stale` and `sacn_source`
+([ADR-0018](adr/0018-signal-health-is-one-per-universe-snapshot.md)). One record per subscribed
+universe, sent on change and on a slow heartbeat — a **snapshot, not a set-diff**, because §13's
+read-out *is* this table and renders straight from it, and because a missed `stale` diff fails in
+the direction where everything looks fine. `drops` is job 3's out-of-order count, which was
+computed and discarded. `null` for `priority`/`preview` means the transport cannot supply them,
+which is not the same as `false`. `sacn_source` is gone by name as well as by shape: it was named
+for the only transport it could describe.
 
 ```
 // bridge → browser, data. one frame per tick, all universes.
@@ -656,8 +687,16 @@ u16   universe_count
 
 The frame carries no transport field, and that is deliberate: the bridge has already merged sACN
 and Art-Net into one universe space before anything is written here
-([ADR-0007](adr/0007-one-universe-space-sacn-numbered.md)). Nothing downstream can tell, or needs
-to tell, how a universe arrived.
+([ADR-0007](adr/0007-one-universe-space-sacn-numbered.md)). Nothing in the **render path** can
+tell, or needs to tell, how a universe arrived.
+
+**[bounded 2026-09-02 — #31]** That rule is about the frame, and it stays exactly that
+([ADR-0018](adr/0018-signal-health-is-one-per-universe-snapshot.md) amends ADR-0007's reach, not
+its principle). **Diagnostics are not the render path**, and the `universes` control message above
+does name the transport — because a read-out that cannot say which transport a universe came in on
+cannot explain why one has no priority and another has a longer stale threshold. `CONTEXT.md`
+already calls the bridge "the only component that knows how a universe arrived"; it is now also
+the only one that may act on it.
 
 Keep a `feed.ts` interface in front of it with three implementations — `live`, `recorded` and
 `generated`. `relay` was removed by [ADR-0009](adr/0009-deployment-is-inferred-from-origin.md):
@@ -796,8 +835,17 @@ site.
 ([ADR-0008](adr/0008-colour-space-is-assumed-transfer-function-is-read.md)). Primaries are assumed
 sRGB, which is what GDTF's `<ColorSpace>` defaults to anyway; the fixture model carries no
 `colorSpace` field, so there is nothing to half-consult. `PhysicalFrom`/`PhysicalTo` *is* read
-wherever the `PhysicalUnit` gives it meaning — `Dimmer` declares `LuminousIntensity`, so its
-linearity is a stated fact, not an assumption (#25).
+wherever it is declared, and the renderer selects by attribute **name** rather than by declared
+unit ([ADR-0010](adr/0010-resolution-is-total-the-renderer-selects-by-attribute.md)).
+
+**[corrected 2026-09-02 — #31]** This sentence used to end *"`Dimmer` declares `LuminousIntensity`,
+so its linearity is a stated fact, not an assumption"*. Measured across all six profiles on disk:
+**every `Dimmer` `ChannelFunction` is `PhysicalUnit="None"` over 0 → 1**, and the single
+`LuminousIntensity` declaration is on the `AttributeDefinitions` entry of the impression 90 profile
+*we authored ourselves*. ADR-0010 had already found this and ruled the declared unit unread;
+the claim survived here and at §11.2 for a day. Resolved `Dimmer` is a dimensionless 0..1 — which
+is what makes §13's intensity map cheap and what stops it being photometric
+([ADR-0019](adr/0019-the-intensity-map-is-relative-not-photometric.md)).
 
 **Exactly one assumption is made, at exactly one site:** `ColorComponent` 0..1 is proportional to
 radiance. GDTF is genuinely silent there. `resolveColor` is the sole minter of `LinearRGB`, so
@@ -960,8 +1008,10 @@ These are the wayfinder map's tickets. See the map issue for current state.
    breaks on a matrix panel. Future rigs may add fixture kinds that fit neither class.
 2. ~~**Colour space.**~~ **Answered:** the colour space is assumed, the transfer function is read
    ([ADR-0008](adr/0008-colour-space-is-assumed-transfer-function-is-read.md)). "Linear sRGB" was
-   two assumptions under one name; GDTF's `<ColorSpace>` defaults to sRGB, and `Dimmer` declares
-   `LuminousIntensity`, so only the `ColorComponent` → radiance reading is genuinely assumed. The
+   two assumptions under one name; GDTF's `<ColorSpace>` defaults to sRGB, and only the
+   `ColorComponent` → radiance reading is genuinely assumed. (**[corrected 2026-09-02 — #31]** this
+   read "and `Dimmer` declares `LuminousIntensity`" — measured false in all six profiles; see
+   §8.3.) The
    enumeration is a branded `LinearRGB` type rather than a marker convention, so correcting it is
    a compiler error, not archaeology. Surfaced #25.
 3. ~~**Agent surface.**~~ **Answered:** it was **two** surfaces sharing a word
@@ -1014,7 +1064,20 @@ These are the wayfinder map's tickets. See the map issue for current state.
     every source but Mizer's.
 15. **What does the screen look like?** (#35) The whole UI — navigation model, notation, where the
     bridge's signals live, and the M3a viewer's degradation ladder. Surveyed against the field
-    with screenshots; deliverable is a design canvas and a new §UI here.
+    with screenshots; deliverable is a design canvas and the layout of §13.
+16. ~~**Does anything consume the bridge's signals?**~~ **Answered: §13, and four of the ticket's
+    premises were false** (#31, [ADR-0018](adr/0018-signal-health-is-one-per-universe-snapshot.md)
+    and [ADR-0019](adr/0019-the-intensity-map-is-relative-not-photometric.md)). Blind and priority
+    are **sACN-only**, so they are absent on exactly the universes gled2 sends; the 2.5 s stale
+    threshold is E1.31's and **false-alarms on Art-Net**, whose idle re-transmit is ~4 s; priority
+    is an **arbitration** rule carried as a decoration, since nothing merges; and no profile
+    resolves `Dimmer` to a photometric quantity, so "false colour" is a name for something v1
+    cannot compute. Amends ADR-0007's *reach* — the transport returns on the control channel, never
+    in the frame. Surfaced #38.
+17. **Does the bridge arbitrate sACN priority, or forward every source?** (#38) Two sources on one
+    universe is last-writer-wins flicker today, and §13 now displays a priority number beside it.
+    The reference rig has one source per universe, so this is a correctness question the rig cannot
+    exhibit.
 
 ## 12 · Dependencies
 
@@ -1062,6 +1125,105 @@ crate is a more complete E1.31 receiver than the npm package — but see ADR-000
 not carry the decision.
 
 Check each licence before depending on it. The one that bites is ASLS's beam shader: GPL-3.
+
+## 13 · The UI: signal health and diagnostics
+
+**[added 2026-09-02 — [#31](https://github.com/jnslmk/beamhouse/issues/31)]** This section is the
+**signal inventory** — what must be visible and what each signal means. It is deliberately not a
+layout: **where** any of it sits on screen is [#35](https://github.com/jnslmk/beamhouse/issues/35),
+which surveys the field and produces a design canvas. Its fog note already reserves *state chips
+that show their value and open on click* for most of what follows.
+
+§06 gives the bridge seven jobs; jobs 3, 4 and 5 produce four signals, and until now nothing in
+this document consumed any of them. Job 4 names the reason it matters in its own words: *silent
+frozen output is the worst failure mode, because you debug the console instead of the network.*
+The bridge prevents the silence. This is where it stops being silent.
+
+### 13.1 Signal health belongs to the feed
+
+Every signal here is a fact about a **live network**, so it is a property of the **feed**, not of
+the renderer ([ADR-0018](adr/0018-signal-health-is-one-per-universe-snapshot.md)):
+
+| Feed | What signal health shows |
+| ---- | ------------------------ |
+| `live` | the universe read-out below, and per-fixture staleness |
+| `recorded` | timeline position. **No staleness** — a recording is not silent, it is finished |
+| `generated` | "no network". Frames are computed; there is nothing to be stale |
+| §9.2 Pages viewer | nothing. There is no bridge to ask |
+
+Off a live feed these signals are **unreachable, not false**. This is the load-bearing half: if
+staleness merely evaluated false, a shared link running §9.2's demo motion mode would ship a rig
+that looks fine; if it evaluated true, every shared link would ship a greyed-out rig. The mode
+ADR-0014 put on the `generated` feed exists to make a shared link look *alive*.
+
+### 13.2 The universe read-out
+
+One row per subscribed universe, rendered straight from §07's `universes` snapshot. This is the
+panel you look at when the rig looks wrong.
+
+| Column | Source | Notes |
+| ------ | ------ | ----- |
+| Universe | `universe` | sACN-numbered, always — ADR-0007. An Art-Net Port-Address is never shown |
+| Transport | `transport` | control channel only; never in the frame |
+| Arriving | derived | frames seen, and at what rate |
+| Stale | `stale` | 2.5 s sACN, ~6 s Art-Net — the thresholds differ and the row says which applies |
+| Priority | `priority` | **observed, not enforced** — see below |
+| Blind | `preview` | `Preview_Data`. sACN only |
+| Drops | `drops` | job 3's out-of-order count |
+
+**`null` is a third state and must render as one.** Priority and blind are `null` on every Art-Net
+universe, permanently. *Unknown* and *not blind* are different claims, and the operator would act
+on the second. Render `null` as "—" or an equivalent, never as an unlit indicator.
+
+**Priority is what a source claims, not what the bridge enforces.** Nothing merges or arbitrates
+(§06 job 2 forwards), so two sACN sources on one universe is last-writer-wins flicker. Such a
+universe is flagged **contended**. Whether the bridge should arbitrate is
+[#38](https://github.com/jnslmk/beamhouse/issues/38); if it is adopted, this column's label
+changes with it.
+
+### 13.3 Staleness on a fixture
+
+A fixture is stale if **any** of its breaks' universes is stale, and it renders **wholly** stale
+([ADR-0011](adr/0011-a-fixture-is-addressed-per-break.md)). Not half.
+
+A 230-pixel strip spanning two universes with one break frozen would otherwise draw half live and
+half frozen — which is §06 job 4's failure made *more* convincing by the live half, because the
+moving half is the evidence you would trust. The STAR-TENT is exactly this fixture: #23 patched it
+across Beamhouse universes 2 and 3.
+
+Staleness is a **trust** signal, so it must read as "do not believe this", not as "this fixture is
+off". A fixture at zero and a fixture whose data stopped look identical at full brightness zero,
+and only one of them is a problem.
+
+### 13.4 Blind indication
+
+`Preview_Data` set means the console is deliberately not driving the stage — the output is a
+preview, so what Beamhouse draws is *correct* and *not what the audience sees*. It reads as a
+mode, not a fault. On Art-Net there is no such flag and the state is **unknown**, per §13.2.
+
+### 13.5 The intensity map
+
+A render mode that shades every emitter by its resolved intensity, for spotting the fixture at 3%
+that should be at 30% ([ADR-0019](adr/0019-the-intensity-map-is-relative-not-photometric.md)).
+
+- It reads **resolved per-emitter intensity**, off the resolved `LinearRGB` after `Dimmer` — not
+  per-fixture `Dimmer`. §8.1 already carries an N-texel `DataTexture`, so the values exist. For a
+  single-emitter fixture the two readings are identical; for a strip, only the per-emitter one can
+  show a dead pixel run, which #23's per-pixel cutover just made possible.
+- It is **relative**. It compares emitters within one rendered frame and carries no unit and no
+  absolute reference.
+- **It is not false colour**, and must not be labelled as such. The field's false colour is
+  illuminance at a surface in lux; v1 renders no venue geometry (ADR-0013 ends beams at a soft
+  falloff with no geometric terminus), and no profile on disk carries a credible `LuminousFlux` —
+  the Fog Fury declares the GDTF default. **v1 makes no photometric prediction**, and that is a
+  stated non-claim rather than a gap.
+- It is not in ADR-0013's deferred tier: that tier is fenced at the second sample of `density(p)`,
+  and a shading swap samples no density.
+
+### 13.6 Still owed to #35
+
+The degradation ladder of §9.2 and the invisibility of the override layer (§4.5) are UI problems
+with no design, and §4.4 lists both. Neither is signal health, and neither is settled here.
 
 ## References
 
