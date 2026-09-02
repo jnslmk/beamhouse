@@ -43,3 +43,26 @@ Used by `/wayfinder`. The **map** is a single issue with **child** issues as tic
 - **Frontier query**: list the map's open children (`gh issue list --state open`, scoped to the map's sub-issues / task list), drop any with an open blocker (`issue_dependencies_summary.blocked_by > 0`, or an open issue in the `Blocked by` line) or an assignee; first in map order wins.
 - **Claim**: `gh issue edit <n> --add-assignee @me` — the session's first write.
 - **Resolve**: `gh issue comment <n> --body "<answer>"`, then `gh issue close <n>`, then append a context pointer (gist + link) to the map's Decisions-so-far.
+
+## Hazard: environments without the `gh` CLI
+
+Some agent environments (Claude Code on the web, for one) have **no `gh` CLI** and reach GitHub
+only through the GitHub MCP server. The MCP **read** path HTML-sanitizes issue bodies and
+comments before handing them back:
+
+- quotes and apostrophes come back as `&#34;` / `&#39;`
+- **anything angle-bracketed is stripped entirely** — `<ColorSpace>`, `<Matrix>`, `<dir>` all
+  vanish, leaving empty backticks behind
+
+Verified 2026-09-02 by posting a comment containing ``--serve <dir>`` and an apostrophe, then
+reading it back: the `<dir>` was gone and the apostrophe had become `&#39;`. The escaping is
+**read-side** — a write-side escape would have returned `&amp;#39;` — so stored bodies are
+intact; it is the copy you are handed that is lossy.
+
+**Consequence: never round-trip a body.** Reading an issue, editing the text you got back, and
+writing it again will silently delete every angle-bracketed token and entity-encode every quote.
+This matters most for the **wayfinder map** (#1), which is long, full of `<Tag>` references, and
+edited on every ticket resolution.
+
+In such an environment, either drive body edits some other way, or hand the human the exact
+snippet to paste. Comments and labels are safe to write; whole-body rewrites are not.
