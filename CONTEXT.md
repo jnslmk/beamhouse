@@ -29,8 +29,11 @@ each one controls. A fixture is patched in exactly one mode.
 _Avoid_: personality, channel mode
 
 **Library**:
-A resolvable collection of definitions, addressed by a prefix — `gdtf:`, `ofl:`, `qlc:`. What a
-patch's definition ids are looked up against.
+A resolvable collection of definitions, addressed by a prefix — `gdtf:`, `ofl:`, `qlc:`, `bhs:`.
+What a patch's definition ids are looked up against. `bhs:` is Beamhouse's own
+([ADR-0012](docs/adr/0012-beamhouse-may-define-pixels-placement-mints-nothing.md)): definitions
+carried inside a `.bhs` rather than resolved from a path, which is why they are the only kind that
+survives a shared URL.
 _Avoid_: definition source, provider, fixture library
 
 ### The scene
@@ -42,13 +45,26 @@ _Avoid_: show, plot, rig state
 
 **Patch**:
 The half of the scene that says which fixtures exist, which definition and mode each uses, and
-where each is addressed. Authored in the console; Beamhouse only reads it.
+where each is addressed. Authored in the console and read by Beamhouse — with one bounded
+exception, the **local fixture**
+([ADR-0012](docs/adr/0012-beamhouse-may-define-pixels-placement-mints-nothing.md)).
 _Avoid_: patch sheet, fixture list
 
 **Placement**:
 The half of the scene that says where each fixture sits in space — position and orientation.
-Authored in Beamhouse and nowhere else.
+Authored in Beamhouse and nowhere else. It is a **rigid transform and nothing more**: placement
+never creates an emitter, and its rotation pivots about the definition's own origin, never a
+resolved bounding-box centre, which would drift as a mover's head tilts
+([ADR-0012](docs/adr/0012-beamhouse-may-define-pixels-placement-mints-nothing.md)).
 _Avoid_: position (that is one component of a placement), layout, transform
+
+**Local fixture**:
+A fixture that exists only in Beamhouse — carrying its own `bhs:` definition *and* its own
+universe and address, with no entry in any console's patch. What describes pixels that reach the
+rig from a second source, such as gled2 streaming Art-Net alongside Mizer. Its **fixture id is
+negative**, which Mizer's `u32` cannot represent, so it can never collide with a console's
+([ADR-0012](docs/adr/0012-beamhouse-may-define-pixels-placement-mints-nothing.md)).
+_Avoid_: virtual fixture, synthetic fixture, unpatched fixture
 
 **Override**:
 A placement stored apart from the patch and keyed by fixture id, so that re-reading a changed

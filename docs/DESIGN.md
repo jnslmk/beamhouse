@@ -75,6 +75,13 @@ tier is a switch rather than a rewrite.
   **constant-density single-scattering term** — closed-form for a cone, one integral in the same
   fragment shader, no raymarch and no second pass — lands in v1 while absorption, volumetric
   shadows and the render tier stay deferred. Recommendation there is yes, validated at M6.
+- **Polyline-distributed pixel runs.** A strip whose emitters follow an authored polyline rather
+  than the definition's own positions, each segment still rendering its declared primitive. Not
+  built, and cheap to leave so: ADR-0005 rule 1 already made the run's line a derived quantity
+  (ordering, axis, extent), so substituting what supplies it is a local change
+  ([ADR-0012](adr/0012-beamhouse-may-define-pixels-placement-mints-nothing.md)). The *swept-curve*
+  version is genuinely out of scope rather than deferred — it would force generated geometry over
+  the declared primitive, reversing ADR-0005 rule 6.
 - Gobos, prisms, framing shutters. GDTF carries wheel media in the same zip.
 - The agent surface — a fourth feed implementation injecting state directly. Undecided
   for v1.
@@ -265,6 +272,16 @@ groups: [...]
 Read it directly. No export step, and the bridge's file watcher can watch it alongside `shows/`
 — repatch in Mizer, save, and Beamhouse merges the change with the socket still live.
 
+**[qualified 2026-09-02 — #27]** The heading is true of every fixture a console knows about, and
+there is exactly one bounded exception. gled2 streams Art-Net to the rig *alongside* Mizer
+([ADR-0002](adr/0002-bridge-speaks-both-sacn-and-artnet.md)) and drives tubes per pixel (§01), so
+universes carrying pixels that Mizer never patched are a standing feature of this rig. A **local
+fixture** describes those: a `bhs:` definition plus its own universe and address, with no console
+entry ([ADR-0012](adr/0012-beamhouse-may-define-pixels-placement-mints-nothing.md)). Its fixture id
+is **negative**, which Mizer's `u32` cannot represent, so it can never collide with one the console
+allocates. That is the whole of the exception — Beamhouse still authors no fixture a console
+*does* know about.
+
 **[corrected] The existing show is on QLC+, and is being left behind.**
 `mizer-shows/OBF26_Bunte-Stube.yml` is 13 fixtures over 2 universes, every one of them
 resolving via the `qlc:` provider — `qlc:GLP:impression 90 RGB` ×6,
@@ -359,9 +376,23 @@ carries `FixtureID` too, so the id is the one key both patch formats can supply.
     "kind": "radial",
     "center": [0, 3.2, 0], "radius": 2.4, "tilt": 90
   }],
-  "classes": { "diy_t8_35px": { "kind": "strip", "pixels": 35 } }
+  "classes": { "diy_t8_35px": { "kind": "strip", "pixels": 35 } },
+  "definitions": { "spoke23": { "kind": "strip", "pixels": 23, "pitch": 0.065 } },
+  "fixtures": [
+    { "id": -1, "definition": "bhs:spoke23", "universe": 4, "address": 1 }
+  ]
 }
 ```
+
+**[added 2026-09-02 — #27]** The `definitions` block is Beamhouse's own fixture library, addressed
+by the `bhs:` prefix alongside `gdtf:`/`ofl:`/`qlc:`, and it **subsumes `classes`** — which was
+already a Beamhouse-side pixel count in all but name
+([ADR-0012](adr/0012-beamhouse-may-define-pixels-placement-mints-nothing.md)). It binds two ways: to
+a fixture the console already patched, keyed by the patch's definition id the way `classes` is
+today; or, as in the `fixtures` entry above, as a **local fixture** carrying its own address and a
+**negative id**. Where a `bhs:` definition and the patch disagree about extent, the definition wins
+for *rendering* and the patch for *addressing*, and the mismatch is **surfaced as an error rather
+than truncated** — a silently shortened strip is wrong in a way that looks right.
 
 ### 4.6 Persistence and hot reload
 
@@ -601,14 +632,16 @@ texture (ADR-0005). Do not substitute a cylinder for a declared `Cube`: the real
 `MarkeEigenbau` strip declares a 25 x 50 x 1000 mm cube, and overriding that is the renderer
 claiming to know better than the definition.
 
-**[open 2026-09-02 — #27]** That last rule assumes every emitter traces back to a declared
-geometry. Capture 2026 shipped the opposite: a **generic LED Strip** drawn as a Bézier curve with
-a pixel pitch, pixel count falling out of length ÷ pitch, no definition file anywhere. The naive
-import of that idea is falsified by §04's split — Capture *is* the patch, Beamhouse only reads
-one, so a tube that exists only here is a tube Mizer cannot address. What survives is the narrow
-question #27 grills: may **placement** distribute a definition's emitters along an authored path,
-given the STAR-TENT's ten spokes cabled back and forth (#21) are a shape no definition will ever
-carry, and §4.4's parametric arrays already generate placement from parameters?
+**[answered 2026-09-02 — #27]** That last rule holds, and it survives contact with Capture 2026's
+definition-free **LED Strip** ([ADR-0012](adr/0012-beamhouse-may-define-pixels-placement-mints-nothing.md)).
+Placement mints nothing; what Beamhouse gains instead is a **third definition source**, `bhs:`,
+carried inside the `.bhs` (§4.5). Distributing emitters along an authored *path* was rejected on
+this rule's own terms: a declared 25 × 50 × 1000 mm `Cube` cannot be mapped along a Bézier, so a
+swept path would force Beamhouse to generate geometry and discard the declared primitive — exactly
+what ADR-0005 rule 6 forbids. The **polyline** form, rigid segments each keeping their primitive,
+stays available unbuilt: ADR-0005 rule 1 already made the run's line a derived quantity, so
+substituting its source is local. The STAR-TENT needs neither — its reversed spokes are a rigid
+rotation plus translation (#21, #23).
 
 ```ts
 const tex = new THREE.DataTexture(
@@ -721,9 +754,18 @@ UI rather than silently producing a broken URL.
 ### 9.2 What a URL cannot carry
 
 Geometry and recordings. The viewer degrades in layers: a bundled set of recurring definitions
-in `public/gdtf/`; **proxy geometry** rendered from `PrimitiveType` when no definition is
-available (schematic but correct — right positions, right beam angles, right colours); and
-drag-and-drop for the recipient's own GDTF or MVR.
+in `public/gdtf/`; **proxy geometry** rendered from the declared `PrimitiveType` when the
+definition ships **no mesh** (schematic but correct — right positions, right beam angles, right
+colours); and drag-and-drop for the recipient's own GDTF or MVR.
+
+**[corrected 2026-09-02 — #27]** This previously read "when no definition is available", which is
+self-contradictory: `PrimitiveType` *is* a field of the definition, so with no definition there is
+no primitive, no beam angle and no emitter count to render. The real strip profile
+(`MarkeEigenbau`, ships `description.xml` and zero meshes) is the case this covers. A genuinely
+definition-less share would need a resolved-digest format — a separate decision, and not reachable
+today, since a `.bhs` carries `patch` and `gdtfDir` as **local paths** the recipient cannot
+resolve. The one fixture kind immune to that is a `bhs:` definition, which carries no path at all
+([ADR-0012](adr/0012-beamhouse-may-define-pixels-placement-mints-nothing.md)).
 
 Worth building early: give a shared link a **demo motion mode** — a canned chase generated from
 a seed, running on the real rig geometry.
@@ -814,8 +856,14 @@ These are the wayfinder map's tickets. See the map issue for current state.
 
 **[opened 2026-09-02 by the competitive review]**
 
-10. **Does placement ever mint emitters a definition did not declare?** (#27) Capture 2026's
-    definition-free LED Strip against §04's patch/placement split and ADR-0005.
+10. ~~**Does placement ever mint emitters a definition did not declare?**~~ **Answered: no —
+    placement mints nothing, and Beamhouse gains a third *definition* source instead** (#27,
+    [ADR-0012](adr/0012-beamhouse-may-define-pixels-placement-mints-nothing.md)). Four of the
+    ticket's premises were false: arrays take existing fixture ids, §9.2 mints no geometry, the
+    STAR-TENT needs only a rigid transform, and ADR-0005 rule 8 had already ruled. The real
+    justification turned out to be **gled2**, not Capture — it streams pixels Mizer never patched,
+    so a **local fixture** (`bhs:` definition, own address, negative id) describes them. Swept
+    paths are out of scope; the polyline form stays unbuilt but cheap.
 11. **Does v1 render atmosphere?** (#28) The whole field's headline feature against §01's
     deferred render tier. See §8.2.
 12. **Raw GLSL or node material?** (#29) WebGL2 stays locked; what is open is the shader
