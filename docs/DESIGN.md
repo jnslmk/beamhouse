@@ -64,17 +64,19 @@ density function so haze can raymarch it later, the beam material carries a proj
 slot from day one so gobos drop in, and tone mapping is on from the start so a high-quality
 tier is a switch rather than a rewrite.
 
-- Higher-fidelity rendering. PBR is free from glTF; the missing pieces are haze, soft shadows,
-  and a slower "render" tier.
+- Higher-fidelity rendering — soft shadows and a slower "render" tier. PBR is free from glTF.
 
-  **[under review 2026-09-02 — #28]** The atmosphere half of this tier may not belong in it. A
-  beam in clean air is invisible; what you see in a room is scattering off particulate, so a cone
-  with no atmosphere term reads as a diagram of a beam rather than a beam. It is also the whole
-  field's headline: Capture 2026's is that smoke now *absorbs* all light, DMXpressions leads with
-  a physics-simulated atmosphere, Showcase 2026 added animated fog. #28 grills whether a
-  **constant-density single-scattering term** — closed-form for a cone, one integral in the same
-  fragment shader, no raymarch and no second pass — lands in v1 while absorption, volumetric
-  shadows and the render tier stay deferred. Recommendation there is yes, validated at M6.
+  **[resolved 2026-09-02 — #28]** The atmosphere half of this tier **left it**
+  ([ADR-0013](adr/0013-atmosphere-is-one-closed-form-scattering-term.md)). A beam in clean air is
+  invisible; what you see in a room is scattering off particulate, so a cone with no atmosphere
+  term reads as a diagram of a beam rather than a beam — and since v1 renders **no venue
+  geometry**, there is not even a lit surface to infer one from. A **constant-density
+  single-scattering term** ships in v1: closed-form, one integral in the same fragment shader, no
+  raymarch and no second pass. What buys that closed form is dropping **extinction** and using an
+  **isotropic phase function**, so v1's beam does not glare when aimed at the camera — deliberate,
+  not a defect. What stays deferred is now a rule rather than a list: **anything needing more than
+  one sample of `density(p)`** — volumetric shadows, soft shadows, gobo projection through the
+  medium, heterogeneous or animated density, and beam-on-beam absorption.
 - **Polyline-distributed pixel runs.** A strip whose emitters follow an authored polyline rather
   than the definition's own positions, each segment still rendering its declared primitive. Not
   built, and cheap to leave so: ADR-0005 rule 1 already made the run's line a derived quantity
@@ -651,12 +653,24 @@ tex.minFilter = tex.magFilter = THREE.LinearFilter;
 // per frame: copy resolved RGB in, set needsUpdate.
 ```
 
-One bloom pass over the whole scene. Resist per-fixture glow sprites.
+One bloom pass over the whole scene. Resist per-fixture glow sprites. The §8.2 scattering term
+renders into the same HDR target and goes through this same pass — no separate pass, no exclusion.
+Its threshold is therefore a **tuned** parameter, and must be tuned *after* the haze default is
+set ([ADR-0013](adr/0013-atmosphere-is-one-closed-form-scattering-term.md)); tuning it first means
+the first haze you add re-tunes every colour you already tuned.
 
 ### 8.2 Beams — write them as a density function
 
 Cone geometry from each `Beam` node, additively blended, depth-write off, sorted back to front,
-cone half-angle driven by the resolved `Zoom`.
+cone angle driven by the resolved `Zoom`.
+
+**`BeamAngle` is the FULL cone angle, apex to apex.** This document, `CONTEXT.md`, ADR-0010 and
+three research docs all called it a half-angle until 2026-09-02; treating it as one renders every
+cone at **twice** its true width, silently, with nothing to compare against
+([ADR-0013](adr/0013-atmosphere-is-one-closed-form-scattering-term.md)). `FieldAngle` shapes the
+**edge falloff** only where it differs from `BeamAngle` — which across the six profiles on disk is
+exactly one, the Fog Fury at 15°/25° — and otherwise degenerates to the `BeamType` soft/hard edge
+(`Wash`/`Fresnel`/`PC` soft, `Spot`/`Rectangle` hard).
 
 Structure the fragment shader as `density(p) → float` and integrate it analytically for v1.
 That one choice is what lets haze become a raymarch through the same function later. Likewise,
@@ -671,13 +685,35 @@ technique freely; reusing it makes your renderer GPL-3 too.
 
 Drive strobe from a shader uniform on wall time, not by dropping frames.
 
-**[two questions opened 2026-09-02]**
+#### Atmosphere — resolved 2026-09-02, [ADR-0013](adr/0013-atmosphere-is-one-closed-form-scattering-term.md)
 
-- **#28 — does the atmosphere term land in v1?** The seam above is only insurance if it is
-  claimed once, and `density(p)` integrated by nothing but the analytic path is an untested
-  assumption. A constant-density single-scattering term is closed-form for a cone and needs no
-  raymarch. Recommendation: yes, validated at M6, with absorption and volumetric shadows staying
-  in the deferred tier.
+**Yes, it lands in v1.** The seam above is only insurance if it is claimed once, and `density(p)`
+integrated by nothing but the analytic path is an untested assumption. Constant-density single
+scattering off a point source integrates to an elementary `atan` along the view ray — but only
+because two things are dropped, and the ADR names them rather than discovering them later:
+
+- **No extinction.** With Beer–Lambert attenuation on both legs this becomes Sun et al. (2005), a
+  special function precomputed into a 2D lookup table — not one integral in a fragment shader.
+- **Isotropic phase.** Henyey–Greenstein depends on an angle that varies along the ray. Forward
+  scattering is what makes a beam glare when aimed at the camera; **v1's does not.**
+
+Four more things it fixes: density is **one scene-wide uniform**, not per-fixture and never gated
+by the Fog Fury's `Fog1` (which resolves to a *constant* — `PhysicalUnit="None"`, `PhysicalFrom 1
+→ PhysicalTo 1` — so the rig's hazer cannot supply a level, and gating on it would blank every
+beam until one fixture crosses DMX 32). Haze is **on by default**, at a low value written into the
+`.bhs` rather than defaulted at read time, so a shared link carries what the sender saw. The term
+**does not scale by declared `LuminousFlux`** — the Fog Fury declares the GDTF default `10000` and
+three others a round `1000`, so the field is unfilled in every profile we have and would render
+the fog machine as the rig's brightest source; scattering scales by resolved `Dimmer` ×
+`LinearRGB` alone, and `LuminousFlux` is carried **unconsumed**, the shape ADR-0008 used for
+`ColorSpace`. And the beam ends by a **soft shader falloff at one scene-wide length**, with no
+geometric terminus — v1 renders no venue geometry, so nothing catches a beam.
+
+**The deferred tier's boundary is one question: does it need more than one sample of
+`density(p)`?** Volumetric shadows, soft shadows, gobo projection through the medium,
+heterogeneous or animated density and beam-on-beam absorption all fail it and all stay out, as one
+unit for one reason.
+
 - **#29 — raw GLSL or node material?** §03 lists hand-written `.glsl`, which is the right default
   and also the thing that fixes the cost of ever leaving WebGL2: three.js's WebGPU path expects
   node graphs, and `postprocessing` is a WebGL-era library. **WebGL2 stays locked** — the survey's
@@ -804,10 +840,21 @@ cube move.
 | M4  | gdtf-ts       | An arbitrary GDTF patches and its real GLB renders with working pan/tilt| 3–5 d |
 | M5a | Mizer patch   | Beamhouse reads the project YAML; repatching updates the rig live       | ½ d   |
 | M5b | MVR import    | A rig exported from BlinderKitten loads, overrides merge cleanly        | 1 d   |
-| M6  | Beams         | Six movers, volumetric cones, zoom and strobe correct                   | 1–2 d |
+| M6  | Beams         | Six movers in haze, cones and strobe correct; an X4 patched in for zoom | 1–2 d |
 | M7  | Record/replay | A committed `.bhr` plays back through the same shared link              | 1 d   |
 
 M4 is the wall; §5.0 is what makes it survivable.
+
+**[M6 rewritten 2026-09-02 — #28]** Its clause read "six movers, volumetric cones, **zoom** and
+strobe correct" and was **unsatisfiable**: the six movers are impression 90s with a fixed 10° lens
+and no `Zoom` channel, and the X4 — the only profile on disk that has one — is not in the show. M6
+now patches an **impression X4** the rig does not own, which makes it the first milestone to use
+M4's "arbitrary GDTF" capability as an *instrument* rather than as a feature. The X4 replaces a
+standalone impression 90 in that role: testing "an arbitrary GDTF" against a profile we authored
+ourselves is circular. Strobe is unaffected — both the impression 90 and the Fog Fury carry
+`Shutter1Strobe`. M6 is also where the [ADR-0013](adr/0013-atmosphere-is-one-closed-form-scattering-term.md)
+haze term is **shown**; it is not validated there, because there is no ground truth for "looks like
+a beam" and no oracle can be built for one.
 
 **[reordered 2026-09-02]** The share link was M7, behind the wall. It is now **M3a**, immediately
 after the scene editor, and record/replay takes the freed M7 slot.

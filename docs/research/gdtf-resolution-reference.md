@@ -318,7 +318,7 @@ raw `FixtureChannelDefinition`). **Ignored, always:** the static Beam-geometry p
 themselves — beam angle, field angle, lamp type, luminous flux, colour temperature, throw ratio,
 beam radius, colour rendering index — none of these have a Rust struct field anywhere in this
 crate, because the console has no use for them. This is exactly the data Beamhouse's beam shader
-needs (`beam angle` drives the cone half-angle per DESIGN.md §8.2, `LuminousIntensity`/`LuminousFlux`
+needs (`beam angle` drives the cone angle — **full**, not half, corrected 2026-09-02 by [ADR-0013](../adr/0013-atmosphere-is-one-closed-form-scattering-term.md) — per DESIGN.md §8.2, `LuminousIntensity`/`LuminousFlux`
 could drive intensity falloff) and it is a **pure gap** — see §6.
 
 ## 5. The `FIXME` at `conversion.rs:58` — the SGM G-1 hack

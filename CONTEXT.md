@@ -180,11 +180,15 @@ other is the emissive surface shared by **strip class** and **matrix class**.
 _Avoid_: mover, moving head, spot (those are fixture kinds, not rendering classes)
 
 **Cone angle**:
-The half-angle of a **beam class** fixture's volumetric cone. Sourced from the definition's static
-`BeamAngle`, overridden per tick by a **resolved** `Zoom` where the DMX mode has one — the only
-renderer input fed by both a static declaration and a live channel. Distinct from `FieldAngle`,
-which the fixture model carries but v1 does not consume.
-_Avoid_: beam angle (that is the static declaration, only one of the two sources), spread, zoom
+The **full** angle of a **beam class** fixture's volumetric cone — apex to apex, not apex to axis
+([ADR-0013](docs/adr/0013-atmosphere-is-one-closed-form-scattering-term.md)). Sourced from the
+definition's static `BeamAngle`, overridden per tick by a **resolved** `Zoom` where the DMX mode
+has one — the only renderer input fed by both a static declaration and a live channel. Distinct
+from `FieldAngle`, which shapes the **edge falloff** only where the two differ, degenerating to
+the `BeamType` soft/hard edge when they are equal — which is five of the six profiles on disk.
+_Avoid_: half-angle (it is not one; this repo said so at six sites and every cone would have
+rendered twice too wide), beam angle (that is the static declaration, only one of the two
+sources), spread, zoom
 
 **Strip class**:
 The rendering class for a **one-dimensional** pixel run: rendered as one continuous emissive
@@ -199,6 +203,21 @@ The rendering class for a **two-dimensional** pixel grid — the same emissive s
 `M × N` texture rather than an `N` one. Distinct from **strip class** to a human describing a rig,
 identical to the renderer: one shader, one draw call per fixture, interpolation across both axes.
 _Avoid_: panel, grid, pixel map, third rendering class (there is no third path)
+
+**Atmosphere**:
+The participating medium the beams scatter off — a property of the **scene**, never of a fixture,
+carried as one scene-wide density
+([ADR-0013](docs/adr/0013-atmosphere-is-one-closed-form-scattering-term.md)). "Haze" and "fog" name
+the same single thing here and are never split into two. A hazer in the rig is a **fixture** like
+any other and does not supply it: the one on this rig resolves `Fog1` to a constant.
+_Avoid_: haze, fog, smoke, participating media (all fine in prose about the real world, none of
+them a second concept)
+
+**Scattering term**:
+The closed-form single-scattering integral that makes a **beam class** cone visible in
+**atmosphere**. Closed-form because it drops extinction and uses an isotropic phase function; the
+deferred high-fidelity tier is everything needing more than one sample of the density function.
+_Avoid_: volumetrics, raymarch, god rays (those name the deferred tier, not this)
 
 **Proxy geometry**:
 The stand-in mesh generated from a definition's declared primitive when no real model is

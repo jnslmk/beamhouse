@@ -13,8 +13,10 @@ Every accepted decision on this project, newest last. The **map** ([#1](https://
 | **0007** | [One universe space, sACN-numbered](0007-one-universe-space-sacn-numbered.md) | 2026-09-01 | surfaced by [#10](https://github.com/jnslmk/beamhouse/issues/10) |
 | **0008** | [Colour space is assumed, the transfer function is read](0008-colour-space-is-assumed-transfer-function-is-read.md) | 2026-09-01 | [#9](https://github.com/jnslmk/beamhouse/issues/9) · amended by ADR-0010 |
 | **0009** | [Deployment is inferred from origin, and only the single file is a separate build](0009-deployment-is-inferred-from-origin.md) | 2026-09-02 | [#24](https://github.com/jnslmk/beamhouse/issues/24) |
-| **0010** | [Resolution is total, and the renderer selects by attribute](0010-resolution-is-total-the-renderer-selects-by-attribute.md) | 2026-09-02 | [#25](https://github.com/jnslmk/beamhouse/issues/25) · amends ADR-0008 |
+| **0010** | [Resolution is total, and the renderer selects by attribute](0010-resolution-is-total-the-renderer-selects-by-attribute.md) | 2026-09-02 | [#25](https://github.com/jnslmk/beamhouse/issues/25) · amends ADR-0008 · amended by ADR-0013 |
 | **0011** | [A fixture is addressed per break, and is stale if any break is stale](0011-a-fixture-is-addressed-per-break.md) | 2026-09-02 | [#22](https://github.com/jnslmk/beamhouse/issues/22) · was ADR-0009 |
+| **0012** | [Beamhouse may define pixels; placement mints nothing](0012-beamhouse-may-define-pixels-placement-mints-nothing.md) | 2026-09-02 | [#27](https://github.com/jnslmk/beamhouse/issues/27) |
+| **0013** | [Atmosphere is one closed-form scattering term](0013-atmosphere-is-one-closed-form-scattering-term.md) | 2026-09-02 | [#28](https://github.com/jnslmk/beamhouse/issues/28) · amends ADR-0010 |
 
 ## What each one actually says
 
@@ -29,6 +31,8 @@ Every accepted decision on this project, newest last. The **map** ([#1](https://
 - **[ADR-0009](0009-deployment-is-inferred-from-origin.md)** — One source, two builds, three deployments. Deployment is inferred from the page's own origin, never compiled in — which makes the mixed-content trap structurally impossible.
 - **[ADR-0010](0010-resolution-is-total-the-renderer-selects-by-attribute.md)** — Resolution is total; the renderer selects by attribute. Amends ADR-0008.
 - **[ADR-0011](0011-a-fixture-is-addressed-per-break.md)** — A fixture carries one address **per break**, so it can span universes — and is stale if *any* break is stale. Mizer's singular pair is the degenerate one-break case.
+- **[ADR-0012](0012-beamhouse-may-define-pixels-placement-mints-nothing.md)** — Beamhouse may carry its own `bhs:` pixel definitions, because gled2 streams universes Mizer never patched. **Placement still mints nothing** — a local fixture has a definition, an address and a *negative* id, which Mizer's `u32` cannot collide with.
+- **[ADR-0013](0013-atmosphere-is-one-closed-form-scattering-term.md)** — A constant-density single-scattering term ships in v1, closed-form because it drops extinction and anisotropy. The deferred tier begins at the **second sample of `density(p)`**. Also corrects `BeamAngle` to the **full** cone angle at six sites, where it was called a half-angle. Amends ADR-0010.
 
 ## Writing a new one
 

@@ -4,6 +4,7 @@
 - **Date:** 2026-09-02
 - **Decides:** [#25](https://github.com/jnslmk/beamhouse/issues/25)
 - **Amends:** [ADR-0008](0008-colour-space-is-assumed-transfer-function-is-read.md)
+- **Amended by:** [ADR-0013](0013-atmosphere-is-one-closed-form-scattering-term.md)
 
 ## Context
 
@@ -105,10 +106,16 @@ every `ChannelFunction` and `ChannelSet` is invisible to that crate
    future silent mis-pick into a message.
 
 6. **Beam cone angle has two sources.** The `Beam` geometry's static `BeamAngle` is the cone
-   half-angle, **overridden per-tick by a resolved `Zoom`** where the DMX mode has one. Only the X4
-   does; the impression 90 is a static 10°. `FieldAngle` is parsed and carried but unconsumed —
-   whether it drives the density falloff is the beam-shader question the map still holds as fog,
-   and deciding it without a beam on screen would be guessing.
+   angle, **overridden per-tick by a resolved `Zoom`** where the DMX mode has one. Only the X4
+   does; the impression 90 is a static 10°.
+
+   **[amended 2026-09-02 — [ADR-0013](0013-atmosphere-is-one-closed-form-scattering-term.md)]**
+   This clause originally read "the cone **half**-angle", as did five other sites in the repo.
+   `BeamAngle` is the **full** cone angle; treating it as a half-angle renders every cone at twice
+   its true width. It also said `FieldAngle`'s role "would be guessing" without a beam on screen —
+   ADR-0013 settled it without one, by measuring that `BeamAngle ≠ FieldAngle` in exactly **one**
+   of the six profiles on disk (the Fog Fury, 15°/25°). `FieldAngle` shapes the edge falloff only
+   where the two differ, degenerating to the `BeamType` soft/hard edge otherwise.
 
 7. **OFL converges onto the same shape.** The OFL reader parses capability entity strings into the
    same `{value, unit}` — `"off" → 0`, `"bright" → 1`, unit `ColorComponent`. #25 supposed OFL

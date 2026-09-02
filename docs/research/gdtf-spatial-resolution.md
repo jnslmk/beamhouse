@@ -989,7 +989,7 @@ pure gap:
 
 | Attribute | Unit | Default | Beamhouse use |
 | --- | --- | --- | --- |
-| `BeamAngle` | degree | 25.0 | cone half-angle (DESIGN.md §8.2) |
+| `BeamAngle` | degree | 25.0 | cone angle, **full** — apex to apex (DESIGN.md §8.2). **[corrected 2026-09-02 — #28]** this row said *half*-angle; see [ADR-0013](../adr/0013-atmosphere-is-one-closed-form-scattering-term.md). §8's own `BeamAngle > 180 → point light` rule below only parses under full-angle semantics, and BlenderDMX's `spot_size = radians(beam_angle)` is Blender's *total* cone angle |
 | `FieldAngle` | degree | 25.0 | the 10%-intensity angle; outer falloff |
 | `BeamRadius` | **meter** | 0.05 | cone radius at the origin — a beam is a frustum, not a cone |
 | `BeamType` | enum | `Wash` | how to render; see below |

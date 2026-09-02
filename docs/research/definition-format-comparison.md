@@ -329,8 +329,11 @@ What a `<Physical>`/`physical` block (QLC+ or OFL) buys a proxy fixture, concret
 - **Right bounding box.** Dimensions in mm → a correctly-sized cube/cylinder instead of a
   guessed one.
 - **Right beam cone.** `Lens.DegreesMin/Max` (QLC+) or `lens.degreesMinMax`/`BeamAngle` (OFL) →
-  the cone half-angle DESIGN.md §8.2 drives from `Zoom` is bounded correctly even without a real
-  fixture body.
+  the cone angle DESIGN.md §8.2 drives from `Zoom` is bounded correctly even without a real
+  fixture body. **[corrected 2026-09-02 — #28]** this read *half*-angle; all three formats carry
+  the **full** angle — the impression 90's QLC+ `<Lens DegreesMin="10" DegreesMax="10"/>` is
+  GLP's published 10° beam — so the converged fixture model's cone angle is a full angle whatever
+  it was read from ([ADR-0013](../adr/0013-atmosphere-is-one-closed-form-scattering-term.md)).
 - **Right sweep.** `Focus.PanMax/TiltMax` (QLC+) or `Pan`/`Tilt` capability angle ranges (OFL) →
   the gizmo/placement UI can clamp to a fixture's real range instead of assuming 540°/270°
   defaults.
