@@ -114,6 +114,13 @@ with level, and whether GDTF can declare one is **unverified** —
 but a `bhs:` definition, and rule 5 is revisited for that one field. It is a research question and
 not a reason to hold the rule.
 
+**[discharged 2026-09-02 — #50]** It does not pull back.
+[ADR-0040](0040-the-tungsten-curve-is-derived-from-a-declared-lamptype.md) finds that GDTF *can*
+declare a spectrum that varies with level, so the stated condition never fires — and that the
+fallback named here did not exist anyway, since a `bhs:` definition declaring a spectrum would have
+crossed the very line this rule draws. The curve is derived from a declared `LampType` instead, and
+rule 5 stands unamended.
+
 **6 · A local fixture is a slot range, not a universe.** ADR-0012 rule 3(b) is framed as
 *"universes carrying pixels that Mizer has never patched"*, and §4.2 repeats it. The schema never
 supported that reading — a local fixture carries `universe` **and** `address` — so the real rule is
