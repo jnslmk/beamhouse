@@ -159,6 +159,16 @@ tier is a switch rather than a rewrite.
 
   What makes that re-entry *cheap* if it ever happens is §4.3's seam: MVR-xchange would be a
   **delivery**, a station pushing bytes, reusing the `mvr` parser unchanged.
+- **Occlusion, and objects that interact with light.** **[ruled out 2026-09-02 — #43,
+  [ADR-0036](adr/0036-the-ground-plane-is-the-only-surface-light-reaches.md)]** Not a deferral, and
+  no longer an accident of the scene being empty. The ground plane at `y = 0` is the **only** surface
+  light reaches; **an object never emits, never occludes and never receives**. Shadows need a second
+  sample along the ray, which is exactly the fence ADR-0013 item 1 set, and the analytic floor pool
+  is a closed form with nowhere to put an occluder. Stated as a non-claim rather than discovered as a
+  bug: **a beam passes through a musician and lands on the floor unbroken.** The scope guard is
+  written about *light* rather than about content, so it does not need re-litigating each time the
+  primitive kit grows. It moves only if the destination is redrawn — the same shape as ADR-0017's
+  simulated atmosphere.
 - **Being a control surface. Beamhouse never sends DMX.** Mizer is the control surface;
   Beamhouse is the preparation visualiser. The pair is the product.
 - **QLC+ as a *resolved runtime* format.** Settled in
@@ -560,6 +570,14 @@ anywhere in `conversion.rs`, so the 134 cases stay latent on the M5a path: a Miz
 *some* revision of the right fixture type and Beamhouse cannot tell which one the operator patched
 against. Bounded on the MVR side, open on the Mizer side, and stated rather than assumed.
 
+**[added 2026-09-02 — [#43](https://github.com/jnslmk/beamhouse/issues/43),
+[ADR-0035](adr/0035-a-scene-object-is-a-fixture-with-an-empty-dmx-mode.md)]** There is **no
+`objects` block**, and that is a decision rather than an omission. A scene object — a stage, a truss,
+a musician — is a fixture with an empty DMX mode, so it is a `fixtures` entry with a `definition` and
+**no `universe`/`address`**, exactly like the local fixture above but without the addressing half.
+Its id is negative when Beamhouse minted it and its MVR-supplied id when a design tool did. Nothing
+else in this file changes shape.
+
 **[added 2026-09-02 — [#30](https://github.com/jnslmk/beamhouse/issues/30)]** `patch` is a **tagged
 union**, one variant per §4.3 parser, and **only one of them is shareable**:
 
@@ -805,6 +823,19 @@ conflation. Moving Mizer to sACN is [#44](https://github.com/jnslmk/beamhouse/is
 changes no Beamhouse universe number — Art-Net Port-Address 0 → universe 1 and sACN universe 1 →
 universe 1 are the same number
 ([ADR-0029](adr/0029-the-bridge-detects-contention-and-never-arbitrates.md)).
+
+**[corrected 2026-09-02 — [#44](https://github.com/jnslmk/beamhouse/issues/44)] That move makes
+priority real and `Preview_Data` a permanent `false` — it does not make both real.** Mizer's
+`SacnOutput::new` sets a priority and nothing else, and `set_preview_mode` is called **nowhere** in
+Mizer, so the `sacn` crate's `preview_data` stays `false` for the life of the process. Blind
+therefore leaves `null` and never varies again. That is *truthful* — Mizer has no blind concept, so
+"not blind" is the correct claim and a stronger one than `null` — but §13.4's producer does not
+exist on this rig and no toggle will create it. Two further findings from the same reading, both
+recorded on #44: **every Mizer output already sends every universe** (`DmxConnectionManager::flush`
+hands each output the whole buffer), so the two Art-Net entries collapse to one sACN entry and the
+per-connection universe mapping this document implied was never configurable; and the sentence
+above is invisible **above the bridge only** — WLED holds one universe number and compares it raw
+against both protocols, so every receiver's universe must be **incremented by one** at the cutover.
 
 **The real port conflict, and it is narrow.** gled2 binds `("0.0.0.0", 6454)` *without* reuse
 options — its source comments that the input "actually needs to own 6454" — and falls back to an
@@ -1197,6 +1228,40 @@ Both render paths consume that type and no other. The strip's `DataTexture` is a
 that is the point: a deliberate default documents the assumption where a silent one hides it. The
 conversion happens in `resolveColor`, **before** anything reaches `ACESFilmicToneMapping`; the
 tone mapper on unconverted input is the compounding error §8.2 risks.
+
+### 8.4 The floor pool, and the one surface light reaches
+
+**[added 2026-09-02 — [#43](https://github.com/jnslmk/beamhouse/issues/43),
+[ADR-0036](adr/0036-the-ground-plane-is-the-only-surface-light-reaches.md)]** An implicit **ground
+plane at `y = 0`** is the **only** surface light reaches, and it is not a scene object (§14.4) — it
+exists whether or not anything is placed, which is what keeps the pool a render decision independent
+of scene content.
+
+The pool is **additive, and it is not the cone's end.** ADR-0013 item 6 ships one scene-wide beam
+length as a soft shader falloff with **no geometric terminus**, and that is untouched: the cone keeps
+fading in mid-air. The pool is drawn separately on the ground plane —
+
+- **sized** by `BeamAngle`, the full cone angle
+  ([ADR-0013](adr/0013-atmosphere-is-one-closed-form-scattering-term.md) item 8), against the throw
+  distance from the fixture to `y = 0` along the beam axis;
+- **edge-softened** by `FieldAngle` only where the two differ, degenerating to the `BeamType`
+  soft/hard rule — ADR-0013 item 9's cone rule reused, not reinvented;
+- **shaded** by resolved `Dimmer × LinearRGB`.
+
+Throw distance enters the renderer here for the first time, and it is **geometric, not
+photometric**: it sizes an ellipse and attenuates nothing. ADR-0013 item 5's refusal to scale by
+declared `LuminousFlux` is unaffected, and a fixture aimed at or above the horizon simply has no
+intersection and draws no pool.
+
+Two fences hold. The pool **samples no `density(p)`**, so ADR-0013's deferred tier still begins at
+the second sample. And it is **not in §13.5's intensity map**: ADR-0019 shades *emitters* by resolved
+per-emitter intensity, a floor pool is not one, and a lit floor shaded by a relative scale is exactly
+where a viewer would read illuminance in lux into a picture that makes no photometric claim. In
+intensity-map mode the pool renders unchanged.
+
+Where pool and cone meet, neither is authoritative: both are additive contributions into the same HDR
+target in `LinearRGB`, which is what makes their differing edge rules invisible rather than a seam.
+Bloom is therefore tuned **once, after both** — ADR-0013 item 7's ordering, with the pool inside it.
 
 ## 09 · Sharing
 
@@ -1602,7 +1667,7 @@ two priorities ([ADR-0029](adr/0029-the-bridge-detects-contention-and-never-arbi
 | Transport | `transport` | source | control channel only; never in the frame |
 | Arriving | derived | source | frames seen, and at what rate. This is what separates a stray packet from a live console |
 | Priority | `priority` | source | **observed, never enforced** — see below |
-| Blind | `preview` | source | `Preview_Data`. sACN only |
+| Blind | `preview` | source | `Preview_Data`. sACN only — and constant `false` from Mizer, which never sets it |
 | Drops | `drops` | source | job 3's out-of-order count, tracked by the bridge |
 
 **`null` is a third state and must render as one.** Priority and blind are `null` on every Art-Net
@@ -1681,6 +1746,13 @@ that should be at 30% ([ADR-0019](adr/0019-the-intensity-map-is-relative-not-pho
   falloff with no geometric terminus), and no profile on disk carries a credible `LuminousFlux` —
   the Fog Fury declares the GDTF default. **v1 makes no photometric prediction**, and that is a
   stated non-claim rather than a gap.
+
+  **[sharpened 2026-09-02 — #43, [ADR-0036](adr/0036-the-ground-plane-is-the-only-surface-light-reaches.md)]**
+  *"No venue geometry"* is now too strong — there is a ground plane at `y = 0`, a floor pool on it,
+  and a placeable stage, truss and musician (§14.4). The non-claim is unaffected and the reason is
+  sharper: **the pool is not in the intensity map** (§8.4). Shading a lit floor by a relative
+  per-emitter scale is precisely where a viewer would read lux into it, so the one surface v1 draws
+  light on is the one surface the map leaves alone.
 - It is not in ADR-0013's deferred tier: that tier is fenced at the second sample of `density(p)`,
   and a shading swap samples no density.
 
@@ -1788,16 +1860,61 @@ Four of these `§4.4` already said to adopt on sight; #35's survey supplied two 
 
 ### 14.4 What the screen shows besides fixtures
 
-**[opened 2026-09-02 — #35]** An implicit **ground plane at `y = 0`** always exists, and beam pools
-land on it whether or not any scenery is placed — which keeps the pool a *render* decision,
-independent of scene objects. A **stage and human proxies** are wanted as scale reference, and the
-pool is the grandMA3 *spot reflection* fader rather than a lighting solution. Both are
-[#43](https://github.com/jnslmk/beamhouse/issues/43), which also carries the amendment they force
-on [ADR-0013](adr/0013-atmosphere-is-one-closed-form-scattering-term.md)'s finding 6.
+**[opened 2026-09-02 — #35; answered 2026-09-02 — [#43](https://github.com/jnslmk/beamhouse/issues/43)]**
+An implicit **ground plane at `y = 0`** always exists, and beam pools land on it whether or not any
+scenery is placed — which keeps the pool a *render* decision, independent of scene objects. A
+**stage and human proxies** are wanted as scale reference, and the pool is the grandMA3 *spot
+reflection* fader rather than a lighting solution.
 
-Fixtures and objects share **one selection space and one command layer** — you can select a
-musician and a mover together and align them — but a **separate `Objects` tab**, because the
-Fixtures table's columns are patch columns and a human proxy has none of them.
+**A scene object is a fixture with an empty DMX mode**
+([ADR-0035](adr/0035-a-scene-object-is-a-fixture-with-an-empty-dmx-mode.md)) — the format's own
+answer, read off `EMEX7`'s seven human proxies on GDTF Share, whose `Description` is literally
+`"Environment from MVR"` and whose bodies carry zero attributes, zero emitters and an empty
+`<DMXChannels/>`. So there is **no object model**: an object resolves through the definition path,
+carries a **placement** and nothing else, and is distinguished from a lamp by one predicate — **it
+has no address**. Four designs stop existing rather than getting built: identity is
+[ADR-0003](adr/0003-fixture-id-is-the-only-identity.md) with an ADR-0012 **negative id**, and since
+no patch mentions an object nothing collides and nothing orphans; there is **no `objects` block** in
+the `.bhs` (§4.5); a share link carries objects free, because ADR-0031's `snapshot` already resolves
+`PrimitiveType` and bounding box per definition; and the **`Objects` tab is a filter** on the
+Fixtures table, the predicate *has no address*, which is what makes
+[ADR-0032](adr/0032-the-m3a-viewer-is-read-only.md) rule 5's *"`Objects` joins it when non-empty"* a
+one-line change on the phone.
+
+Fixtures and objects therefore share **one selection space and one command layer** by construction
+rather than by design — you can select a musician and a mover together and align them, because both
+are fixtures — and the tab is separate because the table's patch columns are empty for an object,
+not because there is a second thing to list. `object.place` stays a named command
+([ADR-0026](adr/0026-the-control-channel-carries-requests-only-one-class-is-a-command.md)) and
+**lowers onto `define` + `fixture.add`** (§15.2).
+
+**The kit is GDTF's own primitive set.** `Cube`, `Cylinder` and `Sphere` are generated procedurally
+(§5.1) and are the whole kit — a **plane is a flattened `Cube`**, since GDTF's enum has no `Plane`.
+A stage is a `Cube`. A truss needs nothing at all: `BakaCowpoke Truss 10ft 12x18in` is 16 KB of 46
+`<Geometry>` nodes over `Cylinder` cords and `Cube` gusset plates, drawn by the proxy-geometry path
+ADR-0031 made primary. The **human proxy is a box** at EMEX7's own measured dimensions,
+**0.64 × 0.59 × 1.77 m**, shipped as a `bhs:` definition: `PrimitiveType="Undefined"` plus a `.3ds`
+renders as an empty transform node, ADR-0001 forbids shipping EMEX7's profile, and v1 has no mesh
+loader. Meshes arrive with the deferred GLB drag-and-drop (§01) and never before. A 1.77 m box
+answers *"is the beam on the singer"*, which §13.5's non-claim posture already established as the
+right kind of honesty.
+
+**An object never emits, never occludes and never receives**
+([ADR-0036](adr/0036-the-ground-plane-is-the-only-surface-light-reaches.md)). The ground plane is
+the only surface light reaches, and it is not an object. That is the scope guard, written about
+*light* rather than about content, so a growing kit never reopens it — and the stated non-claim is
+that **a beam passes through a musician and lands on the floor unbroken**, beside §13.5's
+photometric one. It is more visible now that the proxy is a box, and that is the honest reading of
+what v1 computes.
+
+**An MVR ingest places all six `GDTFSpec` node types and patches only what carries an address.**
+`SceneObject`, `Truss`, `Support`, `VideoScreen` and `Projector` resolve out of the archive exactly
+as a `Fixture` does (ADR-0030) and land in the Objects filter; a `Fixture` node with **no `GDTFSpec`
+at all** becomes an object with a name and a matrix, rendering
+[ADR-0034](adr/0034-an-unresolved-definition-is-a-marked-fixture-not-a-missing-one.md)'s fixed
+marker. These keep their **MVR-supplied ids, positive** — an object authored elsewhere must survive
+that tool's next export, so it goes through ADR-0020's ingest ladder like any other MVR fixture. The
+negative keyspace stays *what Beamhouse minted*, not *this is an object*.
 
 ### 14.5 Still owed
 
@@ -1939,6 +2056,14 @@ Three of the rows are load-bearing beyond their own behaviour:
 - **`object.place` is a command *class* whose parameter space is
   [#43](https://github.com/jnslmk/beamhouse/issues/43)'s to fill.** Naming it now is what keeps
   #43 from inventing a parallel path into scene state.
+
+  **[filled 2026-09-02 — #43, [ADR-0035](adr/0035-a-scene-object-is-a-fixture-with-an-empty-dmx-mode.md)]**
+  Its parameters are **(definition, placement)** — what `fixture.add` takes, minus the address —
+  because a scene object *is* a fixture with an empty DMX mode (§14.4). It stays a named command,
+  since *place a musician* is a real affordance that must be one undo entry and one agent tool, and
+  it **lowers onto `define` + `fixture.add`**, the way `rotate`'s `pivot` lowers onto ADR-0012's
+  stored transform. It writes `definitions` and `fixtures`, not an `objects` block — there is none.
+  `object.remove(id)` is `fixture.remove(id)` on a negative id.
 - **`camera.saveView` is a command and the camera *pose* is not.** A named view is stored in the
   `.bhs` and survives a reload; anything that writes the `.bhs` and is not `patch` is a command.
 

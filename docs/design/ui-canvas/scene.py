@@ -151,29 +151,26 @@ def _star(sel=False, stale_idx=(), handles=False):
 
 
 def _musician(x, y, h):
-    """A human proxy: head, torso, legs. Scale reference, not a character."""
-    hd = h * 0.145                      # head radius
-    hy = y - h + hd                     # head centre
-    sy = y - h + hd * 2.4               # shoulder line
-    hipy = y - h * 0.42                 # hip line
-    sw = h * 0.150                      # half shoulder width
-    hw = h * 0.105                      # half hip width
-    lw = h * 0.055                      # limb width
-    torso = ('M%.1f %.1f Q%.1f %.1f %.1f %.1f L%.1f %.1f Q%.1f %.1f %.1f %.1f Z'
-             % (x - sw, sy, x, sy - h * 0.055, x + sw, sy,
-                x + hw, hipy, x, hipy + h * 0.035, x - hw, hipy))
-    legs = ('M%.1f %.1f L%.1f %.1f M%.1f %.1f L%.1f %.1f'
-            % (x - hw * 0.55, hipy, x - hw * 0.75, y,
-               x + hw * 0.55, hipy, x + hw * 0.75, y))
-    return ('<g fill="oklch(0.330 0.011 75)" stroke="oklch(0.475 0.013 75)" '
-            'stroke-width="0.9" stroke-linejoin="round">'
-            '<circle cx="%.1f" cy="%.1f" r="%.1f"/>'
-            '<path d="%s"/>'
-            '<path d="%s" fill="none" stroke="oklch(0.330 0.011 75)" stroke-width="%.1f" '
-            'stroke-linecap="round"/>'
-            '<path d="%s" fill="none" stroke="oklch(0.475 0.013 75)" stroke-width="0.9" '
-            'stroke-linecap="round"/></g>'
-            % (x, hy, hd, torso, legs, lw, legs))
+    """A human proxy: a box at EMEX7's own measured dimensions.
+
+    ADR-0035: `PrimitiveType="Undefined"` plus a `.3ds` renders as an empty transform node
+    and v1 has no mesh loader, so the proxy is the bounding box the `<Model>` declares --
+    0.64 x 0.59 x 1.77 m. Width and depth are that ratio against the drawn height; the top
+    face is what keeps it reading as a box rather than a rectangle.
+    """
+    w = h * (0.644898 / 1.769315) / 2      # half width  -- 0.182 h
+    d = h * (0.593438 / 1.769315) * 0.42   # foreshortened depth of the top face
+    top = y - h
+    face = ('<path d="M%.1f %.1f L%.1f %.1f L%.1f %.1f L%.1f %.1f Z"'
+            % (x - w, top, x + w, top, x + w, y, x - w, y))
+    lid = ('<path d="M%.1f %.1f L%.1f %.1f L%.1f %.1f L%.1f %.1f Z"'
+           % (x - w, top, x - w + d * 0.62, top - d, x + w + d * 0.62, top - d, x + w, top))
+    side = ('<path d="M%.1f %.1f L%.1f %.1f L%.1f %.1f L%.1f %.1f Z"'
+            % (x + w, top, x + w + d * 0.62, top - d, x + w + d * 0.62, y - d, x + w, y))
+    return ('<g stroke="oklch(0.475 0.013 75)" stroke-width="0.9" stroke-linejoin="round">'
+            '%s fill="oklch(0.330 0.011 75)"/>'
+            '%s fill="oklch(0.288 0.010 75)"/>'
+            '%s fill="oklch(0.372 0.012 75)"/></g>' % (face, side, lid))
 
 
 def _dimmers():

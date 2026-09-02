@@ -4,6 +4,7 @@
 - **Date:** 2026-09-02
 - **Decides:** [#28](https://github.com/jnslmk/beamhouse/issues/28)
 - **Amends:** [ADR-0010](0010-resolution-is-total-the-renderer-selects-by-attribute.md)
+- **Amended by:** [ADR-0036](0036-the-ground-plane-is-the-only-surface-light-reaches.md) (2026-09-02) — finding 6
 
 ## Context
 
@@ -64,6 +65,17 @@ turned up a defect.
    cuts both ways: it removes occlusion as a v1 question, and it means the atmosphere term is
    doing **all** of the work of making a beam legible, since there is no lit surface to infer one
    from.
+
+   > **[Amended 2026-09-02 by [ADR-0036](0036-the-ground-plane-is-the-only-surface-light-reaches.md)]**
+   > Something catches a beam now. An **implicit ground plane at `y = 0`** and an analytic floor
+   > pool ship, and [ADR-0035](0035-a-scene-object-is-a-fixture-with-an-empty-dmx-mode.md) puts a
+   > stage, a truss and a musician in the scene. Both halves of this finding move, and the decision
+   > survives both. **Occlusion stays absent — but by decision, not by absence**: shadows need the
+   > second sample of `density(p)` that decision 1 fenced off, and an object never emits, occludes
+   > or receives. And the atmosphere term now does **most** of the work rather than all of it,
+   > which weakens this ADR's case for shipping haze without breaking it — a pool appears only
+   > where a beam meets the floor, so an up-lit or side-lit rig still has nothing else. The pool is
+   > **additive and not the cone's end**: item 6's *no geometric terminus* is untouched.
 
 ## Decision
 

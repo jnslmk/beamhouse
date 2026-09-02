@@ -4,6 +4,7 @@
 - **Date:** 2026-09-02
 - **Decides:** [#37](https://github.com/jnslmk/beamhouse/issues/37)
 - **Amends:** [ADR-0015](0015-agent-control-is-mcp-over-the-bridge-control-channel.md), [ADR-0016](0016-every-scene-mutation-is-one-undo-grained-command.md)
+- **Amended by:** [ADR-0035](0035-a-scene-object-is-a-fixture-with-an-empty-dmx-mode.md) (2026-09-02) — `object.place`
 
 ## Context
 

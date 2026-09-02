@@ -125,6 +125,31 @@ negative**, which Mizer's `u32` cannot represent, so it can never collide with a
 ([ADR-0012](docs/adr/0012-beamhouse-may-define-pixels-placement-mints-nothing.md)).
 _Avoid_: virtual fixture, synthetic fixture, unpatched fixture
 
+**Scene object**:
+A stage, truss, screen or human proxy — scale reference, not a lamp. It is **a fixture with an empty
+DMX mode**, which is the GDTF format's own answer and not a metaphor: `EMEX7`'s seven `Person …`
+profiles on GDTF Share carry zero attributes, zero emitters and an empty `<DMXChannels/>`. So it
+resolves through the definition path, carries a **placement**, and is told apart from a lamp by one
+predicate — **it has no address**. There is no object model, no object keyspace and no `objects`
+block ([ADR-0035](docs/adr/0035-a-scene-object-is-a-fixture-with-an-empty-dmx-mode.md)). It **never
+emits, never occludes and never receives**: the **ground plane** is the only surface light reaches
+([ADR-0036](docs/adr/0036-the-ground-plane-is-the-only-surface-light-reaches.md)).
+_Avoid_: prop, scenery, venue geometry, mesh
+
+**Ground plane**:
+The implicit surface at `y = 0`. It is **not** a scene object — it exists whether or not anything is
+placed, which is what keeps the **pool** a render decision independent of scene content, and it is
+the only surface v1 draws light on.
+_Avoid_: floor object, stage (that is a placeable `Cube`)
+
+**Pool**:
+The beam's ellipse on the **ground plane** — grandMA3's *spot reflection*, an effect rather than a
+lighting solution. **Additive, and not the cone's end**: the cone keeps ADR-0013's soft falloff and
+no geometric terminus. Sized by `BeamAngle` against throw distance, edge-softened by `FieldAngle`
+only where the two differ, shaded by resolved `Dimmer × LinearRGB`. Samples no `density(p)`, and is
+**not in the intensity map**.
+_Avoid_: spot reflection (that is grandMA3's name for it), floor wash, light pool
+
 **Override**:
 A placement stored apart from the patch and keyed by fixture id, so that re-reading a changed
 patch merges into it instead of destroying it.

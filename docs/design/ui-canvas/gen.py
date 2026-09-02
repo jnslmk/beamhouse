@@ -337,7 +337,7 @@ def a_array():
 
 # ---- overlay ---------------------------------------------------------------
 
-def tabs(active, issues=0, dim=("Objects",)):
+def tabs(active, issues=0, dim=(), objects=6):
     names = ["Fixtures", "Objects", "Universes", "History", "Issues"]
     out = []
     for n in names:
@@ -349,8 +349,9 @@ def tabs(active, issues=0, dim=("Objects",)):
         ct = ""
         if n == "Issues" and issues:
             ct = '<span class="ct bad">%d</span>' % issues
-        if n == "Objects" and n in dim:
-            ct = '<span class="ct">—</span>'
+        if n == "Objects":
+            ct = ('<span class="ct">%d</span>' % objects) if objects else \
+                 '<span class="ct">—</span>'
         out.append('<div class="%s">%s%s</div>' % (cls, n, ct))
     return '<div class="tabs">%s</div>' % ''.join(out)
 
@@ -431,6 +432,45 @@ def fixtures_tab():
             '<span style="color:var(--lo)">1 unpatched</span><span style="color:var(--sel)">1 override</span></div>' % (head, ''.join(rows)))
 
 
+OBJ_ROWS = [
+    ("−20", "Stage deck", "bhs:", "stage", "Cube", "8.00 × 4.00 × 0.60 m", "0.00, 0.00, 0.00"),
+    ("−21", "Singer", "bhs:", "human", "Cube", "0.64 × 0.59 × 1.77 m", "0.00, 0.00, −1.20"),
+    ("−22", "Guitar SL", "bhs:", "human", "Cube", "0.64 × 0.59 × 1.77 m", "−2.10, 0.00, −0.40"),
+    ("−23", "Drums SR", "bhs:", "human", "Cube", "0.64 × 0.59 × 1.77 m", "2.30, 0.00, −0.10"),
+    ("14", "Truss FOH", "gdtf:", "BakaCowpoke Truss 10ft 12x18in", "Cylinder · Cube",
+     "3.05 × 0.46 × 0.30 m", "0.00, 5.60, 1.80"),
+    ("15", "Backdrop", None, None, None, None, "0.00, 0.00, 4.20"),
+]
+
+
+def objects_tab():
+    head = ('<thead><tr><th style="width:34px"></th><th style="width:56px">ID</th>'
+            '<th style="width:196px">Name</th><th style="width:300px">Definition</th>'
+            '<th style="width:132px">Primitive</th><th style="width:186px">Extent</th>'
+            '<th>Position</th></tr></thead>')
+    rows = []
+    for fid, name, pfx, defn, prim, ext, pos in OBJ_ROWS:
+        g = "" if defn else gl_nodef(12, "var(--bad)")
+        if defn:
+            dcell = '<span class="pfx">%s</span>%s' % (pfx, defn)
+            pcell, ecell = prim, ext
+        else:
+            dcell = ('<span class="mut">No GDTFSpec</span><span style="color:var(--bad);'
+                     'margin-left:8px;font-size:10px;letter-spacing:.09em">MARKER</span>')
+            pcell = '<span class="mut">—</span>'
+            ecell = '<span class="mut">—</span>'
+        rows.append('<tr><td style="text-align:center">%s</td><td class="m">%s</td>'
+                    '<td class="name">%s</td><td>%s</td><td>%s</td><td class="m">%s</td>'
+                    '<td class="m">%s</td></tr>'
+                    % (g, fid, name, dcell, pcell, ecell, pos))
+    return ('<div class="tbody"><table>%s<tbody>%s</tbody></table></div>'
+            '<div class="pfoot"><span>6 objects</span>'
+            '<span style="color:var(--lo)">no address · never emits, occludes or receives</span>'
+            '<span style="color:var(--bad)">1 marker</span>'
+            '<span style="color:var(--lo)">2 from stage-left.mvr</span></div>'
+            % (head, ''.join(rows)))
+
+
 UNI_ROWS = [
     ("1", "sACN", "44 Hz", None, "100", "no", "0", "contended"),
     ("2", "sACN", "44 Hz", None, "100", "no", "0", None),
@@ -504,6 +544,16 @@ def a_overlay():
           chip("Cam", "Front")]
     body = (overlay_frame("Fixtures", fixtures_tab(), c1, issues=4, editable=True) +
             overlay_frame("Universes", universes_tab(), c2, issues=4))
+    return page(EXTRA_CSS, body, height=900)
+
+
+def a_objects():
+    c = [chip("Feed", "live"), chip("Univ", "5 · 1 stale", "warn"),
+         chip("Patch", "warehouse.yml · 4", "bad"), chip("Sel", "1 · Singer", "on"),
+         chip("Render", "normal"), chip("Hold", "off", "mute"), chip("Snap", "0.1 m"),
+         chip("Cam", "Front")]
+    body = overlay_frame("Objects", objects_tab(), c, issues=4, editable=True,
+                         what="objects")
     return page(EXTRA_CSS, body, height=900)
 
 
@@ -683,6 +733,7 @@ FILES = {
     "Place.dc.html": a_place,
     "Array.dc.html": a_array,
     "Overlay.dc.html": a_overlay,
+    "Objects.dc.html": a_objects,
     "HistoryIssues.dc.html": a_history_issues,
     "Phone.dc.html": a_phone,
     "PhoneLandscape.dc.html": a_phone_land,
@@ -703,6 +754,8 @@ CANVAS = {
          "title": "The overlay · Fixtures, Universes"},
         {"file": "HistoryIssues.dc.html", "x": 1520, "y": 2040, "w": 1440, "h": 1800,
          "title": "The overlay · History, Issues"},
+        {"file": "Objects.dc.html", "x": 3040, "y": 2940, "w": 1440, "h": 900,
+         "title": "The overlay · Objects"},
         {"file": "Phone.dc.html", "x": 0, "y": 2040, "w": 390, "h": 1688,
          "title": "The M3a viewer · 390 px portrait"},
         {"file": "PhoneLandscape.dc.html", "x": 0, "y": 3860, "w": 844, "h": 390,
@@ -754,6 +807,23 @@ CANVAS = {
                  "commands are marked — the only place the second editor is visible at all.\n"
                  "Issues is one inbox for everything an ingest could not reconcile: ADR-0012's "
                  "extent mismatch, ADR-0020's synthesised ids, orphaned overrides, patch overlaps."},
+        {"id": "n-objects", "x": 3040, "y": 3872, "w": 1440,
+         "text": "#43. There is no object model. EMEX7 publishes seven human proxies on GDTF "
+                 "Share whose own Description is 'Environment from MVR' and whose bodies are "
+                 "empty everywhere a lamp is full \u2014 zero attributes, zero emitters, an "
+                 "empty <DMXChannels/>. So a SCENE OBJECT IS A FIXTURE WITH AN EMPTY DMX MODE, "
+                 "and this is not a second table: it is the fixtures table filtered on 'has no "
+                 "address', with the patch columns replaced by the definition ones.\n"
+                 "Ids follow from that: negative for what Beamhouse minted (ADR-0012), the "
+                 "MVR-supplied id for what a design tool authored. Backdrop is an MVR Fixture "
+                 "node with NO GDTFSpec at all \u2014 a name and a matrix \u2014 so it renders "
+                 "ADR-0034's fixed marker, because there is no definition to size it from.\n"
+                 "The human proxy is a 0.64 x 0.59 x 1.77 m BOX, EMEX7's own measured bounding "
+                 "box: PrimitiveType='Undefined' plus a .3ds renders as an empty transform node, "
+                 "v1 has no mesh loader, and ADR-0001 forbids shipping their profile. A truss "
+                 "needs nothing \u2014 it is 46 Geometry nodes over Cylinder cords and Cube "
+                 "gusset plates, drawn by the proxy path already. An object NEVER EMITS, "
+                 "OCCLUDES OR RECEIVES; the ground plane is the only surface light reaches."},
         {"id": "n-phone", "x": 0, "y": 4340, "w": 844,
          "text": "#40. There is no degradation ladder. Every GDTF on this rig ships ZERO "
                  "meshes, so proxy geometry is the render path on the sender\u2019s desktop "

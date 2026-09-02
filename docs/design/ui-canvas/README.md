@@ -14,22 +14,31 @@ These are **mockups, not components**. Nothing here is meant to be imported; it 
 when M3 builds the scene editor, the numbers do not have to be reinvented or guessed from a
 screenshot. Lift the values, not the markup.
 
-## The nine artboards
+## The ten artboards
 
 | Artboard | Shows | Embodies |
 | --- | --- | --- |
 | [`Empty`](renders/Empty.png) | First run: the empty grid, the patch picker, and the refusal message for a file Beamhouse cannot resolve | ADR-0023, [ADR-0020](../../adr/0020-the-live-loop-serves-patch-files-not-consoles.md) |
-| [`Main`](renders/Main.png) | Resting, bridge-local: the rig live, on the implicit ground plane, with pools and human proxies | ADR-0023 |
+| [`Main`](renders/Main.png) | Resting, bridge-local: the rig live, on the implicit ground plane, with pools and human proxies | ADR-0023, [ADR-0036](../../adr/0036-the-ground-plane-is-the-only-surface-light-reaches.md) |
 | [`Trouble`](renders/Trouble.png) | The same screen with a stale universe, a patch overlap, an unpatched fixture and a missing definition | ADR-0025 |
 | [`Place`](renders/Place.png) | Placing a fixture: gizmo, numeric entry, and the override reading *as* an override | ADR-0024, ADR-0025 |
 | [`Array`](renders/Array.png) | A live radial array — the STAR-TENT's ten spokes, five flipped 180° ([#23](https://github.com/jnslmk/beamhouse/issues/23)) | [ADR-0016](../../adr/0016-every-scene-mutation-is-one-undo-grained-command.md) |
 | [`Overlay`](renders/Overlay.png) | The overlay at **Fixtures** (top) and **Universes** (bottom) — the notation package and §13.2 verbatim | ADR-0023, [ADR-0018](../../adr/0018-signal-health-is-one-per-universe-snapshot.md) |
+| [`Objects`](renders/Objects.png) | The overlay at **Objects** — the same table filtered on *has no address*, not a second one | [ADR-0035](../../adr/0035-a-scene-object-is-a-fixture-with-an-empty-dmx-mode.md), [ADR-0034](../../adr/0034-an-unresolved-definition-is-a-marked-fixture-not-a-missing-one.md) |
 | [`HistoryIssues`](renders/HistoryIssues.png) | The overlay at **History** (top, agent commands marked) and **Issues** (bottom, the ingest inbox) | ADR-0016, ADR-0025 |
 | [`Phone`](renders/Phone.png) | The M3a share-link viewer at 390 px — resting (top) and one fixture tapped (bottom) | [ADR-0031](../../adr/0031-a-share-link-carries-resolved-definitions.md), [ADR-0032](../../adr/0032-the-m3a-viewer-is-read-only.md) |
 | [`PhoneLandscape`](renders/PhoneLandscape.png) | The same viewer turned sideways — 844 × 390, the only orientation the rig fits | ADR-0032 |
 
 `Overlay` and `HistoryIssues` are 1440 × 1800 — two 900 px frames stacked, one per tab. `Phone`
 is 390 × 1688, two 844 px frames stacked; `PhoneLandscape` is 844 × 390. The rest are 1440 × 900.
+
+**[updated 2026-09-02 — [#43](https://github.com/jnslmk/beamhouse/issues/43)]** The human proxies in
+`Main`, `Trouble`, `Place` and `Array` are **boxes** at EMEX7's own measured bounding box,
+0.64 × 0.59 × 1.77 m — they were drawn as figures while #43 was open, and
+[ADR-0035](../../adr/0035-a-scene-object-is-a-fixture-with-an-empty-dmx-mode.md) settled that v1 has
+no mesh loader. The beams visibly pass **through** them and land on the floor unbroken, which is
+[ADR-0036](../../adr/0036-the-ground-plane-is-the-only-surface-light-reaches.md)'s stated non-claim
+drawn rather than described.
 
 ## Design tokens
 
