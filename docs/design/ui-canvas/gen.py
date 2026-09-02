@@ -251,7 +251,7 @@ def a_trouble():
     ])
     chips = [
         chip("Feed", "live"), chip("Univ", "5 · 1 stale", "warn"),
-        chip("Patch", "warehouse.yml · 4", "bad"), chip("Sel", "—", "mute"),
+        chip("Patch", "warehouse.yml · 3", "bad"), chip("Sel", "—", "mute"),
         chip("Render", "normal"), chip("Hold", "off", "mute"), chip("Snap", "0.1 m"),
         chip("Cam", "Front"),
     ]
@@ -372,6 +372,18 @@ def phead(title, editable=False, what="fixtures"):
             '</div>' % (title, SEARCH(what), tg, cols))
 
 
+# The reference rig, as the console patches it, plus one local fixture.
+#
+# Fixture −1 "Tube FOH" is the only ILLUSTRATIVE row here: `bhs:` has no instance on
+# this rig (ADR-0038's own consequence), so a gled2-driven tube stands in for the one
+# case the format is scoped to — pixels on the wire that no console has patched. Its
+# 35 px at 33 mm pitch are plausible, not measured: 35 px is DESIGN.md §05's worked
+# example and 33 mm is a 30 LED/m strip. Nothing may cite them as a measurement.
+#
+# The ten spokes are `ofl:beamhouse:wled-star-tent-spoke-23px`, which is what the
+# Mizer patch names today. ADR-0033 re-patches them onto an authored `gdtf:` once
+# #46 writes the file; the prefix changes here then, and not before — a definition
+# id that resolves to nothing is ADR-0034's marker case inflicted on purpose.
 FIX_ROWS = [
     ("", "1", "Mover SL", "1.1", "gdtf:", "GLP impression 90 RGB", "14ch Normal", None, None),
     ("", "2", "Mover SR", "1.15", "gdtf:", "GLP impression 90 RGB", "14ch Normal", None, None),
@@ -384,11 +396,15 @@ FIX_ROWS = [
     ("conflict", "8", "Dimmer A", "1.100", "ofl:", "Generic Dimmer", "1ch", None, None),
     ("conflict", "9", "Dimmer B", "1.100", "ofl:", "Generic Dimmer", "1ch", None, None),
     ("unpatched", "10", "Blinder", None, "ofl:", "Generic Dimmer", "1ch", None, None),
-    ("", "101", "Spoke 1", "2.30", "bhs:", "spoke23", "3 ch/px · 23", None, None),
-    ("", "102", "Spoke 2", "2.99", "bhs:", "spoke23", "3 ch/px · 23", None, None),
-    ("", "107", "Spoke 7", "2.444", "bhs:", "spoke23", "3 ch/px · 23", None, None),
-    ("", "108", "Spoke 8", "3.1", "bhs:", "spoke23", "3 ch/px · 23", None, None),
-    ("", "−1", "Tube FOH", "4.400", "bhs:", "tube60", "3 ch/px · 60", "5.1", "3 ch/px · 60"),
+    ("", "101", "Spoke 1", "2.30", "ofl:", "WLED STAR-TENT Spoke 23px",
+     "23px RGB 69-channel", None, None),
+    ("", "102", "Spoke 2", "2.99", "ofl:", "WLED STAR-TENT Spoke 23px",
+     "23px RGB 69-channel", None, None),
+    ("", "107", "Spoke 7", "2.444", "ofl:", "WLED STAR-TENT Spoke 23px",
+     "23px RGB 69-channel", None, None),
+    ("", "108", "Spoke 8", "3.1", "ofl:", "WLED STAR-TENT Spoke 23px",
+     "23px RGB 69-channel", None, None),
+    ("", "−1", "Tube FOH", "4.400", "bhs:", "tube35", "3 ch/px · 35", None, None),
 ]
 
 
@@ -426,8 +442,8 @@ def fixtures_tab():
                     '<td class="m">%s</td><td>%s</td></tr>'
                     % (cls, g, fid, name, cell_addr, dcell, mode, c2, c3))
     return ('<div class="tbody"><table>%s<tbody>%s</tbody></table></div>'
-            '<div class="pfoot"><span>21 fixtures</span><span>964 ch patched</span>'
-            '<span>5 universes</span><span style="color:var(--bad)">1 overlap</span>'
+            '<div class="pfoot"><span>21 fixtures</span><span>889 ch patched</span>'
+            '<span>4 universes</span><span style="color:var(--bad)">1 overlap</span>'
             '<span style="color:var(--bad)">1 definition missing</span>'
             '<span style="color:var(--lo)">1 unpatched</span><span style="color:var(--sel)">1 override</span></div>' % (head, ''.join(rows)))
 
@@ -535,24 +551,24 @@ def overlay_frame(tab_name, content, chips, issues=0, editable=False, title="Rig
 
 def a_overlay():
     c1 = [chip("Feed", "live"), chip("Univ", "5 · 1 stale", "warn"),
-          chip("Patch", "warehouse.yml · 4", "bad"), chip("Sel", "1 · Tube FOH", "on"),
+          chip("Patch", "warehouse.yml · 3", "bad"), chip("Sel", "1 · Tube FOH", "on"),
           chip("Render", "normal"), chip("Hold", "off", "mute"), chip("Snap", "0.1 m"),
           chip("Cam", "Front")]
     c2 = [chip("Feed", "live"), chip("Univ", "5 · 1 stale", "warn"),
-          chip("Patch", "warehouse.yml · 4", "bad"), chip("Sel", "—", "mute"),
+          chip("Patch", "warehouse.yml · 3", "bad"), chip("Sel", "—", "mute"),
           chip("Render", "normal"), chip("Hold", "off", "mute"), chip("Snap", "0.1 m"),
           chip("Cam", "Front")]
-    body = (overlay_frame("Fixtures", fixtures_tab(), c1, issues=4, editable=True) +
-            overlay_frame("Universes", universes_tab(), c2, issues=4))
+    body = (overlay_frame("Fixtures", fixtures_tab(), c1, issues=3, editable=True) +
+            overlay_frame("Universes", universes_tab(), c2, issues=3))
     return page(EXTRA_CSS, body, height=900)
 
 
 def a_objects():
     c = [chip("Feed", "live"), chip("Univ", "5 · 1 stale", "warn"),
-         chip("Patch", "warehouse.yml · 4", "bad"), chip("Sel", "1 · Singer", "on"),
+         chip("Patch", "warehouse.yml · 3", "bad"), chip("Sel", "1 · Singer", "on"),
          chip("Render", "normal"), chip("Hold", "off", "mute"), chip("Snap", "0.1 m"),
          chip("Cam", "Front")]
-    body = overlay_frame("Objects", objects_tab(), c, issues=4, editable=True,
+    body = overlay_frame("Objects", objects_tab(), c, issues=3, editable=True,
                          what="objects")
     return page(EXTRA_CSS, body, height=900)
 
@@ -562,9 +578,10 @@ HIST = [
     ("14:01:47", "agent", "Radial array “star” · radius 2.40 m → 2.65 m", "10 fixtures"),
     ("14:00:12", "you", "Move Mover MR → 2.40, 5.10, −3.40", "1 fixture"),
     ("13:59:30", "you", "Place stage · 8.0 × 4.0 m", "1 object"),
-    ("13:58:03", "ingest", "Read patch warehouse.yml", "20 fixtures · 3 issues"),
+    ("13:58:03", "ingest", "Read patch warehouse.yml", "20 fixtures · 2 issues"),
     ("13:57:10", "ingest", "Import stage-left.mvr", "3 fixtures · 1 issue"),
-    ("13:55:20", "you", "Define bhs:tube60 · 60 px @ 65 mm", "1 definition"),
+    ("13:55:20", "you", "Add local fixture · bhs:tube35 · 35 px @ 33 mm",
+     "1 fixture · 1 definition"),
     ("13:54:02", "you", "New scene", ""),
 ]
 
@@ -600,11 +617,6 @@ ISSUES = [
      "fixture draws as a placeholder at its patched position and nothing more.",
      "warehouse.yml · read 13:58:03",
      [("Locate profile…", 1), ("Keep placeholder", 0)]),
-    ("warn", "unpatched", "Extent mismatch",
-     "<code>bhs:tube60</code> declares 60 px (180 ch); the patch allots 120 ch at 4.400.",
-     "The definition wins for rendering, the patch for addressing — so 20 px are drawn with "
-     "no channel behind them. Not truncated silently.", "scene · bhs definition",
-     [("Edit definition", 1), ("Repatch", 0)]),
     ("ovr", "ovr", "Fixture id synthesised",
      "<code>stage-left.mvr</code> omitted FixtureID for 3 fixtures; ids 1001–1003 were minted.",
      "Overrides were matched back by the stored uuid hint, so nothing was lost. A re-import "
@@ -626,18 +638,18 @@ def issues_tab():
                     '<div class="acts">%s</div></div></div>'
                     % (gmap[g](15, c), title, c, kind, para, src, a))
     return ('<div class="tbody">%s</div>'
-            '<div class="pfoot"><span>4 open</span>'
+            '<div class="pfoot"><span>3 open</span>'
             '<span>Everything the last ingest could not reconcile — surfaced, never truncated'
             '</span></div>' % ''.join(rows))
 
 
 def a_history_issues():
     c1 = [chip("Feed", "live"), chip("Univ", "5 · 1 stale", "warn"),
-          chip("Patch", "warehouse.yml · 4", "bad"), chip("Sel", "—", "mute"),
+          chip("Patch", "warehouse.yml · 3", "bad"), chip("Sel", "—", "mute"),
           chip("Render", "normal"), chip("Hold", "off", "mute"), chip("Snap", "0.1 m"),
           chip("Cam", "Front")]
-    body = (overlay_frame("History", history_tab(), c1, issues=4) +
-            overlay_frame("Issues", issues_tab(), c1, issues=4))
+    body = (overlay_frame("History", history_tab(), c1, issues=3) +
+            overlay_frame("Issues", issues_tab(), c1, issues=3))
     return page(EXTRA_CSS, body, height=900)
 
 
@@ -799,14 +811,28 @@ CANVAS = {
                  "fixture shows empty columns rather than a different UI; patch errors as "
                  "in-cell glyphs, never modals; Editable as a toggle on the table itself.\n"
                  "Universes is §13.2 verbatim. '—' is a third state: Art-Net carries no "
-                 "priority and no Preview_Data, and UNKNOWN is not the same claim as NOT BLIND."},
+                 "priority and no Preview_Data, and UNKNOWN is not the same claim as NOT BLIND.\n"
+                 "Fixture \u22121 is the one LOCAL FIXTURE: a negative id in mono with a real "
+                 "minus sign, allocated and never typed (ADR-0039), naming a bhs: definition "
+                 "that only it can reach \u2014 bhs: binds one way and never appears on a "
+                 "positive id (ADR-0038). It carries ONE universe and address, so the second "
+                 "break reads Unpatched; 35 px x 3 ch from 4.400 ends at slot 504. The 35 and "
+                 "the 33 mm pitch are ILLUSTRATIVE: bhs: has no instance on this rig.\n"
+                 "The two counts differ on purpose: the patch spans 4 universes, 5 are "
+                 "subscribed. The bridge listens to what the show network carries."},
         {"id": "n-history", "x": 1520, "y": 3912, "w": 1440,
          "text": "History exists because of one scenario ADR-0016 names: it is 4pm and an agent "
                  "just rotated the wrong five spokes. Blind ⌘Z against an editor you don't have "
                  "your hands on is the panic; seeing how far back to go is the fix. Agent-driven "
                  "commands are marked — the only place the second editor is visible at all.\n"
-                 "Issues is one inbox for everything an ingest could not reconcile: ADR-0012's "
-                 "extent mismatch, ADR-0020's synthesised ids, orphaned overrides, patch overlaps."},
+                 "Issues is one inbox for everything AN INGEST could not reconcile: ADR-0020's "
+                 "synthesised ids, orphaned overrides, patch overlaps.\n"
+                 "ADR-0012's extent mismatch was the third row and is gone (ADR-0038): it "
+                 "needed a patch and a bhs: definition disagreeing, and that binding is "
+                 "removed. Its replacement, a universe over-run on a local fixture, is caught "
+                 "WHEN THE ADDRESS IS TYPED \u2014 nothing has ingested it, and \u00a714.1 rides "
+                 "the count on Patch precisely because every issue class originates in an "
+                 "ingest. So no row replaces it."},
         {"id": "n-objects", "x": 3040, "y": 3872, "w": 1440,
          "text": "#43. There is no object model. EMEX7 publishes seven human proxies on GDTF "
                  "Share whose own Description is 'Environment from MVR' and whose bodies are "

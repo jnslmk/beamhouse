@@ -23,9 +23,9 @@ screenshot. Lift the values, not the markup.
 | [`Trouble`](renders/Trouble.png) | The same screen with a stale universe, a patch overlap, an unpatched fixture and a missing definition | ADR-0025 |
 | [`Place`](renders/Place.png) | Placing a fixture: gizmo, numeric entry, and the override reading *as* an override | ADR-0024, ADR-0025 |
 | [`Array`](renders/Array.png) | A live radial array — the STAR-TENT's ten spokes, five flipped 180° ([#23](https://github.com/jnslmk/beamhouse/issues/23)) | [ADR-0016](../../adr/0016-every-scene-mutation-is-one-undo-grained-command.md) |
-| [`Overlay`](renders/Overlay.png) | The overlay at **Fixtures** (top) and **Universes** (bottom) — the notation package and §13.2 verbatim | ADR-0023, [ADR-0018](../../adr/0018-signal-health-is-one-per-universe-snapshot.md) |
+| [`Overlay`](renders/Overlay.png) | The overlay at **Fixtures** (top) and **Universes** (bottom) — the notation package and §13.2 verbatim | ADR-0023, [ADR-0018](../../adr/0018-signal-health-is-one-per-universe-snapshot.md), [ADR-0038](../../adr/0038-bhs-binds-one-way-through-a-local-fixture.md) |
 | [`Objects`](renders/Objects.png) | The overlay at **Objects** — the same table filtered on *has no address*, not a second one | [ADR-0035](../../adr/0035-a-scene-object-is-a-fixture-with-an-empty-dmx-mode.md), [ADR-0034](../../adr/0034-an-unresolved-definition-is-a-marked-fixture-not-a-missing-one.md) |
-| [`HistoryIssues`](renders/HistoryIssues.png) | The overlay at **History** (top, agent commands marked) and **Issues** (bottom, the ingest inbox) | ADR-0016, ADR-0025 |
+| [`HistoryIssues`](renders/HistoryIssues.png) | The overlay at **History** (top, agent commands marked) and **Issues** (bottom, the ingest inbox) | ADR-0016, ADR-0025, [ADR-0039](../../adr/0039-definition-authoring-has-no-surface-of-its-own.md) |
 | [`Phone`](renders/Phone.png) | The M3a share-link viewer at 390 px — resting (top) and one fixture tapped (bottom) | [ADR-0031](../../adr/0031-a-share-link-carries-resolved-definitions.md), [ADR-0032](../../adr/0032-the-m3a-viewer-is-read-only.md) |
 | [`PhoneLandscape`](renders/PhoneLandscape.png) | The same viewer turned sideways — 844 × 390, the only orientation the rig fits | ADR-0032 |
 
@@ -39,6 +39,35 @@ is 390 × 1688, two 844 px frames stacked; `PhoneLandscape` is 844 × 390. The r
 no mesh loader. The beams visibly pass **through** them and land on the floor unbroken, which is
 [ADR-0036](../../adr/0036-the-ground-plane-is-the-only-surface-light-reaches.md)'s stated non-claim
 drawn rather than described.
+
+**[updated 2026-09-02 — [#51](https://github.com/jnslmk/beamhouse/issues/51)]** Three things
+[ADR-0038](../../adr/0038-bhs-binds-one-way-through-a-local-fixture.md) removed had been drawn here,
+all of them the same removal — **binding (a)**, a `bhs:` definition attached to a fixture the console
+already patched:
+
+- The **`Extent mismatch` Issues row is gone**, and nothing replaces it. It needed a patch and a
+  `bhs:` definition disagreeing about extent, and with one binding left there is no second source.
+  Its replacement — a **universe over-run** on a local fixture — is caught *when the address is
+  typed*, so it is not an ingest finding, and §14.1 rides the issue count on **Patch** precisely
+  because *"every issue class originates in an ingest"*. The `Issues` tab is at **3 open**.
+- The **local fixture is `bhs:tube35`, not `bhs:tube60`**. `60` was #35's own invention and
+  [#41](https://github.com/jnslmk/beamhouse/issues/41) then cited it as *"§4.5's own example"*,
+  which it never was. The row is now a **gled2-driven tube** — the one case `bhs:` is scoped to,
+  pixels on the wire that no console has patched — and it carries **one** universe and address, so
+  `Uni.Addr #2` reads `Unpatched`: 35 px × 3 ch from `4.400` ends at slot 504. **Its 35 px and
+  33 mm pitch are illustrative, not measured.** `bhs:` has no instance on the reference rig
+  (ADR-0038's own consequence), so nothing on this row may be cited as a measurement; 35 px is
+  `DESIGN.md` §05's worked example and 33 mm is a 30 LED/m strip.
+- The **ten spokes are `ofl:beamhouse:wled-star-tent-spoke-23px`**, which is what the Mizer patch
+  names today — they were drawn as `bhs:spoke23`, a positive-id fixture naming a `bhs:` definition,
+  which is binding (a) exactly. This is the fiction #41's first premise was built on.
+  [ADR-0033](../../adr/0033-the-spoke-is-an-authored-gdtf-because-only-gdtf-can-say-it.md)
+  re-patches them onto an authored `gdtf:`; the prefix changes here when
+  [#46](https://github.com/jnslmk/beamhouse/issues/46) writes that file and **not before**.
+
+The `Fixtures` footer follows: **889 ch patched over 4 universes**, against the `Universes` tab's
+**5 subscribed**. The two counts are different quantities and now differ — the bridge listens to
+what the show network carries, not to what the patch claims.
 
 ## Design tokens
 
@@ -99,10 +128,10 @@ which is why the phone `Selection` chip carries the count rather than the name
 ## Regenerating
 
 The artboards are generated, not hand-written, so the chips and the scene stay identical across
-all nine:
+all ten:
 
 ```
-python3 gen.py          # writes the seven .dc.html files and canvas.json
+python3 gen.py          # writes the ten .dc.html files and canvas.json
 python3 render.py       # writes renders/*.png  (Playwright + Chromium; viewport per artboard)
 optipng -o3 renders/*.png
 ```
@@ -124,14 +153,22 @@ snapshot, and the live artifact is the one the tickets link.
 
 ## What this canvas does not decide
 
-Two screens were split out of #35 rather than guessed at, and each is unprecedented in the field
-survey. (The third, #40's M3a viewer, is now the `Phone` artboards above — §9.2's degradation
-ladder was retired rather than designed.)
+**[emptied 2026-09-02 — [#51](https://github.com/jnslmk/beamhouse/issues/51)]** Three screens were
+split out of #35 rather than guessed at, each unprecedented in the field survey, and all three have
+now been decided — so this section holds nothing open.
 
-- [#41](https://github.com/jnslmk/beamhouse/issues/41) — authoring a `bhs:` definition.
+- [#40](https://github.com/jnslmk/beamhouse/issues/40) — the M3a viewer, now the `Phone` artboards
+  above. §9.2's degradation ladder was **retired** rather than designed
+  ([ADR-0031](../../adr/0031-a-share-link-carries-resolved-definitions.md),
+  [ADR-0032](../../adr/0032-the-m3a-viewer-is-read-only.md)).
 - [#43](https://github.com/jnslmk/beamhouse/issues/43) — scene objects, the stage and musicians,
-  and the analytic floor pool. **The stage and pool in these artboards are drawn ahead of that
-  decision** and are the only speculative thing here.
-
-The `Objects` tab appears in the overlay's tab strip with an empty count for the same reason: the
-tab is settled, its contents are #43's.
+  and the analytic floor pool. Settled: the `Objects` artboard is the answer, and the stage and
+  pool are no longer speculative
+  ([ADR-0035](../../adr/0035-a-scene-object-is-a-fixture-with-an-empty-dmx-mode.md),
+  [ADR-0036](../../adr/0036-the-ground-plane-is-the-only-surface-light-reaches.md)).
+- [#41](https://github.com/jnslmk/beamhouse/issues/41) — authoring a `bhs:` definition. Settled by
+  **not having the screen**: there is no `Definitions` tab, the overlay keeps its five, and one
+  `add local fixture` gesture on the `Fixtures` tab creates the definition inline
+  ([ADR-0039](../../adr/0039-definition-authoring-has-no-surface-of-its-own.md), §14.7). What this
+  canvas draws of it is the notation — a negative id in mono with a real minus sign, allocated and
+  never typed — and the `Add local fixture` History row that gesture writes.

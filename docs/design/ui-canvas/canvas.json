@@ -122,14 +122,14 @@
       "x": 3040,
       "y": 2892,
       "w": 1440,
-      "text": "The field's converged notation, adopted whole: universe.address as one token (Capture and BlenderDMX arrived at it independently); a second break as a SUFFIXED COLUMN SET with 'Unpatched' as a literal value, so a one-break fixture shows empty columns rather than a different UI; patch errors as in-cell glyphs, never modals; Editable as a toggle on the table itself.\nUniverses is \u00a713.2 verbatim. '\u2014' is a third state: Art-Net carries no priority and no Preview_Data, and UNKNOWN is not the same claim as NOT BLIND."
+      "text": "The field's converged notation, adopted whole: universe.address as one token (Capture and BlenderDMX arrived at it independently); a second break as a SUFFIXED COLUMN SET with 'Unpatched' as a literal value, so a one-break fixture shows empty columns rather than a different UI; patch errors as in-cell glyphs, never modals; Editable as a toggle on the table itself.\nUniverses is \u00a713.2 verbatim. '\u2014' is a third state: Art-Net carries no priority and no Preview_Data, and UNKNOWN is not the same claim as NOT BLIND.\nFixture \u22121 is the one LOCAL FIXTURE: a negative id in mono with a real minus sign, allocated and never typed (ADR-0039), naming a bhs: definition that only it can reach \u2014 bhs: binds one way and never appears on a positive id (ADR-0038). It carries ONE universe and address, so the second break reads Unpatched; 35 px x 3 ch from 4.400 ends at slot 504. The 35 and the 33 mm pitch are ILLUSTRATIVE: bhs: has no instance on this rig.\nThe two counts differ on purpose: the patch spans 4 universes, 5 are subscribed. The bridge listens to what the show network carries."
     },
     {
       "id": "n-history",
       "x": 1520,
       "y": 3912,
       "w": 1440,
-      "text": "History exists because of one scenario ADR-0016 names: it is 4pm and an agent just rotated the wrong five spokes. Blind \u2318Z against an editor you don't have your hands on is the panic; seeing how far back to go is the fix. Agent-driven commands are marked \u2014 the only place the second editor is visible at all.\nIssues is one inbox for everything an ingest could not reconcile: ADR-0012's extent mismatch, ADR-0020's synthesised ids, orphaned overrides, patch overlaps."
+      "text": "History exists because of one scenario ADR-0016 names: it is 4pm and an agent just rotated the wrong five spokes. Blind \u2318Z against an editor you don't have your hands on is the panic; seeing how far back to go is the fix. Agent-driven commands are marked \u2014 the only place the second editor is visible at all.\nIssues is one inbox for everything AN INGEST could not reconcile: ADR-0020's synthesised ids, orphaned overrides, patch overlaps.\nADR-0012's extent mismatch was the third row and is gone (ADR-0038): it needed a patch and a bhs: definition disagreeing, and that binding is removed. Its replacement, a universe over-run on a local fixture, is caught WHEN THE ADDRESS IS TYPED \u2014 nothing has ingested it, and \u00a714.1 rides the count on Patch precisely because every issue class originates in an ingest. So no row replaces it."
     },
     {
       "id": "n-objects",
