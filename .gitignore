@@ -3,3 +3,4 @@
 .gdtf-session.txt
 definitions/gdtf/*.gdtf
 definitions/gdtf-share-list.json
+__pycache__/
