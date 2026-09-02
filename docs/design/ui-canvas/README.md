@@ -14,7 +14,7 @@ These are **mockups, not components**. Nothing here is meant to be imported; it 
 when M3 builds the scene editor, the numbers do not have to be reinvented or guessed from a
 screenshot. Lift the values, not the markup.
 
-## The seven artboards
+## The nine artboards
 
 | Artboard | Shows | Embodies |
 | --- | --- | --- |
@@ -25,9 +25,11 @@ screenshot. Lift the values, not the markup.
 | [`Array`](renders/Array.png) | A live radial array — the STAR-TENT's ten spokes, five flipped 180° ([#23](https://github.com/jnslmk/beamhouse/issues/23)) | [ADR-0016](../../adr/0016-every-scene-mutation-is-one-undo-grained-command.md) |
 | [`Overlay`](renders/Overlay.png) | The overlay at **Fixtures** (top) and **Universes** (bottom) — the notation package and §13.2 verbatim | ADR-0023, [ADR-0018](../../adr/0018-signal-health-is-one-per-universe-snapshot.md) |
 | [`HistoryIssues`](renders/HistoryIssues.png) | The overlay at **History** (top, agent commands marked) and **Issues** (bottom, the ingest inbox) | ADR-0016, ADR-0025 |
+| [`Phone`](renders/Phone.png) | The M3a share-link viewer at 390 px — resting (top) and one fixture tapped (bottom) | [ADR-0031](../../adr/0031-a-share-link-carries-resolved-definitions.md), [ADR-0032](../../adr/0032-the-m3a-viewer-is-read-only.md) |
+| [`PhoneLandscape`](renders/PhoneLandscape.png) | The same viewer turned sideways — 844 × 390, the only orientation the rig fits | ADR-0032 |
 
-`Overlay` and `HistoryIssues` are 1440 × 1800 — two 900 px frames stacked, one per tab. The rest
-are 1440 × 900.
+`Overlay` and `HistoryIssues` are 1440 × 1800 — two 900 px frames stacked, one per tab. `Phone`
+is 390 × 1688, two 844 px frames stacked; `PhoneLandscape` is 844 × 390. The rest are 1440 × 900.
 
 ## Design tokens
 
@@ -71,17 +73,28 @@ count and identifier** — a `universe.address` token wants tabular figures. No 
 | Badge | 23 px tall, centred on the fixture, 1 px border in the status colour |
 
 Mockup hit targets are smaller than the 44 px touch floor because these are the **desktop**,
-bridge-local artboards. The phone layout is [#40](https://github.com/jnslmk/beamhouse/issues/40)
-and has to solve that itself.
+bridge-local artboards. **[#40, 2026-09-02]** The phone artboards solve it on their own metrics:
+
+| | |
+| --- | --- |
+| Phone frame | 390 × 844 portrait; 844 × 390 landscape |
+| Phone chip bar | 56 px, **44 px** chips — the touch floor, not the desktop's 28 |
+| Viewport band | 320 px in portrait; full-bleed in landscape |
+| List row | 44 px |
+| Sheet row | 38 px min, 16 px side padding |
+
+The two chips plus the marked wordmark measure **355 px of 390** in the widest realistic state,
+which is why the phone `Selection` chip carries the count rather than the name
+([ADR-0032](../../adr/0032-the-m3a-viewer-is-read-only.md)).
 
 ## Regenerating
 
-The artboards are generated, not hand-written, so the eight chips and the scene stay identical
-across all seven:
+The artboards are generated, not hand-written, so the chips and the scene stay identical across
+all nine:
 
 ```
 python3 gen.py          # writes the seven .dc.html files and canvas.json
-python3 render.py       # writes renders/*.png  (Playwright + Chromium)
+python3 render.py       # writes renders/*.png  (Playwright + Chromium; viewport per artboard)
 optipng -o3 renders/*.png
 ```
 
@@ -102,11 +115,10 @@ snapshot, and the live artifact is the one the tickets link.
 
 ## What this canvas does not decide
 
-Three screens were split out of #35 rather than guessed at, and each is unprecedented in the field
-survey:
+Two screens were split out of #35 rather than guessed at, and each is unprecedented in the field
+survey. (The third, #40's M3a viewer, is now the `Phone` artboards above — §9.2's degradation
+ladder was retired rather than designed.)
 
-- [#40](https://github.com/jnslmk/beamhouse/issues/40) — the M3a viewer and §9.2's degradation
-  ladder, on a phone.
 - [#41](https://github.com/jnslmk/beamhouse/issues/41) — authoring a `bhs:` definition.
 - [#43](https://github.com/jnslmk/beamhouse/issues/43) — scene objects, the stage and musicians,
   and the analytic floor pool. **The stage and pool in these artboards are drawn ahead of that

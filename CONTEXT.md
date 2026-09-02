@@ -57,8 +57,10 @@ resolves with no library present at all
 ([ADR-0030](docs/adr/0030-gdtfspec-resolves-inside-the-archive.md)) — which is what lets a dropped
 `.mvr` work in the M3a viewer. `bhs:` is Beamhouse's own
 ([ADR-0012](docs/adr/0012-beamhouse-may-define-pixels-placement-mints-nothing.md)): definitions
-carried inside a `.bhs` rather than resolved from a path, which is why they are the only kind that
-survives a shared URL.
+carried inside a `.bhs` rather than resolved from a path. **A share link needs no library at
+all** — a **snapshot** resolves its definitions inline, so `bhs:` stopped being the only kind that
+survives a shared URL and became the shape every kind now takes there
+([ADR-0031](docs/adr/0031-a-share-link-carries-resolved-definitions.md)).
 _Avoid_: definition source, provider, fixture library
 
 ### The scene
@@ -306,9 +308,11 @@ deferred high-fidelity tier is everything needing more than one sample of the de
 _Avoid_: volumetrics, raymarch, god rays (those name the deferred tier, not this)
 
 **Proxy geometry**:
-The stand-in mesh generated from a definition's declared primitive when no real model is
-available. Schematic but positionally correct.
-_Avoid_: placeholder, fallback mesh, stub
+The mesh generated from a definition's declared primitive. Schematic but positionally correct —
+right positions, right beam angles, right colours. **Not a fallback**: measured 2026-09-02, not
+one definition on this rig ships a mesh, so this is the render path on every screen including the
+operator's own ([ADR-0031](docs/adr/0031-a-share-link-carries-resolved-definitions.md)).
+_Avoid_: placeholder, fallback mesh, stub, **degraded** (there is no rung it degrades from)
 
 **Intensity map**:
 The diagnostic render mode that shades each emitter by its **resolved per-emitter intensity**, for
@@ -455,5 +459,18 @@ _Avoid_: environment, mode, build, target
 **Viewer**:
 Any **deployment** with no live **feed** — the Pages one and the single file. Names the pair
 without implying a separate **build**: viewer capabilities ship in every build and are merely
-unreachable where a bridge is present.
-_Avoid_: static build, share build, read-only mode
+unreachable where a bridge is present. It is **read-only** — tap-to-select and orbit, no command
+layer and so no agent surface either — and its chip set is `Selection` and `Camera`, because
+**a chip earns its place by being actionable**
+([ADR-0032](docs/adr/0032-the-m3a-viewer-is-read-only.md)).
+_Avoid_: static build, share build, read-only mode (the *deployment* is the noun; read-only is
+one of its properties)
+
+**Snapshot**:
+The one **patch** variant that carries no path: a resolved patch inline, plus its definitions
+resolved inline beside it — primitive, beam angle, emitter count, pitch, bounding box, channel
+bindings. What a share link contains, and the reason a **viewer** needs no **library**. It is
+**frozen**: an updated definition never reaches an already-sent link, so the viewer states the
+snapshot's age rather than its completeness
+([ADR-0031](docs/adr/0031-a-share-link-carries-resolved-definitions.md)).
+_Avoid_: export, resolved patch (that names half of it), bundle

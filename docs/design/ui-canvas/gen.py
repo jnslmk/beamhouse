@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Generate the seven Beamhouse UI artboards as .dc.html working files."""
+"""Generate the eight Beamhouse UI artboards as .dc.html working files."""
 import json
 import math
-from parts import BASE_CSS, FONTS, chip, chipbar, rail
+from parts import BASE_CSS, FONTS, PHONE_CSS, chip, chipbar, rail
 import scene as S
 
 HEAD = ('<!doctype html>\n<html>\n<head>\n  <meta charset="utf-8">\n'
@@ -591,6 +591,91 @@ def a_history_issues():
     return page(EXTRA_CSS, body, height=900)
 
 
+# ------------------------------------------------------- the M3a phone viewer (#40)
+
+VIEWER_MARK = 'Beamhouse&nbsp;\u00b7&nbsp;<b>demo</b>'
+
+# The share link's own rig: OBF26, 20 fixtures across three universes. Colour keys
+# match the viewport's beams.
+FLIST = [
+    ("Impression 1", "1.001", "14", S.AMBER), ("Impression 2", "1.015", "14", S.BLUE),
+    ("Impression 3", "1.029", "14", S.MAG), ("Impression 4", "1.043", "14", S.MAG),
+    ("Impression 5", "1.057", "14", S.BLUE), ("Impression 6", "1.071", "14", S.AMBER),
+    ("Dimmerpack 4ch", "1.085", "4", S.AMBER), ("Dimmerpack 1ch", "1.089", "1", S.AMBER),
+    ("Fog Fury Jett", "1.090", "7", S.GREEN),
+    ("Spoke 1", "2.030", "69", S.MAG), ("Spoke 2", "2.099", "69", S.MAG),
+    ("Spoke 3", "2.168", "69", S.MAG), ("Spoke 4", "2.237", "69", S.MAG),
+]
+
+
+def frow(name, addr, ch, col, sel=False):
+    return ('<div class="frow%s"><i class="dot" style="background:%s"></i>'
+            '<span class="nm">%s</span><span class="ad">%s</span>'
+            '<span class="ct">%s ch</span></div>'
+            % (" on" if sel else "", col, name, addr, ch))
+
+
+def srow(k, v, cls=""):
+    return ('<div class="srow%s"><span class="k">%s</span><span class="v">%s</span></div>'
+            % ((" " + cls) if cls else "", k, v))
+
+
+def _phone_page(body):
+    return (HEAD + '<helmet>\n<style>\n' + BASE_CSS + EXTRA_CSS + PHONE_CSS +
+            '\n</style>\n' + FONTS + '\n</helmet>\n' + body + '\n' + TAIL)
+
+
+def _pframe(chips, band, below):
+    return ('<div class="app phone">' + chipbar(chips, mark=VIEWER_MARK) +
+            '<div class="body"><div class="pband">' + band + '</div>'
+            '<div class="plist">' + below + '</div></div></div>')
+
+
+def a_phone():
+    # 1 - resting. Two chips, no tool rail, and the rig drawn exactly as the sender
+    # sees it: every definition on this rig ships zero meshes, so proxy geometry is
+    # the render path on both screens and there is no rung to announce (ADR-0031).
+    band1 = (S.scene() + '<div class="ptag">Snapshot \u00b7 2 Sep 14:02</div>')
+    list1 = ('<div class="lhead"><h3>Fixtures</h3><em>20 \u00b7 warehouse.yml</em></div>' +
+             ''.join(frow(*f) for f in FLIST[:8]) +
+             '<div class="sfoot">Light is <b>computed</b>, not the rig\u2019s \u2014 this link '
+             'carries no network. Turn the phone sideways to give the rig the screen.</div>')
+    f1 = _pframe([chip("Sel", "\u2014", "mute"), chip("Cam", "Front")], band1, list1)
+
+    # 2 - one fixture tapped. Tap-to-select and orbit are the whole interaction
+    # (ADR-0032); the sheet is a read-out, not an editor. The table and the viewport
+    # are one selection, bound both ways (§14.2) - so the row is lit too.
+    band2 = (S.scene(star_sel=True) +
+             '<div class="tapdot" style="left:195px;top:150px"></div>')
+    sheet2 = (
+        '<div class="sheet"><div class="grip"></div>'
+        '<div class="sh"><h3>Spoke 3</h3><em>id 103</em></div>' +
+        srow("Patch", "2.168 <i>\u00b7 69 ch</i>") +
+        srow("Mode", "23px RGB 69-channel") +
+        srow("Emitters", "23 <i>@ 65 mm</i>") +
+        srow("Beam", "120\u00b0 <i>\u00b7 strip</i>") +
+        srow("Position", "1.84, 3.20, \u22120.62 <i>m</i>") +
+        srow("Rotation", "0, 108, 180 <i>\u00b0</i>") +
+        '<div class="sfoot">Read-only. This is a <b>shared snapshot</b>: the geometry, beam '
+        'angle and emitter count travelled in the link, so nothing here needed a definition '
+        'library to resolve.</div></div>')
+    list2 = ('<div class="lhead"><h3>Fixtures</h3><em>20 \u00b7 warehouse.yml</em></div>' +
+             ''.join(frow(*f, sel=(f[0] == "Spoke 3")) for f in FLIST[:8]) + sheet2)
+    f2 = _pframe([chip("Sel", "1", "on"), chip("Cam", "Front")], band2, list2)
+
+    return _phone_page(f1 + f2)
+
+
+def a_phone_land():
+    """844 x 390. A phone turned sideways is 2.16:1 against the rig's 1.63:1 - the
+    only orientation in which the whole rig gets the whole screen."""
+    body = ('<div class="app land">' + chipbar(
+        [chip("Sel", "\u2014", "mute"), chip("Cam", "Front")], mark=VIEWER_MARK) +
+        '<div class="body"><div class="view">' + S.scene() +
+        '<div class="ptag">Snapshot \u00b7 2 Sep 14:02</div></div></div></div>')
+    return _phone_page(body)
+
+
 FILES = {
     "Empty.dc.html": a_empty,
     "Main.dc.html": a_main,
@@ -599,6 +684,8 @@ FILES = {
     "Array.dc.html": a_array,
     "Overlay.dc.html": a_overlay,
     "HistoryIssues.dc.html": a_history_issues,
+    "Phone.dc.html": a_phone,
+    "PhoneLandscape.dc.html": a_phone_land,
 }
 
 CANVAS = {
@@ -616,6 +703,10 @@ CANVAS = {
          "title": "The overlay · Fixtures, Universes"},
         {"file": "HistoryIssues.dc.html", "x": 1520, "y": 2040, "w": 1440, "h": 1800,
          "title": "The overlay · History, Issues"},
+        {"file": "Phone.dc.html", "x": 0, "y": 2040, "w": 390, "h": 1688,
+         "title": "The M3a viewer · 390 px portrait"},
+        {"file": "PhoneLandscape.dc.html", "x": 0, "y": 3808, "w": 844, "h": 390,
+         "title": "The M3a viewer · turned sideways"},
     ],
     "annotations": [
         {"id": "n-nav", "x": 1520, "y": -186, "w": 1440,
@@ -663,6 +754,17 @@ CANVAS = {
                  "commands are marked — the only place the second editor is visible at all.\n"
                  "Issues is one inbox for everything an ingest could not reconcile: ADR-0012's "
                  "extent mismatch, ADR-0020's synthesised ids, orphaned overrides, patch overlaps."},
+        {"id": "n-phone", "x": 0, "y": 4278, "w": 844,
+         "text": "#40. There is no degradation ladder. Every GDTF on this rig ships ZERO "
+                 "meshes, so proxy geometry is the render path on the sender\u2019s desktop "
+                 "too — the recipient is not on a rung. And carrying the render-resolved "
+                 "definition inline costs 211 characters of a 4096 budget (measured), so the "
+                 "link never needs a definition library at all.\n"
+                 "Two chips, not eight: 8 chips measure 1015px and §14.1\u2019s surviving 4 "
+                 "still measure 561px into 390px. A chip earns its place by being ACTIONABLE. "
+                 "No tool rail, because nothing here is editable. The viewer indication is the "
+                 "wordmark slot, which also carries the feed — so \u2018this light is "
+                 "computed\u2019 is stated where a Feed chip would not have fit.\nPortrait cannot give the rig the screen: 1.63:1 into 0.46:1 is a 240px strip on an 844px phone. So portrait spends 320px on the rig and the rest on the list, and the payoff frame is the phone turned sideways \u2014 844x390 is 2.16:1, the only orientation the rig actually fits."},
     ],
     "launch": {"view": "canvas"},
 }

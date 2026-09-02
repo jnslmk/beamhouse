@@ -3,6 +3,7 @@ import math
 
 W, H = 1440, 900
 VW, VH = 1392, 856          # viewport area (minus 48px rail, 44px chip bar)
+PW, PH = 390, 844           # the M3a phone frame (#40) — iPhone 14/15 logical viewport
 
 FONTS = ('<link rel="stylesheet" href="https://fonts.googleapis.com/css2?'
          'family=Barlow:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap">')
@@ -124,6 +125,91 @@ LOGO = ('<svg width="15" height="15" viewBox="0 0 16 16" fill="none">'
         'fill="oklch(0.80 0.150 72)"/></svg>')
 
 
-def chipbar(chips):
-    return ('<div class="chips"><div class="mark">%s<span class="wm">Beamhouse</span></div>'
-            '%s<div class="spacer"></div></div>' % (LOGO, ''.join(chips)))
+def chipbar(chips, mark="Beamhouse"):
+    """The chip bar. ``mark`` is the wordmark slot.
+
+    On the Pages viewer the slot carries the viewer indication and the feed
+    (ADR-0032): ``Beamhouse \u00b7 demo``. It is persistent, costs no new layout, and is
+    the reason the viewer needs no Feed chip.
+    """
+    return ('<div class="chips"><div class="mark">%s<span class="wm">%s</span></div>'
+            '%s<div class="spacer"></div></div>' % (LOGO, mark, ''.join(chips)))
+
+
+# ---------------------------------------------------------------- the phone frame (#40)
+
+PHONE_CSS = """
+.app.phone{width:390px;height:844px}
+.app.land{width:844px;height:390px}
+/* The viewer has no tool rail: nothing on a phone is editable (ADR-0032). */
+.app.phone .body,.app.land .body{flex-direction:column}
+/* The rig is 1.63:1 and a portrait phone is 0.46:1. Whole-rig-at-full-width is a
+   240px strip on an 844px screen, so portrait gives the viewport a BAND and spends
+   the rest on the list. 390x320 is the largest band that still slices to the rig's
+   own content span (x 174..1217 of 1392) rather than cropping into it. */
+.app.phone .pband{height:320px;flex:none;position:relative;background:var(--bg0);
+  border-bottom:1px solid var(--line2);overflow:hidden}
+.app.phone .pband svg.scene{position:absolute;inset:0;width:100%;height:100%;display:block}
+.app.phone .plist{flex:1;min-height:0;position:relative;overflow:hidden;
+  display:flex;flex-direction:column}
+.app.phone .plist .sfoot{margin-top:auto}
+.lhead{display:flex;align-items:baseline;justify-content:space-between;gap:10px;
+  padding:11px 16px 9px;background:var(--bg1);border-bottom:1px solid var(--line2)}
+.lhead h3{margin:0;font-size:10px;font-weight:600;letter-spacing:.115em;
+  text-transform:uppercase;color:var(--mid)}
+.lhead em{font-style:normal;font-family:var(--mono);font-size:10.5px;color:var(--lo)}
+.frow{display:flex;align-items:center;gap:10px;height:44px;flex:none;padding:0 16px;
+  border-bottom:1px solid var(--line2)}
+.frow .dot{width:7px;height:7px;border-radius:50%;flex:none}
+.frow .nm{flex:1;font-size:12.5px;color:var(--mid);white-space:nowrap;overflow:hidden;
+  text-overflow:ellipsis}
+.frow .ad{font-family:var(--mono);font-size:11.5px;color:var(--hi)}
+.frow .ct{font-family:var(--mono);font-size:10px;color:var(--lo);min-width:34px;
+  text-align:right}
+.frow.on{background:color-mix(in oklab,var(--sel) 13%,var(--bg1))}
+.frow.on .nm{color:var(--sel)}
+.app.phone .chips{gap:6px;padding:0 10px}
+.app.phone .mark{padding-right:9px;margin-right:2px}
+.app.phone .mark .wm{font-size:11px;letter-spacing:.045em}
+.app.phone .mark .wm b{color:var(--beam);font-weight:600}
+/* 44px touch floor: the chips grow to it, the bar grows with them. */
+.app.phone .chips{height:56px}
+.app.phone .chip{height:44px;padding:0 8px 0 9px;gap:6px}
+.app.phone .chip .k{font-size:9px}
+.app.phone .chip .v{font-size:11px}
+/* The phone Sel chip carries the COUNT, never the name: the bar then has a constant
+   width, and identity belongs to the sheet, which has all 390px to say it in. */
+.sheet{position:absolute;left:0;right:0;bottom:0;background:var(--bg1);
+  border-top:1px solid var(--line);border-radius:12px 12px 0 0;
+  box-shadow:0 -14px 40px oklch(0.10 0.005 75 / .55);padding:0 0 14px}
+.sheet .grip{width:34px;height:4px;border-radius:2px;background:var(--line);
+  margin:8px auto 2px}
+.sheet .sh{display:flex;align-items:baseline;gap:8px;padding:6px 16px 10px}
+.sheet .sh h3{margin:0;font-size:16px;font-weight:600;letter-spacing:.005em}
+.sheet .sh em{font-style:normal;font-family:var(--mono);font-size:10.5px;color:var(--lo)}
+.srow{display:flex;align-items:center;justify-content:space-between;gap:12px;
+  min-height:38px;padding:0 16px;border-top:1px solid var(--line2)}
+.srow .k{font-size:9.5px;font-weight:600;letter-spacing:.105em;text-transform:uppercase;
+  color:var(--lo);white-space:nowrap}
+.srow .v{font-family:var(--mono);font-size:12px;color:var(--hi);text-align:right}
+.srow .v i{font-style:normal;color:var(--lo)}
+.srow.tall{align-items:flex-start;padding-top:9px;padding-bottom:9px}
+.srow .v.wrap{white-space:normal;font-size:10.5px;line-height:1.5;color:var(--mid)}
+.sfoot{margin-top:2px;padding:10px 16px 0;border-top:1px solid var(--line2);
+  font-size:10.5px;line-height:1.5;color:var(--lo)}
+.sfoot b{color:var(--mid);font-weight:600}
+.viewlist{padding:2px 0 0}
+.vitem{display:flex;align-items:center;justify-content:space-between;height:44px;
+  padding:0 16px;border-top:1px solid var(--line2);font-size:13px;color:var(--mid)}
+.vitem.on{color:var(--sel)}
+.vitem em{font-style:normal;font-family:var(--mono);font-size:10.5px;color:var(--lo)}
+.ptag{position:absolute;left:10px;bottom:10px;display:flex;align-items:center;gap:6px;
+  height:24px;padding:0 9px;border-radius:3px;
+  background:color-mix(in oklab,var(--bg0) 84%,transparent);
+  border:1px solid color-mix(in oklab,var(--beam) 44%,transparent);
+  font-size:9.5px;font-weight:600;letter-spacing:.105em;text-transform:uppercase;
+  color:var(--beam)}
+.tapdot{position:absolute;width:38px;height:38px;border-radius:50%;
+  border:1.5px solid var(--sel);transform:translate(-50%,-50%);
+  background:color-mix(in oklab,var(--sel) 14%,transparent)}
+"""

@@ -4,6 +4,7 @@
 - **Date:** 2026-09-02
 - **Decides:** [#30](https://github.com/jnslmk/beamhouse/issues/30)
 - **Amends:** [ADR-0012](0012-beamhouse-may-define-pixels-placement-mints-nothing.md), [ADR-0020](0020-the-live-loop-serves-patch-files-not-consoles.md)
+- **Amended by:** [ADR-0031](0031-a-share-link-carries-resolved-definitions.md)
 
 ## Context
 

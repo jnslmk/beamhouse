@@ -188,9 +188,16 @@ def _dimmers():
 
 
 def scene(*, skip_beams=(), stale_beams=(), star_stale=(), star_sel=False, star_handles=False,
-          sel_mover=None, ghost_mover=None, empty=False, extra=""):
-    """Assemble the viewport SVG."""
-    p = ['<svg class="scene" viewBox="0 0 %d %d" preserveAspectRatio="xMidYMid slice">' % (VW, VH),
+          sel_mover=None, ghost_mover=None, empty=False, extra="",
+          preserve="xMidYMid slice"):
+    """Assemble the viewport SVG.
+
+    ``preserve`` is the SVG preserveAspectRatio. The desktop artboards slice, because the
+    viewport is wider than it is tall and cropping loses nothing. A portrait phone frame
+    must ``meet`` instead: slicing a 1392x856 rig into a 390-wide column would crop away
+    everything but the middle 428 units, which is most of the rig.
+    """
+    p = ['<svg class="scene" viewBox="0 0 %d %d" preserveAspectRatio="%s">' % (VW, VH, preserve),
          _defs(),
          '<rect width="%d" height="%d" fill="oklch(0.155 0.006 75)"/>' % (VW, VH),
          _grid()]

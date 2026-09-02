@@ -4,7 +4,7 @@
 The artboards are static HTML+SVG, so they need no Design Components runtime:
 strip the <x-dc> wrapper, drop the <helmet> into a plain <head>, and screenshot.
 
-    python3 render.py              # all seven
+    python3 render.py              # all eight
     python3 render.py Main Trouble # just those
 
 Needs Playwright with Chromium (`~/.cache/ms-playwright` on this machine).
@@ -33,6 +33,14 @@ def main(names):
         page = browser.new_page(viewport={"width": 1440, "height": 900})
         for f in files:
             src = f.read_text(encoding="utf-8")
+            # The phone artboards (#40) are narrower than the desktop 1440; a 1440
+            # viewport would pad them out to the right.
+            w, h = 1440, 900
+            if 'class="app phone"' in src:
+                w, h = 390, 844
+            elif 'class="app land"' in src:
+                w, h = 844, 390
+            page.set_viewport_size({"width": w, "height": h})
             style = re.search(r"<helmet>(.*?)</helmet>", src, re.S).group(1)
             body = re.search(r"</helmet>\s*(.*?)\s*</x-dc>", src, re.S).group(1)
             shim = pathlib.Path(tmp) / (f.name.replace(".dc.html", ".html"))

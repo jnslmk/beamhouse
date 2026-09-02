@@ -3,6 +3,7 @@
 - **Status:** Accepted
 - **Date:** 2026-09-02
 - **Surfaced by:** [#35](https://github.com/jnslmk/beamhouse/issues/35)
+- **Amended by:** [ADR-0032](0032-the-m3a-viewer-is-read-only.md)
 
 ## Context
 

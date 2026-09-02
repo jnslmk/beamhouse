@@ -55,6 +55,22 @@
       "w": 1440,
       "h": 1800,
       "title": "The overlay \u00b7 History, Issues"
+    },
+    {
+      "file": "Phone.dc.html",
+      "x": 0,
+      "y": 2040,
+      "w": 390,
+      "h": 1688,
+      "title": "The M3a viewer \u00b7 390 px portrait"
+    },
+    {
+      "file": "PhoneLandscape.dc.html",
+      "x": 0,
+      "y": 3808,
+      "w": 844,
+      "h": 390,
+      "title": "The M3a viewer \u00b7 turned sideways"
     }
   ],
   "annotations": [
@@ -106,6 +122,13 @@
       "y": 3912,
       "w": 1440,
       "text": "History exists because of one scenario ADR-0016 names: it is 4pm and an agent just rotated the wrong five spokes. Blind \u2318Z against an editor you don't have your hands on is the panic; seeing how far back to go is the fix. Agent-driven commands are marked \u2014 the only place the second editor is visible at all.\nIssues is one inbox for everything an ingest could not reconcile: ADR-0012's extent mismatch, ADR-0020's synthesised ids, orphaned overrides, patch overlaps."
+    },
+    {
+      "id": "n-phone",
+      "x": 0,
+      "y": 4278,
+      "w": 844,
+      "text": "#40. There is no degradation ladder. Every GDTF on this rig ships ZERO meshes, so proxy geometry is the render path on the sender\u2019s desktop too \u2014 the recipient is not on a rung. And carrying the render-resolved definition inline costs 211 characters of a 4096 budget (measured), so the link never needs a definition library at all.\nTwo chips, not eight: 8 chips measure 1015px and \u00a714.1\u2019s surviving 4 still measure 561px into 390px. A chip earns its place by being ACTIONABLE. No tool rail, because nothing here is editable. The viewer indication is the wordmark slot, which also carries the feed \u2014 so \u2018this light is computed\u2019 is stated where a Feed chip would not have fit.\nPortrait cannot give the rig the screen: 1.63:1 into 0.46:1 is a 240px strip on an 844px phone. So portrait spends 320px on the rig and the rest on the list, and the payoff frame is the phone turned sideways \u2014 844x390 is 2.16:1, the only orientation the rig actually fits."
     }
   ],
   "launch": {

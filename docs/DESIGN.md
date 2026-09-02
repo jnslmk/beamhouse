@@ -1196,17 +1196,44 @@ unzipping. Pack the payload as arrays, not objects, and round every float to mil
 Treat 4 KB as the budget; past that, fall back to offering a `.bhs` download and say so in the
 UI rather than silently producing a broken URL.
 
+**[measured 2026-09-02 — [#40](https://github.com/jnslmk/beamhouse/issues/40)]** 4096 characters
+holds **188 fixtures with names, 229 without** — a columnar payload, deflate, base64url. The
+reference rig is **20 fixtures at 675 characters, 16% of budget**, and that is with §9.2's
+definitions resolved inline ([ADR-0031](adr/0031-a-share-link-carries-resolved-definitions.md));
+by id it is 464. The fallback is therefore one line of copy on a path that needs a rig ten times
+this one to reach, and it gets no screen design.
+
 ### 9.2 What a URL cannot carry
 
-Geometry and recordings. The viewer degrades in layers: a bundled set of recurring definitions
-in `public/gdtf/`; **proxy geometry** rendered from the declared `PrimitiveType` when the
-definition ships **no mesh** (schematic but correct — right positions, right beam angles, right
-colours); and drag-and-drop for the recipient's own GDTF or MVR.
+**Recordings, and nothing else.** A share link carries the whole scene: §4.5's `snapshot` variant
+resolves the patch inline, and **the definitions with it** — `PrimitiveType`, beam angle, emitter
+count and pitch, bounding box, and the mode's channel bindings, keyed per definition with fixtures
+indexing into the table. It names no `gdtf:` id the recipient must resolve and carries no
+`gdtfDir`.
 
-**[corrected 2026-09-02 — #27]** This previously read "when no definition is available", which is
-self-contradictory: `PrimitiveType` *is* a field of the definition, so with no definition there is
-no primitive, no beam angle and no emitter count to render. The real strip profile
-(`MarkeEigenbau`, ships `description.xml` and zero meshes) is the case this covers.
+**[retired 2026-09-02 — [#40](https://github.com/jnslmk/beamhouse/issues/40),
+[ADR-0031](adr/0031-a-share-link-carries-resolved-definitions.md)]** This section described a
+three-rung **degradation ladder** — bundled definitions in `public/gdtf/`, then proxy geometry
+from the declared `PrimitiveType`, then drag-and-drop. Two measurements retired it:
+
+- **No definition on this rig ships a mesh.** All five archives in `definitions/gdtf/` hold a
+  `description.xml` and, in two cases, a `thumbnail.png`. Zero meshes. So the proxy rung fires on
+  **every fixture on the operator's own desktop** — proxy geometry is *the* render path, not a
+  degraded one, and a recipient rendering proxies sees exactly what the sender sees. #27's
+  correction (from "when no definition is available", which was self-contradictory, since
+  `PrimitiveType` is a field *of* the definition) was right and moved the ladder onto an axis that
+  never varies.
+- **Resolving the definitions inline costs 211 characters** of the 4096 in §9.1 — 675 against 464
+  — and moves the over-budget crossover from 188 fixtures to about 176. The definition half #30
+  reported "unchanged" was never blocked; it was unpriced.
+
+So there is no rung, nothing for the viewer to announce, and no recipient to tell what they are
+missing. What replaces it is **the snapshot's age**, which the viewer states permanently
+([ADR-0032](adr/0032-the-m3a-viewer-is-read-only.md) decision 7): a link is frozen, and *how old
+is this* is the question that survives.
+
+`public/gdtf/` keeps ADR-0009's inert-static-asset meaning for the bridge-local app, where a
+dropped `.gdtf` is a **Library** entry. It is no longer part of any sharing story.
 
 **[split 2026-09-02 — [#30](https://github.com/jnslmk/beamhouse/issues/30),
 [ADR-0021](adr/0021-mvr-xchange-is-out-of-scope-the-patch-seam-is-format.md)]** This paragraph used
@@ -1218,11 +1245,12 @@ blocked:**
 - **The patch half is solved.** §4.5's `snapshot` variant carries a resolved patch inline, with no
   path. Without it M3a's own done-when — "opens the rig on a phone" — was unsatisfiable, because
   the phone would have been handed `~/mizer/warehouse.yml`.
-- **The definition half is unchanged.** A snapshot still names `gdtf:` ids the recipient may not
-  have, and `gdtfDir` is still a local path. It degrades exactly as the ladder above describes:
-  bundled definitions, then proxy geometry, then drag-and-drop. The one kind immune is a `bhs:`
-  definition, carried inline and holding no path at all
-  ([ADR-0012](adr/0012-beamhouse-may-define-pixels-placement-mints-nothing.md)).
+- **The definition half is now solved too.** It read "unchanged" here until #40 measured it. A
+  snapshot resolves its definitions inline, so it names no `gdtf:` id and carries no `gdtfDir`.
+  This makes every definition in a share link behave the way a `bhs:` definition already did —
+  carried inline, holding no path at all
+  ([ADR-0012](adr/0012-beamhouse-may-define-pixels-placement-mints-nothing.md)) — which is why the
+  two are deliberately the same shape.
 
 **Drag-and-drop is a transport, not a patch source** (§4.3): a dropped `.mvr` is bytes for the
 `mvr` parser, and a dropped `.gdtf` is a **Library** entry that never reaches the patch path.
@@ -1663,8 +1691,13 @@ its definitions resolvably) rather than with a parse error, which would send you
 thing.
 
 Off a live feed the bridge-dependent chips are **absent, not greyed** — §13 says those signals are
-*unreachable, not false*. The Pages viewer therefore runs the same shell minus those chips, with a
-persistent viewer indication in the chrome, after Vectorworks Showcase's purple border.
+*unreachable, not false*.
+
+**[superseded 2026-09-02 — [#40](https://github.com/jnslmk/beamhouse/issues/40)]** The rest of
+this paragraph read "the Pages viewer therefore runs the same shell minus those chips, with a
+persistent viewer indication in the chrome, after Vectorworks Showcase's purple border". Measured,
+that shell is **561 px wide against a 390 px phone**. The viewer's chip set, its indication and
+its layout are §14.6.
 
 ### 14.2 The notation, adopted from the field
 
@@ -1698,8 +1731,10 @@ Four of these `§4.4` already said to adopt on sight; #35's survey supplied two 
    [ADR-0025](adr/0025-trust-and-provenance-marks-are-additive.md), which also gives the three
    homeless "must be surfaced" requirements of ADR-0012, ADR-0020 and §4.5 one shared **Issues**
    surface.
-4. **The M3a viewer's degradation ladder** (§9.2) — still unsolved, and now its own ticket
-   ([#40](https://github.com/jnslmk/beamhouse/issues/40)).
+4. **The M3a viewer's degradation ladder** (§9.2). Settled, by retiring it:
+   [ADR-0031](adr/0031-a-share-link-carries-resolved-definitions.md) measured the ladder out of
+   existence and [ADR-0032](adr/0032-the-m3a-viewer-is-read-only.md) designed the screen that was
+   left. §14.6. **All four are now closed.**
 
 ### 14.4 What the screen shows besides fixtures
 
@@ -1716,11 +1751,80 @@ Fixtures table's columns are patch columns and a human proxy has none of them.
 
 ### 14.5 Still owed
 
-Both of §13.6's items now have tickets rather than silence:
-[#40](https://github.com/jnslmk/beamhouse/issues/40) for the degradation ladder and
-[#41](https://github.com/jnslmk/beamhouse/issues/41) for `bhs:` definition authoring — the screen
-for [ADR-0012](adr/0012-beamhouse-may-define-pixels-placement-mints-nothing.md)'s third definition
-source, which **no surveyed product has**, because none of them has a definition source of its own.
+Both of §13.6's items had tickets rather than silence. **[#40 is now closed — see §14.6.]**
+[#41](https://github.com/jnslmk/beamhouse/issues/41) remains: `bhs:` definition authoring, the
+screen for [ADR-0012](adr/0012-beamhouse-may-define-pixels-placement-mints-nothing.md)'s third
+definition source, which **no surveyed product has**, because none of them has a definition source
+of its own.
+
+Added by #40: [#45](https://github.com/jnslmk/beamhouse/issues/45), the recording transport
+(§9.3) on the same link — the only part of the viewer with prior art to copy, and a second
+interaction model on a screen §14.6 gives two chips.
+
+### 14.6 The M3a viewer, on a phone
+
+**[added 2026-09-02 — [#40](https://github.com/jnslmk/beamhouse/issues/40)]** The share link's
+screen, and the only capability in this design that nothing in the field survey also does. Two
+artboards on the canvas: [`Phone`](design/ui-canvas/renders/Phone.png) (390 × 1688 — resting, and
+one fixture tapped) and
+[`PhoneLandscape`](design/ui-canvas/renders/PhoneLandscape.png) (844 × 390).
+
+**It is read-only** ([ADR-0032](adr/0032-the-m3a-viewer-is-read-only.md)). Tap-to-select and orbit
+are the whole interaction: no gizmo, no numeric entry, no array generators, **no tool rail**. The
+command layer is not reachable from a shared link, and neither is the agent surface — a link has
+no bridge, so it has no second editor either. §9.2's drag-and-drop survives as §4.3's *transport*
+and is a desktop affordance; the phone does not offer it.
+
+**Two chips, not eight.** Measured through the canvas's own `parts.py` at 390 px: the desktop set
+is **1015 px**, §14.1's four survivors are **561 px**, and `Selection` + `Camera` is **328 px**.
+So the rule is not *bridge-dependent chips go* — it is **a chip earns its place by being
+actionable**. `Render`, `Snap` and `Hold` would all evaluate on the viewer and go anyway, because
+there is nothing to snap, nothing to pin the render against, and no repatching to do. Applied to
+the desktop the test changes nothing, which is what keeps it one navigation model.
+
+| | Desktop | Viewer |
+| --- | --- | --- |
+| Chips | eight | **`Selection` · `Camera`** |
+| Wordmark slot | `Beamhouse` | **`Beamhouse · demo`** — the feed, §13.1 |
+| Tool rail | ten tools | absent |
+| Overlay | five tabs, summoned | the fixture list, docked |
+| Chip bar | 44 px, 28 px chips | 56 px, **44 px** chips |
+
+**The wordmark slot is the viewer indication, and it carries the feed.** Showcase's purple border
+costs ~8 px on every edge of a 390 px screen and reads as chrome damage. The `mark` element is
+already there. This is also the answer to the sharpest thing #40 asked: a viewer on ADR-0014's
+`generated` feed **must not imply the frames are the rig's**, and the feed is the one piece of
+state a viewer genuinely has. Stating it in the mark costs no bar width — which is what makes
+dropping the `Feed` chip affordable.
+
+**Portrait gives the viewport a band, and says to turn the phone.** The viewport is 1.63:1 and a
+390 × 844 phone is 0.46:1: the whole rig at full width is a **240 px strip on an 844 px screen**.
+No framing fixes that. So portrait spends **320 px** on the rig — the largest band that still
+slices to the rig's own content span rather than cropping into it — and the rest on the fixture
+list, and the payoff frame is the phone **turned sideways**, where 844 × 390 is 2.16:1 and the rig
+gets the screen. This is the one place the viewer departs from ADR-0023's *nothing is docked*, and
+it is not a preference: a docked band is what 0.46:1 leaves.
+
+**The five-tab overlay collapses to the fixture list.** `Universes` has no bridge to read,
+`History` no commands to show, and `Issues` nothing to reconcile — §9.2's link arrives already
+resolved. `Fixtures` remains, with `Objects` ([#43](https://github.com/jnslmk/beamhouse/issues/43))
+beside it when non-empty. It is docked rather than summoned because on a phone there is no
+viewport left to summon it over. §14.2's notation is unchanged: `universe.address` as one token,
+the table and the viewport bound both ways.
+
+**The chip carries the count, the sheet carries the identity.** `SEL 4`, never
+`SEL 4 · Spoke 3 +3` — which measures 393 px and overflows a 390 px bar. The count keeps the bar a
+constant width; the sheet has all 390 px to name things in.
+
+**What the viewer states instead of a rung.** §9.2's ladder is retired
+([ADR-0031](adr/0031-a-share-link-carries-resolved-definitions.md)), so there is no rung to
+announce. A link is **frozen**, so the viewer states its age — `Snapshot · 2 Sep 14:02`,
+persistent in the viewport — and the fixture sheet says the definitions travelled in the link.
+*How old is this* is the recipient's real question, and it is the one the ladder was going to
+answer badly.
+
+Not settled here: the recording transport (§9.3) is
+[#45](https://github.com/jnslmk/beamhouse/issues/45), and `Objects` on the viewer is #43's.
 
 ## 15 · The agent scene surface: the request vocabulary
 
