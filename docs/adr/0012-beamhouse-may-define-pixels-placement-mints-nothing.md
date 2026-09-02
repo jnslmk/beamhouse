@@ -3,6 +3,7 @@
 - **Status:** Accepted
 - **Date:** 2026-09-02
 - **Decides:** [#27](https://github.com/jnslmk/beamhouse/issues/27)
+- **Amended by:** [ADR-0034](0034-an-unresolved-definition-is-a-marked-fixture-not-a-missing-one.md)
 
 ## Context
 

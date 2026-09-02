@@ -570,7 +570,16 @@ union**, one variant per §4.3 parser, and **only one of them is shareable**:
 ```
 
 The path-bearing variants name files on the *sender's* disk; the inline `snapshot` is what a share
-link carries (§9.1) and what makes M3a satisfiable at all. This is a fixed point on the `.bhs`
+link carries (§9.1) and what makes M3a satisfiable at all.
+
+**[added 2026-09-02 — [#42](https://github.com/jnslmk/beamhouse/issues/42)]** A **local fixture** —
+the negative-id `fixtures` entry above — **may name any resolvable definition id**, not only `bhs:`
+([ADR-0033](adr/0033-the-spoke-is-an-authored-gdtf-because-only-gdtf-can-say-it.md) rule 8).
+ADR-0012 rule 4 constrains the *id* to be negative; nothing ever constrained the *prefix*, but the
+one worked example uses `bhs:` and a `bhs:` definition carries no geometry, so read together they
+wrongly implied every locally-added fixture is geometry-less. The grounds are gled2 driving a run
+whose profile we authored. Adding fixtures **speculatively** is not a claimed feature: a spoke that
+exists is patched in Mizer like the other ten. This is a fixed point on the `.bhs`
 schema, not the schema — recorded the way ADR-0012's `definitions` block and ADR-0013's scene
 density were, and it is the first statement anywhere of what "share" means for the patch half.
 
@@ -683,6 +692,21 @@ Resolve `PrimitiveType` before looking for a mesh — fixtures may declare `Cube
 `Sphere`, `Base`, `Yoke` instead of shipping geometry. Generate those procedurally; a rig where
 half the fixtures are invisible is a confusing first bug. These primitives double as the proxy
 geometry for the shared-link viewer (§9.2).
+
+**[added 2026-09-02 — [#42](https://github.com/jnslmk/beamhouse/issues/42)]** **Below the
+primitive there is one more step: a definition that does not resolve at all.** ADR-0012 rule 9
+fixed proxy geometry to mean "no *mesh*", which left nothing covering "no *definition*" — and that
+case is live on the reference rig, which patches `ofl:generic:4-channel-dimmer-pack` for fixtures 7
+and 8 against a file that is nowhere on disk.
+[ADR-0034](adr/0034-an-unresolved-definition-is-a-marked-fixture-not-a-missing-one.md): the fixture
+**stays in the patch, stays placed, and renders a fixed-size marker**, surfaced as an
+[ADR-0025](adr/0025-trust-and-provenance-marks-are-additive.md) provenance mark. Nothing is sized —
+dimensions are a property of the definition that is missing — and no shape is guessed from channel
+count, because a plausible wrong shape is the "wrong in a way that looks right" failure ADR-0012
+rule 5 rejects. This is the same posture
+[ADR-0030](adr/0030-gdtfspec-resolves-inside-the-archive.md) rule 5 takes for an unresolved *mode*,
+one level up: never discard the address, which is what the operator cross-checks against the
+console.
 
 Models live in `models/gltf/` as GLB. The spec caps a device at 1200 vertices for default LOD,
 so the whole rig ships to a remote viewer in under a megabyte.
@@ -1008,6 +1032,16 @@ texture (ADR-0005). Do not substitute a cylinder for a declared `Cube`: the real
 `MarkeEigenbau` strip declares a 25 x 50 x 1000 mm cube, and overriding that is the renderer
 claiming to know better than the definition.
 
+**[added 2026-09-02 — [#42](https://github.com/jnslmk/beamhouse/issues/42)]** Each of those two
+`<Model>` elements declares a `PrimitiveType` **as well as** a `File`
+([ADR-0033](adr/0033-the-spoke-is-an-authored-gdtf-because-only-gdtf-can-say-it.md) rule 3). The
+body and diffuser are `Cube` at 26.1 x 30.5 x 1500 mm — exact in both principal dimensions, since
+the stadium section is two 13.05 mm half-circles joined by 4.4 mm of flank, so only the corner
+fillets are lost. A `Cylinder` would have to pick one diameter and be wrong by 4.4 mm along one
+axis everywhere, which is what ADR-0022 rule 8 measured; it did not consider `Cube`. The
+consequence is that the mesh is **cosmetic**: it is used where it resolves, the primitive where it
+does not, and a share link (§9.2) carrying only the primitive is right to the millimetre.
+
 **[answered 2026-09-02 — #27]** That last rule holds, and it survives contact with Capture 2026's
 definition-free **LED Strip** ([ADR-0012](adr/0012-beamhouse-may-define-pixels-placement-mints-nothing.md)).
 Placement mints nothing; what Beamhouse gains instead is a **third definition source**, `bhs:`,
@@ -1222,7 +1256,14 @@ from the declared `PrimitiveType`, then drag-and-drop. Two measurements retired 
   degraded one, and a recipient rendering proxies sees exactly what the sender sees. #27's
   correction (from "when no definition is available", which was self-contradictory, since
   `PrimitiveType` is a field *of* the definition) was right and moved the ladder onto an axis that
-  never varies.
+  never varies. **[qualified 2026-09-02 —
+  [#42](https://github.com/jnslmk/beamhouse/issues/42)]** The authored STAR-TENT spoke will be the
+  first definition on this rig to ship a mesh
+  ([ADR-0022](adr/0022-beamtype-selects-the-path-stride-aggregates-within-it.md) rules 8-9). It
+  needs no exception here: its `<Model>` declares `PrimitiveType="Cube"` at 26.1 x 30.5 x 1500 mm
+  *and* a `File`, so the snapshot's primitive is exact in both principal dimensions and the mesh
+  buys only the corner fillets
+  ([ADR-0033](adr/0033-the-spoke-is-an-authored-gdtf-because-only-gdtf-can-say-it.md) rule 3).
 - **Resolving the definitions inline costs 211 characters** of the 4096 in §9.1 — 675 against 464
   — and moves the over-budget crossover from 188 fixtures to about 176. The definition half #30
   reported "unchanged" was never blocked; it was unpriced.
@@ -1339,10 +1380,19 @@ more than a polished one that arrives at the end.
 
 **[added 2026-09-02 — [#5](https://github.com/jnslmk/beamhouse/issues/5)]** **M3b sits before the
 wall for the same reason M3a does.** The scene surface (§4.7) needs M2 and M3 and explicitly *not*
-M4: the STAR-TENT is a `bhs:` definition rendered as proxy geometry
-([ADR-0012](adr/0012-beamhouse-may-define-pixels-placement-mints-nothing.md)), and the strip
-profile ships no meshes at all ([#2](https://github.com/jnslmk/beamhouse/issues/2)), so nothing in
-the motivating case waits on `gdtf-ts`. Putting the way the rig is most likely to actually get
+M4: the strip profile ships no meshes at all
+([#2](https://github.com/jnslmk/beamhouse/issues/2)), so nothing in the motivating case waits on
+`gdtf-ts`.
+
+**[corrected 2026-09-02 — [#42](https://github.com/jnslmk/beamhouse/issues/42)]** This said "the
+STAR-TENT is a `bhs:` definition rendered as proxy geometry", which was wrong on the format and
+imprecise on the geometry.
+[ADR-0033](adr/0033-the-spoke-is-an-authored-gdtf-because-only-gdtf-can-say-it.md) makes the
+**spoke** an authored GDTF — a `bhs:` definition has no geometry tree, so it cannot say what
+[ADR-0022](adr/0022-beamtype-selects-the-path-stride-aggregates-within-it.md) requires. The
+conclusion survives: its `<Model>` declares `PrimitiveType="Cube"` at 26.1 x 30.5 x 1500 mm *and* a
+`File`, so the primitive is **exact in both principal dimensions** and the GLB buys only the corner
+fillets. M3b still needs nothing from M4. Putting the way the rig is most likely to actually get
 configured behind a 3–5 day wall makes it the first casualty if the wall overruns.
 
 **M3 gains a constraint rather than a sibling.** The command layer
