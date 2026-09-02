@@ -1421,7 +1421,12 @@ it. §4.4's four editing affordances were, until now, the only description of th
 document.
 
 The canvas: **[Beamhouse UI](https://claude.ai/code/artifact/55aa72b4-ab78-4d5c-91e4-71c992fca7b5)**
-— seven artboards. It is drawn on top of the command layer
+— seven artboards, editable in place. A snapshot of it lives in the repo as the implementation
+reference, with the design tokens, metrics and the generator that produces the artboards:
+[`docs/design/ui-canvas/`](design/ui-canvas/README.md). The published canvas is the one the tickets
+link and can move ahead of that folder; the README says how to reconcile them.
+
+It is drawn on top of the command layer
 ([ADR-0016](adr/0016-every-scene-mutation-is-one-undo-grained-command.md)), not against scene
 state, so **every affordance it draws is also an agent tool and anything it omits the agent cannot
 do either**.

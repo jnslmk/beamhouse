@@ -1,0 +1,114 @@
+{
+  "artboards": [
+    {
+      "file": "Empty.dc.html",
+      "x": 0,
+      "y": 0,
+      "w": 1440,
+      "h": 900,
+      "title": "First run"
+    },
+    {
+      "file": "Main.dc.html",
+      "x": 1520,
+      "y": 0,
+      "w": 1440,
+      "h": 900,
+      "title": "Resting \u00b7 bridge-local"
+    },
+    {
+      "file": "Trouble.dc.html",
+      "x": 3040,
+      "y": 0,
+      "w": 1440,
+      "h": 900,
+      "title": "The same screen, in trouble"
+    },
+    {
+      "file": "Place.dc.html",
+      "x": 0,
+      "y": 1020,
+      "w": 1440,
+      "h": 900,
+      "title": "Placing a fixture"
+    },
+    {
+      "file": "Array.dc.html",
+      "x": 1520,
+      "y": 1020,
+      "w": 1440,
+      "h": 900,
+      "title": "A live parametric array"
+    },
+    {
+      "file": "Overlay.dc.html",
+      "x": 3040,
+      "y": 1020,
+      "w": 1440,
+      "h": 1800,
+      "title": "The overlay \u00b7 Fixtures, Universes"
+    },
+    {
+      "file": "HistoryIssues.dc.html",
+      "x": 1520,
+      "y": 2040,
+      "w": 1440,
+      "h": 1800,
+      "title": "The overlay \u00b7 History, Issues"
+    }
+  ],
+  "annotations": [
+    {
+      "id": "n-nav",
+      "x": 1520,
+      "y": -186,
+      "w": 1440,
+      "text": "Nothing is docked. Eight state chips are the navigation: each shows its current value and opens the one overlay at its tab. The chip bar is also the status line, so \u00a713's signal inventory costs no layout.\ngrandMA3's title bar, generalised \u2014 the survey's strongest single steal."
+    },
+    {
+      "id": "n-empty",
+      "x": 0,
+      "y": -186,
+      "w": 1440,
+      "text": "First run only: IndexedDB auto-save means the honest normal case is that the app opens where you left it (\u00a74.6).\nThe picker takes Mizer YAML and MVR. A BlinderKitten .olga or MagicQ CSV is refused with the reason, not a parse error \u2014 ADR-0020 measured that neither names its definitions resolvably."
+    },
+    {
+      "id": "n-trouble",
+      "x": 3040,
+      "y": -186,
+      "w": 1440,
+      "text": "Every trust and provenance mark is ADDITIVE and drawn in screen space. A fixture at zero and a fixture whose data stopped look identical (\u00a713.3), so any subtractive cue \u2014 dimming, greying, desaturating \u2014 is invisible in exactly the case that matters. The stale spokes are still lit: frozen values, badged.\nOne badge per fixture, never per break (ADR-0011)."
+    },
+    {
+      "id": "n-place",
+      "x": 0,
+      "y": 1938,
+      "w": 1440,
+      "text": "Beamhouse never sends DMX, so it cannot hold the rig still \u2014 no surveyed product has this problem. HOLD pins the RENDER of the selection while you place it; frames keep arriving and the feed never notices.\nThe override is the design's most load-bearing idea (\u00a74.5) and was invisible. It now reads as a mark, carries the patch's own value, and offers the way back."
+    },
+    {
+      "id": "n-array",
+      "x": 1520,
+      "y": 1938,
+      "w": 1440,
+      "text": "The array stays live. Changing N re-places every member as ONE command \u2014 ADR-0016's undo grain is 'one thing a person would say out loud', which is also the agent's MCP vocabulary. Anything this canvas fails to draw, the agent cannot do either.\nThe five flipped spokes are #23's real cabling, and Mizer cannot represent them at all."
+    },
+    {
+      "id": "n-notation",
+      "x": 3040,
+      "y": 2892,
+      "w": 1440,
+      "text": "The field's converged notation, adopted whole: universe.address as one token (Capture and BlenderDMX arrived at it independently); a second break as a SUFFIXED COLUMN SET with 'Unpatched' as a literal value, so a one-break fixture shows empty columns rather than a different UI; patch errors as in-cell glyphs, never modals; Editable as a toggle on the table itself.\nUniverses is \u00a713.2 verbatim. '\u2014' is a third state: Art-Net carries no priority and no Preview_Data, and UNKNOWN is not the same claim as NOT BLIND."
+    },
+    {
+      "id": "n-history",
+      "x": 1520,
+      "y": 3912,
+      "w": 1440,
+      "text": "History exists because of one scenario ADR-0016 names: it is 4pm and an agent just rotated the wrong five spokes. Blind \u2318Z against an editor you don't have your hands on is the panic; seeing how far back to go is the fix. Agent-driven commands are marked \u2014 the only place the second editor is visible at all.\nIssues is one inbox for everything an ingest could not reconcile: ADR-0012's extent mismatch, ADR-0020's synthesised ids, orphaned overrides, patch overlaps."
+    }
+  ],
+  "launch": {
+    "view": "canvas"
+  }
+}
