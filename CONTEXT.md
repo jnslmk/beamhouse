@@ -288,13 +288,18 @@ _Avoid_: mover, moving head, spot (those are fixture kinds, not rendering classe
 
 **Cone angle**:
 The **full** angle of a **beam class** fixture's volumetric cone — apex to apex, not apex to axis
-([ADR-0013](docs/adr/0013-atmosphere-is-one-closed-form-scattering-term.md)). Sourced from the
-definition's static `BeamAngle`, overridden per tick by a **resolved** `Zoom` where the DMX mode
-has one — the only renderer input fed by both a static declaration and a live channel. Distinct
-from `FieldAngle`, which shapes the **edge falloff** only where the two differ, degenerating to
-the `BeamType` soft/hard edge when they are equal — which is five of the six profiles on disk.
+([ADR-0013](docs/adr/0013-atmosphere-is-one-closed-form-scattering-term.md)). Sourced from
+**three** places, in precedence order: a **resolved** `Zoom` where the DMX mode has one, per
+tick; then a **per-fixture override**, per hang; then the definition's static `BeamAngle`
+([ADR-0037](docs/adr/0037-a-dimmer-pack-is-not-a-fixture-its-loads-are.md)). The middle one is a
+**manual** setting the console cannot see and DMX cannot express — a barrel-set zoom, a gel, a
+gobo — supplied as the value of a channel with no DMX offset, and stored beside the placement
+**override** rather than inside it, which is what keeps **placement** a rigid transform and
+nothing more. Distinct from `FieldAngle`, which shapes the **edge falloff** only where the two
+differ, degenerating to the `BeamType` soft/hard edge when they are equal — which is five of the
+six profiles on disk.
 _Avoid_: half-angle (it is not one; this repo said so at six sites and every cone would have
-rendered twice too wide), beam angle (that is the static declaration, only one of the two
+rendered twice too wide), beam angle (that is the static declaration, only one of the three
 sources), spread, zoom
 
 **Strip class**:

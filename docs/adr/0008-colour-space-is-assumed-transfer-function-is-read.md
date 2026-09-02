@@ -3,7 +3,7 @@
 - **Status:** Accepted
 - **Date:** 2026-09-01
 - **Decides:** [#9](https://github.com/jnslmk/beamhouse/issues/9)
-- **Amended by:** [ADR-0010](0010-resolution-is-total-the-renderer-selects-by-attribute.md) (2026-09-02)
+- **Amended by:** [ADR-0010](0010-resolution-is-total-the-renderer-selects-by-attribute.md) (2026-09-02), [ADR-0037](0037-a-dimmer-pack-is-not-a-fixture-its-loads-are.md) (2026-09-02, rule 5 admits a declared white point)
 
 ## Context
 
