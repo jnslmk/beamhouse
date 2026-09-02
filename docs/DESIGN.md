@@ -1363,11 +1363,22 @@ prediction about a room. Against the alternative — a fixed 2700 K scaled in br
 declared 5600 K does *not* shift as it dims, and the impression 90 declares exactly that. So the
 model carries the temperature **and** whether it comes off a filament; GDTF says which in
 `<Beam LampType>` (`Tungsten`, `Halogen`, `Discharge`, `LED`), and the fixture model reduces that
-enum to the one bit the renderer needs rather than importing it. ADR-0037 decision 5 argues the
-drift *is* the tungsten signature and never says what selects it; this is the narrowest gate its
+enum to the one bit the renderer needs rather than importing it. ADR-0037 decision 5 argues the drift *is* the tungsten signature and never says what selects it; this is the narrowest gate its
 own argument requires. The alternative — drift everything with a declared white point — is
 recorded here because it is what an ungated reading would do, and it is wrong for every LED
 fixture that declares a CCT.
+
+**OFL can declare the first number, never the second.** Its only lamp-technology field,
+`physical.bulb.type`, is free text and is parsed and never consulted
+([#57](https://github.com/jnslmk/beamhouse/issues/57)): populated on 550 of the 629-fixture corpus
+but across 339 distinct values, with Martin's Mac 250 Krypton declaring `"Halogen"` at CCT
+8500 K and genuine halogens named only by model code (`ELC 250W`) matching no word. An OFL
+fixture's `filament` is therefore always false — not because the fixture is declared LED, but
+because nothing declares it, and GDTF's schema-level `Discharge` is never minted as a stand-in.
+It renders at its static white point at every level, which is the same outcome as every
+non-Beamhouse consumer renders for any tungsten GDTF; a user whose OFL fixture is genuinely
+tungsten (the corpus holds ~1: Robert Juliat 613SX) supplies an authored definition
+([ADR-0038](adr/0038-bhs-binds-one-way-through-a-local-fixture.md) rule 5).
 
 ```ts
 /** A declared `<Beam ColorTemperature>`, plus whether it drifts as the lamp dims. */

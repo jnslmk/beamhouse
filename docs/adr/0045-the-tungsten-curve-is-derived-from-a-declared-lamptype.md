@@ -5,6 +5,7 @@
 - **Decides:** [#50](https://github.com/jnslmk/beamhouse/issues/50)
 - **Amends:** [ADR-0037](0037-a-dimmer-pack-is-not-a-fixture-its-loads-are.md) decision 5
 - **Confirms:** [ADR-0008](0008-colour-space-is-assumed-transfer-function-is-read.md), [ADR-0033](0033-the-spoke-is-an-authored-gdtf-because-only-gdtf-can-say-it.md), [ADR-0038](0038-bhs-binds-one-way-through-a-local-fixture.md) rule 5
+- **Amended by:** [#57](https://github.com/jnslmk/beamhouse/issues/57) (2026-09-02) — decision 6, the OFL clause
 - **Source:** [`docs/research/gdtf-spectrum-vs-level.md`](../research/gdtf-spectrum-vs-level.md)
 
 ## Context
@@ -157,6 +158,27 @@ decision 4's condition — a white point matters precisely where nothing else su
 rather than restated, and it means a tungsten profile pulled from GDTF Share tomorrow gets the
 behaviour without an edit.
 
+**[amended 2026-09-02 — #57]** Decision 6 is format-neutral as written — it keys on a **declared**
+lamp type — and OFL has no field that declares one, which is now a decision rather than the accident
+ADR-0045's consequence bullet below flagged. OFL's only lamp-technology field,
+`physical.bulb.type`, is free text: populated on 550 of the 629-fixture corpus, but across **339
+distinct values** mixing model numbers, wattages and technologies, and proven unreliable where it
+does name one — Martin's Mac 250 Krypton declares `"Halogen"` at **CCT 8500 K** (a discharge
+mover), while genuine halogen lamps named only by model code (`ELC 250W`, `A1/259`) carry no word
+to match. It is **parsed and never consulted**, the posture [ADR-0043](0043-ofl-sole-emitter-draws-the-cone.md)
+decision 1 gave `physical.lens.name`. An OFL fixture's lamp type is therefore **absent** in the
+converged model, and stays absent: it is never defaulted to GDTF's schema-level `Discharge`, which
+is a statement GDTF makes about GDTF files, not a property of the model. The drift is **unreachable
+from OFL by decision**: an OFL fixture renders at its static white point
+(`physical.bulb.colorTemperature`, ADR-0043 decision 6) and never warms — the same outcome as every
+non-Beamhouse consumer renders for any tungsten GDTF (finding 3), the defensible answer #57 demanded
+rather than a default nobody chose. The measured population this costs is ~1 clean fixture of 629
+(Robert Juliat 613SX: a single `Dimmer` channel, `Tungsten T19`, 3050 K); the remedy for a user
+whose OFL fixture is genuinely tungsten is the one ADR-0043 decision 1 already names for any
+under-expressive third-party definition — an authored definition ([ADR-0012](0012-beamhouse-may-define-pixels-placement-mints-nothing.md)
+rule 2, [ADR-0038](0038-bhs-binds-one-way-through-a-local-fixture.md) rule 5) — not new per-fixture
+machinery on the model.
+
 **7 · ADR-0037 decision 5 is untouched in substance.** The exponent, the derivation from
 `T ∝ V^0.42` and `Φ ∝ V^3.4`, the level table and the argument against a fixed 2700 K all stand.
 This ADR amends it only by stating where the curve lives, which decision 5 left open.
@@ -186,7 +208,11 @@ it: this is a chromaticity claim about a filament, not a photometric prediction 
   It asks what selects the render path for an OFL fixture given OFL has no `BeamType`; OFL has no
   `LampType` either, so no OFL fixture can ever take the tungsten drift. Whatever #49 decides for
   `BeamType` should cover this at the same time — the two are the same shape of gap, and deciding
-  them separately would leave OFL a second silent default nobody chose.
+  them separately would leave OFL a second silent default nobody chose. **[settled 2026-09-02 —
+  #57]** #49's ADR closed on the emitter count without reaching the lamp-type field, so #57 decided
+  it separately; the outcome is decision 6's amendment — the lamp type is absent for OFL and the
+  drift is unreachable from OFL **by decision**, with the static white point (ADR-0043 decision 6)
+  as the ceiling of what OFL can declare.
 
 - **The `Relation Type="Multiply"` / virtual-channel idiom is now a read fact, not a used one.** It
   is the only construct in GDTF that lets a non-emitter channel drive an emitter, it is documented,
