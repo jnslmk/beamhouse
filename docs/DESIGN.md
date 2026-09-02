@@ -561,7 +561,13 @@ replaces it is a **universe over-run**, caught when the address is typed rather 
 pitch, channels-per-pixel, `PrimitiveType` — and `primitive`, a `PrimitiveType` with bounding
 dimensions, which is §14.4's human proxy. `BeamType`, `BeamAngle`, `BeamRadius` and
 `ColorTemperature` are GDTF's, so a definition that describes *light* is an authored GDTF
-([ADR-0033](adr/0033-the-spoke-is-an-authored-gdtf-because-only-gdtf-can-say-it.md)). A local
+([ADR-0033](adr/0033-the-spoke-is-an-authored-gdtf-because-only-gdtf-can-say-it.md)).
+**[sharpened 2026-09-02 — #49]** Those four *names* are GDTF's, and the rule for `bhs:` stands —
+but OFL is not silent on optics the way `bhs:` is: it declares a beam angle
+(`physical.lens.degreesMinMax`, 63.6% of the corpus) and a white point
+(`physical.bulb.colorTemperature`, 12.4%), both of which now reach the fixture model
+([ADR-0043](adr/0043-ofl-sole-emitter-draws-the-cone.md)). What OFL has no counterpart for is
+`BeamType` itself. A local
 fixture is a **slot range, not a universe** — it carries an address, so "universes the console never
 patched" was always the loose reading. It may name **any** resolvable definition id, not only a
 `bhs:` one; the negative id is the constraint, and the prefix never was.
@@ -1197,6 +1203,19 @@ A cone comes from each `Beam` node **whose `BeamType` is `Wash`, `Fresnel`, `PC`
 ([ADR-0022](adr/0022-beamtype-selects-the-path-stride-aggregates-within-it.md)). §5.1's table was
 already right — a `Beam` node is a *beam origin*, and nothing about declaring one says a cone is
 drawn.
+
+**[extended 2026-09-02 — #49]** That rule is GDTF's vocabulary, and read alone it leaves a fixture
+with no `BeamType` — every OFL fixture — with no answer rather than a negative one. **An OFL
+fixture's *sole* emitter draws a cone of `physical.lens.degreesMinMax` where one is declared, and a
+pixel never does** ([ADR-0043](adr/0043-ofl-sole-emitter-draws-the-cone.md)). The emitter count
+is the only per-emitter signal OFL carries, so this needs no precedence clause either. Measured
+across the live 629-fixture corpus: **310** fixtures gain a cone and **115** matrix fixtures keep
+none; `physical.lens.name` exists but is populated on 5.6% as free text and is never consulted; and
+`categories` selects nothing, because `["Dimmer"]` alone is both a Cameo Q-Spot and the dimmer pack
+[ADR-0037](adr/0037-a-dimmer-pack-is-not-a-fixture-its-loads-are.md) ruled is not a fixture. The
+cost of leaving it to fall out of a missing field was never a missing cone: non-cone hands the
+fixture to ADR-0005's stride, so the **90** OFL fixtures declaring both a lens angle and a `matrix`
+would have rendered as *strips*.
 
 Cone geometry from each cone-drawing `Beam` node, additively blended, depth-write off, sorted back
 to front, cone angle driven by the resolved `Zoom`. The cone is **added to** the emissive body

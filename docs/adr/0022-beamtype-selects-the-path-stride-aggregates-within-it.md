@@ -6,7 +6,9 @@
 - **Amends:** [ADR-0005](0005-emitter-grouping-is-by-dmx-stride.md) rule 7 (its stated blocker is
   false), [ADR-0013](0013-atmosphere-is-one-closed-form-scattering-term.md) (a `Wash` emitter is
   visible without atmosphere)
-- **Amended by:** [ADR-0033](0033-the-spoke-is-an-authored-gdtf-because-only-gdtf-can-say-it.md)
+- **Amended by:** [ADR-0033](0033-the-spoke-is-an-authored-gdtf-because-only-gdtf-can-say-it.md),
+  [ADR-0043](0043-ofl-sole-emitter-draws-the-cone.md) (rule 1 gains the OFL selector; rule 3's
+  `BeamRadius` body is sized from `physical.dimensions` where the format has no such field)
 
 ## Context
 

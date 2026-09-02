@@ -3,6 +3,7 @@
 - **Status:** Accepted
 - **Date:** 2026-09-01
 - **Decides:** [#8](https://github.com/jnslmk/beamhouse/issues/8)
+- **Amended by:** [ADR-0043](0043-ofl-sole-emitter-draws-the-cone.md) (2026-09-02, rule 1's OFL clause holds for 17 of 115 matrix fixtures)
 
 ## Context
 
