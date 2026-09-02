@@ -60,6 +60,15 @@ tier is a switch rather than a rewrite.
 
 - Higher-fidelity rendering. PBR is free from glTF; the missing pieces are haze, soft shadows,
   and a slower "render" tier.
+
+  **[under review 2026-09-02 — #28]** The atmosphere half of this tier may not belong in it. A
+  beam in clean air is invisible; what you see in a room is scattering off particulate, so a cone
+  with no atmosphere term reads as a diagram of a beam rather than a beam. It is also the whole
+  field's headline: Capture 2026's is that smoke now *absorbs* all light, DMXpressions leads with
+  a physics-simulated atmosphere, Showcase 2026 added animated fog. #28 grills whether a
+  **constant-density single-scattering term** — closed-form for a cone, one integral in the same
+  fragment shader, no raymarch and no second pass — lands in v1 while absorption, volumetric
+  shadows and the render tier stay deferred. Recommendation there is yes, validated at M6.
 - Gobos, prisms, framing shutters. GDTF carries wheel media in the same zip.
 - The agent surface — a fourth feed implementation injecting state directly. Undecided
   for v1.
@@ -91,7 +100,24 @@ tier is a switch rather than a rewrite.
   What survives is that `strip.getPixelColor()` reflects **any** input source, E1.31 and Art-Net
   included — which makes the stream a **conformance oracle** for the strip class rather than a
   feature. See the prototype ticket on the map.
-- Paperwork, plots, patch sheets, MVR-xchange.
+- Paperwork, plots, patch sheets.
+- **MVR-xchange.** **[split out 2026-09-02 — #30]** It was sharing a bullet with paperwork and
+  does not belong there. Paperwork is a feature Beamhouse declines; MVR-xchange is the
+  **interoperability floor the rest of the ecosystem has agreed on** — a network protocol that
+  pushes scene changes between tools, live as of 2026 in grandMA3, BlenderDMX, Vectorworks 2026,
+  Production Assist, zactrack and DMXRouter.
+
+  It stays out of v1 because **Mizer has no station on the other end** (§4.1: zero `mvr` across
+  every `.rs`, `.toml` and `.proto`), because watching the project YAML is a strictly better
+  mechanism for this pair — no export step, no discovery — and because accepting pushed scene
+  files would give the bridge a trust boundary it currently does not have on a network it does
+  not own.
+
+  **The ceiling that buys is explicit:** Beamhouse can be half of the Mizer pair and cannot
+  appear in a multi-tool room. §4.3's MVR *file* import is now the legacy path rather than the
+  current one. #30 settles the wording and whether the patch reader gets a defined source
+  interface; #33 asks the prior question, since the "no station" argument holds only while
+  Mizer is the only console — and #30 is blocked on it.
 - **Being a control surface. Beamhouse never sends DMX.** Mizer is the control surface;
   Beamhouse is the preparation visualiser. The pair is the product.
 - **QLC+ as a *resolved runtime* format.** Settled in
@@ -255,6 +281,14 @@ MVR stays supported because it is the only interchange format that carries posit
 because BlinderKitten exports it and BlenderDMX reads and writes it. It is a side door rather
 than the spine: a zip containing `GeneralSceneDescription.xml` plus the GDTF files it
 references. Use `pymvr` as the reference implementation.
+
+**[reframed 2026-09-02 — #33]** "Side door" undersells what this already delivers. Because MVR
+carries positions, per-break addresses, `FixtureID` and layers, **every console that exports MVR
+is a supported patch source today** — M5b is that, not a nicety. What is Mizer-only is the *live
+repatch loop* (§4.2, §4.6), which rests on a file on the same disk that no other console writes.
+So the open question is not "support more consoles" but whether the live loop generalises, and it
+drags ADR-0003 with it: the integer id was chosen as the only key both sources supply **because
+Mizer has no UUID**, and MVR has one. #33 grills it.
 
 | Element   | Use                                            |
 | --------- | ---------------------------------------------- |
@@ -480,6 +514,15 @@ start-order ritual, and group join/leave maps directly onto the `subscribe` mess
 4. Mark a universe stale after ~2.5 s of silence and say so. Silent frozen output is the worst
    failure mode, because you debug the console instead of the network.
 5. Pass through the priority and `Preview_Data` flags — a free blind-mode indicator.
+
+   **[gap noted 2026-09-02 — #31]** Jobs 3, 4 and 5 all produce signals that **nothing in this
+   document consumes**: staleness, sACN priority, `Preview_Data`, and the out-of-order drop
+   count. The bridge prevents the silence job 4 warns about; the UI is where it stops being
+   silent, and there is no UI section. #31 writes one, covering a universe read-out, whole-fixture
+   staleness (a multi-break fixture with one stale break renders **wholly** stale per ADR-0009a —
+   a strip half live and half frozen is job 4's failure made *more* convincing by the live half),
+   blind indication, and a false-colour mode over resolved `Dimmer`, which ADR-0010 makes nearly
+   free.
 6. **Merge both transports into one universe space**, sACN-numbered: an Art-Net Port-Address *p*
    is forwarded as universe *p* + 1 ([ADR-0007](adr/0007-one-universe-space-sacn-numbered.md)).
    This is the only place that mapping may live, and it is worth a test.
@@ -536,6 +579,15 @@ texture (ADR-0005). Do not substitute a cylinder for a declared `Cube`: the real
 `MarkeEigenbau` strip declares a 25 x 50 x 1000 mm cube, and overriding that is the renderer
 claiming to know better than the definition.
 
+**[open 2026-09-02 — #27]** That last rule assumes every emitter traces back to a declared
+geometry. Capture 2026 shipped the opposite: a **generic LED Strip** drawn as a Bézier curve with
+a pixel pitch, pixel count falling out of length ÷ pitch, no definition file anywhere. The naive
+import of that idea is falsified by §04's split — Capture *is* the patch, Beamhouse only reads
+one, so a tube that exists only here is a tube Mizer cannot address. What survives is the narrow
+question #27 grills: may **placement** distribute a definition's emitters along an authored path,
+given the STAR-TENT's ten spokes cabled back and forth (#21) are a shape no definition will ever
+carry, and §4.4's parametric arrays already generate placement from parameters?
+
 ```ts
 const tex = new THREE.DataTexture(
   new Float32Array(pixelCount * 4), pixelCount, 1,
@@ -563,6 +615,20 @@ ASLS Studio's `beam.frag.glsl` is the best open reference, but it is **GPL-3**: 
 technique freely; reusing it makes your renderer GPL-3 too.
 
 Drive strobe from a shader uniform on wall time, not by dropping frames.
+
+**[two questions opened 2026-09-02]**
+
+- **#28 — does the atmosphere term land in v1?** The seam above is only insurance if it is
+  claimed once, and `density(p)` integrated by nothing but the analytic path is an untested
+  assumption. A constant-density single-scattering term is closed-form for a cone and needs no
+  raymarch. Recommendation: yes, validated at M6, with absorption and volumetric shadows staying
+  in the deferred tier.
+- **#29 — raw GLSL or node material?** §03 lists hand-written `.glsl`, which is the right default
+  and also the thing that fixes the cost of ever leaving WebGL2: three.js's WebGPU path expects
+  node graphs, and `postprocessing` is a WebGL-era library. **WebGL2 stays locked** — the survey's
+  one WebGPU competitor (DMXpressions) spends it on raymarched volumetrics, i.e. precisely the
+  tier §01 deferred, and nothing v1 renders needs it. #29 records that as a decision rather than
+  a default, and closes the `three`/`postprocessing` versions in §12 with it.
 
 ### 8.3 Colour: RGB now, white channels later
 
@@ -670,14 +736,28 @@ cube move.
 | M1  | Cubes, live   | Three cubes change brightness from real DMX, hard-coded patch           | ¾ d   |
 | M2  | Strips        | One tube renders as a smooth gradient driven by gled2 or WLED           | 1 d   |
 | M3  | Scene editor  | Drag a fixture, edit a radial array, reload the tab, it persists        | 1½ d  |
+| M3a | Share link    | A Pages URL with the scene in its fragment opens the rig on a phone     | ½ d   |
 | M4  | gdtf-ts       | An arbitrary GDTF patches and its real GLB renders with working pan/tilt| 3–5 d |
 | M5a | Mizer patch   | Beamhouse reads the project YAML; repatching updates the rig live       | ½ d   |
 | M5b | MVR import    | A rig exported from BlinderKitten loads, overrides merge cleanly        | 1 d   |
 | M6  | Beams         | Six movers, volumetric cones, zoom and strobe correct                   | 1–2 d |
-| M7  | Share link    | A Pages URL with the scene in its fragment opens the rig on a phone     | ½ d   |
-| M8  | Record/replay | A committed `.bhr` plays back through the same shared link              | 1 d   |
+| M7  | Record/replay | A committed `.bhr` plays back through the same shared link              | 1 d   |
 
 M4 is the wall; §5.0 is what makes it survivable.
+
+**[reordered 2026-09-02]** The share link was M7, behind the wall. It is now **M3a**, immediately
+after the scene editor, and record/replay takes the freed M7 slot.
+
+The reason is the competitive review: sharing is the **only** capability in this design that no
+surveyed product has, commercial or open. Everything else Beamhouse does, something in the field
+also does, usually better-funded. Leaving the one uncontested thing until after a 3–5 day wall
+means it is the first casualty if the wall costs more than budgeted — which is exactly backwards.
+
+M3a is cheap where it now sits because it needs nothing M4 provides: §9.1's fragment encoding uses
+the `fflate` already depended on, and §9.2's degradation ladder starts at **proxy geometry from
+`PrimitiveType`**, which is the render path for strips anyway (#2 found the `MarkeEigenbau` profile
+ships `description.xml` with no meshes at all). A crude M3a that shares a scene of proxies is worth
+more than a polished one that arrives at the end.
 
 ## 11 · Open questions
 
@@ -710,10 +790,25 @@ These are the wayfinder map's tickets. See the map issue for current state.
 9. **What is the reference for the spatial half of resolution?** Mizer provides none; BlenderDMX
    is the leading candidate.
 
+**[opened 2026-09-02 by the competitive review]**
+
+10. **Does placement ever mint emitters a definition did not declare?** (#27) Capture 2026's
+    definition-free LED Strip against §04's patch/placement split and ADR-0005.
+11. **Does v1 render atmosphere?** (#28) The whole field's headline feature against §01's
+    deferred render tier. See §8.2.
+12. **Raw GLSL or node material?** (#29) WebGL2 stays locked; what is open is the shader
+    authoring model, which is what fixes the cost of ever leaving it. Closes half of §12.
+13. **Is MVR-xchange a ceiling we accept, and where is the seam?** (#30) Blocked by #33.
+14. **Which consoles does Beamhouse serve?** (#33) Whether the live repatch loop generalises past
+    Mizer — and if it does, ADR-0003's integer id reopens, because the UUID it declined exists in
+    every source but Mizer's.
+
 ## 12 · Dependencies
 
 The **browser** table below is still unsettled — versions and choices fall out of the open
-questions above. The **bridge** table is settled
+questions above, and **#29 is the one that closes it**: `three` and `postprocessing` cannot be
+pinned before the shader authoring model is chosen, since a node-material renderer replaces
+`postprocessing` rather than versioning it. The **bridge** table is settled
 ([ADR-0006](adr/0006-bridge-is-typescript-on-bun.md)).
 
 | Package                | Version | Role                                    | Licence |
