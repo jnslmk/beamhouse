@@ -1,0 +1,20 @@
+{
+  "name": "@beamhouse/app",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "vite build",
+    "dev": "vite",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@beamhouse/wire": "workspace:*",
+    "three": "0.185.1"
+  },
+  "devDependencies": {
+    "@types/three": "0.185.0",
+    "typescript": "catalog:",
+    "vite": "7.1.3"
+  }
+}

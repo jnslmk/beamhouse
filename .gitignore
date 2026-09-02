@@ -4,3 +4,7 @@
 definitions/gdtf/*.gdtf
 definitions/gdtf-share-list.json
 __pycache__/
+
+.codex-tmp/
+node_modules/
+app/dist/
