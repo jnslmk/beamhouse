@@ -269,6 +269,22 @@ Whether a channel value is proportional to radiance or perceptually encoded. Ind
 ([ADR-0008](docs/adr/0008-colour-space-is-assumed-transfer-function-is-read.md)).
 _Avoid_: gamma, colour curve, linearity
 
+**White point**:
+The chromaticity a definition declares for its own light, as `Beam` `ColorTemperature` in kelvin.
+The same word the **colour space** entry uses for the W of a colour space — and deliberately so:
+this *is* that white point, declared per definition where the primaries are only assumed
+([ADR-0008](docs/adr/0008-colour-space-is-assumed-transfer-function-is-read.md) rule 5 admits it and
+nothing else). It matters where **no channel supplies colour** — a fixture with no `ColorAdd_*` and
+no `CTO` — because there it is the whole of the emitter's colour, minted as a static `LinearRGB` by
+`resolveColor` like any other ([ADR-0037](docs/adr/0037-a-dimmer-pack-is-not-a-fixture-its-loads-are.md)).
+Where the definition also declares `LampType="Tungsten"` or `"Halogen"`, the white point **drifts
+with level** — `T / T0 = (radiance fraction) ^ 0.1235`, because a filament cools as it dims
+([ADR-0045](docs/adr/0045-the-tungsten-curve-is-derived-from-a-declared-lamptype.md)). The drift is
+**derived from** a declared field, never read from one: GDTF can declare a spectrum per drive level,
+but no reader anywhere honours it, so the curve is Beamhouse's and the lamp type is the file's.
+_Avoid_: colour temperature (that is the declared kelvin figure; the white point is what it resolves
+to), warm dim, tungsten curve as a definition field
+
 **Fixture model**:
 The format-neutral internal representation both definition readers converge on — geometry tree
 plus channel bindings — so the renderer never learns whether a fixture came from GDTF or OFL
