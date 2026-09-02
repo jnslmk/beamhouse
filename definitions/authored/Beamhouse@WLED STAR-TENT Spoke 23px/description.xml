@@ -1,0 +1,127 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<GDTF DataVersion="1.2">
+  <FixtureType CanHaveChildren="No" Description="One radial spoke of the self-built STAR-TENT: a 1.5 m aluminium profile carrying 23 pixels, driven per pixel over Art-Net by a WLED node in DMX_MODE_MULTIPLE_RGB. The physical device is one node driving ten of these as a single 230-LED run; patch the tent as ten fixtures. Geometry from build123d models/led_profiles; pixel count measured off the live node (issue #21). See definitions/authored/README.md." FixtureTypeID="1B9F1C2E-7A64-4C0D-9E33-5A2D8B47F016" LongName="Beamhouse WLED STAR-TENT Spoke 23px" Manufacturer="Beamhouse" Name="WLED STAR-TENT Spoke 23px" RefFT="" ShortName="STSPOKE23" Thumbnail="">
+    <AttributeDefinitions>
+      <ActivationGroups>
+        <ActivationGroup Name="ColorRGB"/>
+      </ActivationGroups>
+      <FeatureGroups>
+        <FeatureGroup Name="Color" Pretty="C"><Feature Name="RGB"/></FeatureGroup>
+      </FeatureGroups>
+      <Attributes>
+        <Attribute ActivationGroup="ColorRGB" Color="1.000000,0.000000,0.000000" Feature="Color.RGB" Name="ColorAdd_R" PhysicalUnit="ColorComponent" Pretty="R"/>
+        <Attribute ActivationGroup="ColorRGB" Color="0.000000,1.000000,0.000000" Feature="Color.RGB" Name="ColorAdd_G" PhysicalUnit="ColorComponent" Pretty="G"/>
+        <Attribute ActivationGroup="ColorRGB" Color="0.000000,0.000000,1.000000" Feature="Color.RGB" Name="ColorAdd_B" PhysicalUnit="ColorComponent" Pretty="B"/>
+      </Attributes>
+    </AttributeDefinitions>
+    <Wheels/>
+    <PhysicalDescriptions/>
+    <Models>
+      <Model File="led_profiles.previz_body" Height="0.016800" Length="1.500000" Name="Body" PrimitiveType="Cube" Width="0.026100"/>
+      <Model File="led_profiles.previz_diffuser" Height="0.013700" Length="1.500000" Name="Diffuser" PrimitiveType="Cube" Width="0.026100"/>
+      <Model File="" Height="0.013700" Length="0.065217" Name="Pixel" PrimitiveType="Cube" Width="0.026100"/>
+    </Models>
+    <Geometries>
+      <Beam BeamAngle="180.000000" BeamRadius="0.013050" BeamType="Glow" FieldAngle="180.000000" LampType="LED" Model="Pixel" Name="Pixel" Position="{1.000000,0.000000,0.000000,0.000000}{0.000000,1.000000,0.000000,0.000000}{0.000000,0.000000,1.000000,0.000000}{0,0,0,1}"/>
+      <Geometry Model="Body" Name="Body" Position="{1.000000,0.000000,0.000000,0.750000}{0.000000,1.000000,0.000000,0.000000}{0.000000,0.000000,1.000000,0.008400}{0,0,0,1}">
+        <Geometry Model="Diffuser" Name="Diffuser" Position="{1.000000,0.000000,0.000000,0.000000}{0.000000,1.000000,0.000000,0.000000}{0.000000,0.000000,1.000000,0.015250}{0,0,0,1}">
+          <GeometryReference Geometry="Pixel" Model="Pixel" Name="Pixel1" Position="{1.000000,0.000000,0.000000,-0.717391}{0.000000,1.000000,0.000000,0.000000}{0.000000,0.000000,1.000000,0.000000}{0,0,0,1}">
+            <Break DMXBreak="1" DMXOffset="1"/>
+          </GeometryReference>
+          <GeometryReference Geometry="Pixel" Model="Pixel" Name="Pixel2" Position="{1.000000,0.000000,0.000000,-0.652174}{0.000000,1.000000,0.000000,0.000000}{0.000000,0.000000,1.000000,0.000000}{0,0,0,1}">
+            <Break DMXBreak="1" DMXOffset="4"/>
+          </GeometryReference>
+          <GeometryReference Geometry="Pixel" Model="Pixel" Name="Pixel3" Position="{1.000000,0.000000,0.000000,-0.586957}{0.000000,1.000000,0.000000,0.000000}{0.000000,0.000000,1.000000,0.000000}{0,0,0,1}">
+            <Break DMXBreak="1" DMXOffset="7"/>
+          </GeometryReference>
+          <GeometryReference Geometry="Pixel" Model="Pixel" Name="Pixel4" Position="{1.000000,0.000000,0.000000,-0.521739}{0.000000,1.000000,0.000000,0.000000}{0.000000,0.000000,1.000000,0.000000}{0,0,0,1}">
+            <Break DMXBreak="1" DMXOffset="10"/>
+          </GeometryReference>
+          <GeometryReference Geometry="Pixel" Model="Pixel" Name="Pixel5" Position="{1.000000,0.000000,0.000000,-0.456522}{0.000000,1.000000,0.000000,0.000000}{0.000000,0.000000,1.000000,0.000000}{0,0,0,1}">
+            <Break DMXBreak="1" DMXOffset="13"/>
+          </GeometryReference>
+          <GeometryReference Geometry="Pixel" Model="Pixel" Name="Pixel6" Position="{1.000000,0.000000,0.000000,-0.391304}{0.000000,1.000000,0.000000,0.000000}{0.000000,0.000000,1.000000,0.000000}{0,0,0,1}">
+            <Break DMXBreak="1" DMXOffset="16"/>
+          </GeometryReference>
+          <GeometryReference Geometry="Pixel" Model="Pixel" Name="Pixel7" Position="{1.000000,0.000000,0.000000,-0.326087}{0.000000,1.000000,0.000000,0.000000}{0.000000,0.000000,1.000000,0.000000}{0,0,0,1}">
+            <Break DMXBreak="1" DMXOffset="19"/>
+          </GeometryReference>
+          <GeometryReference Geometry="Pixel" Model="Pixel" Name="Pixel8" Position="{1.000000,0.000000,0.000000,-0.260870}{0.000000,1.000000,0.000000,0.000000}{0.000000,0.000000,1.000000,0.000000}{0,0,0,1}">
+            <Break DMXBreak="1" DMXOffset="22"/>
+          </GeometryReference>
+          <GeometryReference Geometry="Pixel" Model="Pixel" Name="Pixel9" Position="{1.000000,0.000000,0.000000,-0.195652}{0.000000,1.000000,0.000000,0.000000}{0.000000,0.000000,1.000000,0.000000}{0,0,0,1}">
+            <Break DMXBreak="1" DMXOffset="25"/>
+          </GeometryReference>
+          <GeometryReference Geometry="Pixel" Model="Pixel" Name="Pixel10" Position="{1.000000,0.000000,0.000000,-0.130435}{0.000000,1.000000,0.000000,0.000000}{0.000000,0.000000,1.000000,0.000000}{0,0,0,1}">
+            <Break DMXBreak="1" DMXOffset="28"/>
+          </GeometryReference>
+          <GeometryReference Geometry="Pixel" Model="Pixel" Name="Pixel11" Position="{1.000000,0.000000,0.000000,-0.065217}{0.000000,1.000000,0.000000,0.000000}{0.000000,0.000000,1.000000,0.000000}{0,0,0,1}">
+            <Break DMXBreak="1" DMXOffset="31"/>
+          </GeometryReference>
+          <GeometryReference Geometry="Pixel" Model="Pixel" Name="Pixel12" Position="{1.000000,0.000000,0.000000,0.000000}{0.000000,1.000000,0.000000,0.000000}{0.000000,0.000000,1.000000,0.000000}{0,0,0,1}">
+            <Break DMXBreak="1" DMXOffset="34"/>
+          </GeometryReference>
+          <GeometryReference Geometry="Pixel" Model="Pixel" Name="Pixel13" Position="{1.000000,0.000000,0.000000,0.065217}{0.000000,1.000000,0.000000,0.000000}{0.000000,0.000000,1.000000,0.000000}{0,0,0,1}">
+            <Break DMXBreak="1" DMXOffset="37"/>
+          </GeometryReference>
+          <GeometryReference Geometry="Pixel" Model="Pixel" Name="Pixel14" Position="{1.000000,0.000000,0.000000,0.130435}{0.000000,1.000000,0.000000,0.000000}{0.000000,0.000000,1.000000,0.000000}{0,0,0,1}">
+            <Break DMXBreak="1" DMXOffset="40"/>
+          </GeometryReference>
+          <GeometryReference Geometry="Pixel" Model="Pixel" Name="Pixel15" Position="{1.000000,0.000000,0.000000,0.195652}{0.000000,1.000000,0.000000,0.000000}{0.000000,0.000000,1.000000,0.000000}{0,0,0,1}">
+            <Break DMXBreak="1" DMXOffset="43"/>
+          </GeometryReference>
+          <GeometryReference Geometry="Pixel" Model="Pixel" Name="Pixel16" Position="{1.000000,0.000000,0.000000,0.260870}{0.000000,1.000000,0.000000,0.000000}{0.000000,0.000000,1.000000,0.000000}{0,0,0,1}">
+            <Break DMXBreak="1" DMXOffset="46"/>
+          </GeometryReference>
+          <GeometryReference Geometry="Pixel" Model="Pixel" Name="Pixel17" Position="{1.000000,0.000000,0.000000,0.326087}{0.000000,1.000000,0.000000,0.000000}{0.000000,0.000000,1.000000,0.000000}{0,0,0,1}">
+            <Break DMXBreak="1" DMXOffset="49"/>
+          </GeometryReference>
+          <GeometryReference Geometry="Pixel" Model="Pixel" Name="Pixel18" Position="{1.000000,0.000000,0.000000,0.391304}{0.000000,1.000000,0.000000,0.000000}{0.000000,0.000000,1.000000,0.000000}{0,0,0,1}">
+            <Break DMXBreak="1" DMXOffset="52"/>
+          </GeometryReference>
+          <GeometryReference Geometry="Pixel" Model="Pixel" Name="Pixel19" Position="{1.000000,0.000000,0.000000,0.456522}{0.000000,1.000000,0.000000,0.000000}{0.000000,0.000000,1.000000,0.000000}{0,0,0,1}">
+            <Break DMXBreak="1" DMXOffset="55"/>
+          </GeometryReference>
+          <GeometryReference Geometry="Pixel" Model="Pixel" Name="Pixel20" Position="{1.000000,0.000000,0.000000,0.521739}{0.000000,1.000000,0.000000,0.000000}{0.000000,0.000000,1.000000,0.000000}{0,0,0,1}">
+            <Break DMXBreak="1" DMXOffset="58"/>
+          </GeometryReference>
+          <GeometryReference Geometry="Pixel" Model="Pixel" Name="Pixel21" Position="{1.000000,0.000000,0.000000,0.586957}{0.000000,1.000000,0.000000,0.000000}{0.000000,0.000000,1.000000,0.000000}{0,0,0,1}">
+            <Break DMXBreak="1" DMXOffset="61"/>
+          </GeometryReference>
+          <GeometryReference Geometry="Pixel" Model="Pixel" Name="Pixel22" Position="{1.000000,0.000000,0.000000,0.652174}{0.000000,1.000000,0.000000,0.000000}{0.000000,0.000000,1.000000,0.000000}{0,0,0,1}">
+            <Break DMXBreak="1" DMXOffset="64"/>
+          </GeometryReference>
+          <GeometryReference Geometry="Pixel" Model="Pixel" Name="Pixel23" Position="{1.000000,0.000000,0.000000,0.717391}{0.000000,1.000000,0.000000,0.000000}{0.000000,0.000000,1.000000,0.000000}{0,0,0,1}">
+            <Break DMXBreak="1" DMXOffset="67"/>
+          </GeometryReference>
+        </Geometry>
+      </Geometry>
+    </Geometries>
+    <DMXModes>
+      <DMXMode Description="23 pixels x RGB, 69 channels, ordered R1 G1 B1 ... R23 G23 B23" Geometry="Body" Name="23px RGB 69-channel">
+        <DMXChannels>
+          <DMXChannel DMXBreak="1" Geometry="Pixel" Highlight="None" InitialFunction="Pixel_ColorAdd_R.ColorAdd_R.Red" Offset="1">
+            <LogicalChannel Attribute="ColorAdd_R" DMXChangeTimeLimit="0.000000" Master="None" MibFade="0.000000" Snap="No">
+              <ChannelFunction Attribute="ColorAdd_R" DMXFrom="0/1" Default="0/1" Max="1.000000" Min="0.000000" Name="Red" OriginalAttribute="" PhysicalFrom="0.000000" PhysicalTo="1.000000"/>
+            </LogicalChannel>
+          </DMXChannel>
+          <DMXChannel DMXBreak="1" Geometry="Pixel" Highlight="None" InitialFunction="Pixel_ColorAdd_G.ColorAdd_G.Green" Offset="2">
+            <LogicalChannel Attribute="ColorAdd_G" DMXChangeTimeLimit="0.000000" Master="None" MibFade="0.000000" Snap="No">
+              <ChannelFunction Attribute="ColorAdd_G" DMXFrom="0/1" Default="0/1" Max="1.000000" Min="0.000000" Name="Green" OriginalAttribute="" PhysicalFrom="0.000000" PhysicalTo="1.000000"/>
+            </LogicalChannel>
+          </DMXChannel>
+          <DMXChannel DMXBreak="1" Geometry="Pixel" Highlight="None" InitialFunction="Pixel_ColorAdd_B.ColorAdd_B.Blue" Offset="3">
+            <LogicalChannel Attribute="ColorAdd_B" DMXChangeTimeLimit="0.000000" Master="None" MibFade="0.000000" Snap="No">
+              <ChannelFunction Attribute="ColorAdd_B" DMXFrom="0/1" Default="0/1" Max="1.000000" Min="0.000000" Name="Blue" OriginalAttribute="" PhysicalFrom="0.000000" PhysicalTo="1.000000"/>
+            </LogicalChannel>
+          </DMXChannel>
+        </DMXChannels>
+        <Relations/>
+        <FTMacros/>
+      </DMXMode>
+    </DMXModes>
+    <Revisions>
+      <Revision Date="2026-09-02T00:00:00" ModifiedBy="beamhouse" Text="Initial authored profile. Section and rim from build123d models/led_profiles/config.py; 23 px per spoke measured off the live WLED node (issue #21); channel layout matches the ten-fixture per-pixel patch verified against the node (issue #23)." UserID="1"/>
+    </Revisions>
+  </FixtureType>
+</GDTF>

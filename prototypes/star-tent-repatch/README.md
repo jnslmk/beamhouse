@@ -70,8 +70,44 @@ client at a time.
 
 ## Relation to #26's oracle
 
-Different jobs. `prototypes/wled-peek-oracle/` is a captured **offline** oracle for the strip
-render path — frames on disk, no hardware needed ever again. This is a **live** check of one
-specific patch, and it is not a substitute for anything: ADR-0011 rule 4 explicitly tests the
-multi-break path against that offline oracle rather than against this rig, precisely so that the
-re-addressing here stays revertible rather than load-bearing.
+Different jobs. #26 captured an **offline** oracle for the strip render path — frames on disk, no
+hardware needed ever again — and this is a **live** check of one specific patch. It is not a
+substitute for that: ADR-0011 rule 4 explicitly tests the multi-break path against the offline
+oracle rather than against this rig, precisely so that the re-addressing here stays revertible
+rather than load-bearing.
+
+**But the directory this used to name, `prototypes/wled-peek-oracle/`, is not in this repo** —
+not on `main`, and not added anywhere in the history reachable from it. The wayfinder map says the
+same thing and is wrong in the same way. What survives of #26's evidence is `capture/` here, which
+re-ran #26's own index-ramp pattern against the same node through the ten-fixture patch. Reported
+by [#46](https://github.com/jnslmk/beamhouse/issues/46); it is a missing artifact, not a missing
+finding.
+
+## `conformance-gdtf.py` — the #46 re-run, offline
+
+[ADR-0033](../../docs/adr/0033-the-spoke-is-an-authored-gdtf-because-only-gdtf-can-say-it.md)'s
+last consequence asks for the oracle to be re-run once after the ten spokes re-patch onto the
+authored GDTF, because the re-patch changes which definition supplies the strip's index space —
+OFL's `matrix.pixelCount` for GDTF's 23 strided `GeometryReference` nodes. *"The numbers should be
+identical; that they are is the check."*
+
+`conformance-gdtf.py` is that check and needs no hardware. It derives every per-pixel slot from
+the authored GDTF (one pixel's `<Break DMXOffset>` plus its three `<DMXChannel Offset>`s, ordered
+by the pixels' own `Position`), reads the ten universes and start channels out of the Mizer patch,
+replays `capture/`'s recorded pattern through WLED's own packing, and asserts the decoded 230
+pixels are byte-identical to what the node returned. A wrong stride, a transposed colour order, a
+reversed run or an off-by-one address all fail it.
+
+```
+python3 conformance-gdtf.py ~/git-projects/mizer-shows/OBF26_Bunte-Stube_gdtf-ofl.yml
+```
+
+Result 2026-09-02, all ten checks pass, including:
+
+```
+  [PASS] pixel n occupies slots 3n-2, 3n-1, 3n in R G B order -- identical to
+         the OFL entry's `Red n` / `Green n` / `Blue n` at pixelKey n
+  [PASS] every universe and start channel is unchanged from the verified patch
+  [PASS] all 230 decoded pixels are byte-identical to the hardware readback of
+         2026-09-02T09:10:17Z
+```
