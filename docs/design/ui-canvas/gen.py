@@ -705,7 +705,7 @@ CANVAS = {
          "title": "The overlay · History, Issues"},
         {"file": "Phone.dc.html", "x": 0, "y": 2040, "w": 390, "h": 1688,
          "title": "The M3a viewer · 390 px portrait"},
-        {"file": "PhoneLandscape.dc.html", "x": 0, "y": 3808, "w": 844, "h": 390,
+        {"file": "PhoneLandscape.dc.html", "x": 0, "y": 3860, "w": 844, "h": 390,
          "title": "The M3a viewer · turned sideways"},
     ],
     "annotations": [
@@ -754,7 +754,7 @@ CANVAS = {
                  "commands are marked — the only place the second editor is visible at all.\n"
                  "Issues is one inbox for everything an ingest could not reconcile: ADR-0012's "
                  "extent mismatch, ADR-0020's synthesised ids, orphaned overrides, patch overlaps."},
-        {"id": "n-phone", "x": 0, "y": 4278, "w": 844,
+        {"id": "n-phone", "x": 0, "y": 4340, "w": 844,
          "text": "#40. There is no degradation ladder. Every GDTF on this rig ships ZERO "
                  "meshes, so proxy geometry is the render path on the sender\u2019s desktop "
                  "too — the recipient is not on a rung. And carrying the render-resolved "
