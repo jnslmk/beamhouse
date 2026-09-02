@@ -2,7 +2,10 @@
 
 - **Status:** Accepted
 - **Date:** 2026-09-01
-- **Decides:** [#10](https://github.com/jnslmk/beamhouse/issues/10)
+- **Surfaced by:** [#10](https://github.com/jnslmk/beamhouse/issues/10) — which
+  [ADR-0006](0006-bridge-is-typescript-on-bun.md) decides. No ticket asked this question;
+  it was found while answering that one, and is a bug
+  [ADR-0002](0002-bridge-speaks-both-sacn-and-artnet.md) assumed away.
 
 ## Context
 

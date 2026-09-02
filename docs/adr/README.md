@@ -1,0 +1,74 @@
+# Architecture decision records
+
+Every accepted decision on this project, newest last. The **map** ([#1](https://github.com/jnslmk/beamhouse/issues/1)) indexes the *route*; this indexes the *record*. An ADR is the durable artifact — a wayfinder ticket's resolution comment is where a decision was argued, an ADR is where it lives.
+
+| # | Decision | Date | From |
+|---|----------|------|------|
+| **0001** | [Resolve GDTF and OFL as fixture-definition formats](0001-gdtf-and-ofl-as-definition-formats.md) | 2026-09-01 | [#13](https://github.com/jnslmk/beamhouse/issues/13) |
+| **0002** | [The bridge speaks both sACN and Art-Net](0002-bridge-speaks-both-sacn-and-artnet.md) | 2026-09-01 | [#4](https://github.com/jnslmk/beamhouse/issues/4) |
+| **0003** | [The integer fixture id is a fixture's only identity](0003-fixture-id-is-the-only-identity.md) | 2026-09-01 | `/domain-modeling` |
+| **0004** | [`gdtf-ts` is a published package that parses and resolves GDTF, and nothing else](0004-gdtf-ts-is-a-published-gdtf-only-package.md) | 2026-09-01 | [#7](https://github.com/jnslmk/beamhouse/issues/7) |
+| **0005** | [Emitter grouping is by DMX stride, and the strip path generalises to matrices](0005-emitter-grouping-is-by-dmx-stride.md) | 2026-09-01 | [#8](https://github.com/jnslmk/beamhouse/issues/8) |
+| **0006** | [The bridge is TypeScript on Bun](0006-bridge-is-typescript-on-bun.md) | 2026-09-01 | [#10](https://github.com/jnslmk/beamhouse/issues/10) |
+| **0007** | [One universe space, sACN-numbered](0007-one-universe-space-sacn-numbered.md) | 2026-09-01 | surfaced by [#10](https://github.com/jnslmk/beamhouse/issues/10) |
+| **0008** | [Colour space is assumed, the transfer function is read](0008-colour-space-is-assumed-transfer-function-is-read.md) | 2026-09-01 | [#9](https://github.com/jnslmk/beamhouse/issues/9) · amended by ADR-0010 |
+| **0009** | [Deployment is inferred from origin, and only the single file is a separate build](0009-deployment-is-inferred-from-origin.md) | 2026-09-02 | [#24](https://github.com/jnslmk/beamhouse/issues/24) |
+| **0010** | [Resolution is total, and the renderer selects by attribute](0010-resolution-is-total-the-renderer-selects-by-attribute.md) | 2026-09-02 | [#25](https://github.com/jnslmk/beamhouse/issues/25) · amends ADR-0008 |
+| **0011** | [A fixture is addressed per break, and is stale if any break is stale](0011-a-fixture-is-addressed-per-break.md) | 2026-09-02 | [#22](https://github.com/jnslmk/beamhouse/issues/22) · was ADR-0009 |
+
+## What each one actually says
+
+- **[ADR-0001](0001-gdtf-and-ofl-as-definition-formats.md)** — GDTF **and** OFL, both resolving to one internal fixture model. Licensing decided it: GDTF Share grants no redistribution right, so only OFL can populate a bundled library. QLC+ rejected as a runtime format, kept as a migration source.
+- **[ADR-0002](0002-bridge-speaks-both-sacn-and-artnet.md)** — The bridge receives sACN **and** Art-Net at once. Not the design's port-binding argument, which measured false — gled2 has no sACN at all and must stream alongside Mizer.
+- **[ADR-0003](0003-fixture-id-is-the-only-identity.md)** — The integer fixture id is the only identity. It is the one key both Mizer and MVR supply, and the one an operator reads off the console.
+- **[ADR-0004](0004-gdtf-ts-is-a-published-gdtf-only-package.md)** — `gdtf-ts` parses and resolves GDTF and nothing else — MIT, runtime-agnostic, no renderer types, no OFL, no MVR. Published to npm, gated on M4.
+- **[ADR-0005](0005-emitter-grouping-is-by-dmx-stride.md)** — Group emitters on **DMX stride**, never on spatial evenness. The ticket's own rule was falsified by its own test artifact. A strip never crosses a fixture.
+- **[ADR-0006](0006-bridge-is-typescript-on-bun.md)** — The bridge is TypeScript on Bun — neither option as posed. Bun's multicast receive measured indistinguishable from Node's; Rust's one real win was worth ~60 lines.
+- **[ADR-0007](0007-one-universe-space-sacn-numbered.md)** — Art-Net Port-Address *p* → universe *p* + 1, mapped in the bridge and nowhere else. Fixes a silent one-off that ADR-0002 assumed away.
+- **[ADR-0008](0008-colour-space-is-assumed-transfer-function-is-read.md)** — Assume the colour space (GDTF defaults to sRGB anyway), read the transfer function where it is declared. One assumption at one site, behind a branded `LinearRGB` type.
+- **[ADR-0009](0009-deployment-is-inferred-from-origin.md)** — One source, two builds, three deployments. Deployment is inferred from the page's own origin, never compiled in — which makes the mixed-content trap structurally impossible.
+- **[ADR-0010](0010-resolution-is-total-the-renderer-selects-by-attribute.md)** — Resolution is total; the renderer selects by attribute. Amends ADR-0008.
+- **[ADR-0011](0011-a-fixture-is-addressed-per-break.md)** — A fixture carries one address **per break**, so it can span universes — and is stale if *any* break is stale. Mizer's singular pair is the degenerate one-break case.
+
+## Writing a new one
+
+**Get the number from `tools/adr.sh next`, not from `ls`.** It scans the working tree, `origin/main` and every other local and remote ref, because a number claimed on an unmerged branch is still claimed.
+
+```
+git fetch --all
+tools/adr.sh next
+```
+
+This is not defensive pedantry. On 2026-09-02 two agent sessions in parallel worktrees each read `0008` as the maximum and each wrote an `0009` ([#34](https://github.com/jnslmk/beamhouse/issues/34)). `DESIGN.md` then invented `ADR-0009a` to work around it, which is what kept the clash invisible for a day. Renaming cost eleven citation sites across four files, this index and the map.
+
+Then:
+
+1. **File name** `NNNN-kebab-slug-of-the-title.md`, the slug taken from the title's first clause.
+2. **First line** `# ADR-NNNN: <title>` — the number appears in both, and `tools/adr.sh check` enforces that they agree.
+3. **Front matter**, in this order, only the fields that apply:
+
+   | Field | Meaning |
+   |---|---|
+   | `Status:` | `Accepted`, or `Superseded by ADR-NNNN` |
+   | `Date:` | ISO, the day it was accepted |
+   | `Decides:` | the one wayfinder ticket this ADR *is* the resolution of. **At most one ADR may claim any given ticket** — enforced |
+   | `Surfaced by:` | a ticket that exposed the question without being about it (ADR-0007) |
+   | `Source:` | for an ADR with no ticket behind it at all (ADR-0003) |
+   | `Informed by:` | supporting tickets (ADR-0001) |
+   | `Amends:` / `Amended by:` | between ADRs, always written on **both** sides |
+   | `Renumbered:` | only when a published number changed (ADR-0011) |
+
+4. **Body**: `## Context`, `## Decision`, optionally `## Considered options`, then `## Consequences`.
+5. **Add the row to this file in the same commit.** An ADR missing from the index is unfindable; an index row with no ADR is the cheapest collision marker there is. `tools/adr.sh check` enforces both directions.
+
+## Checking
+
+```
+tools/adr.sh check
+```
+
+Verifies unique numbers, filename/title agreement, required front matter, that no two ADRs claim the same `Decides:` ticket, that the index and the directory match both ways, and that every relative Markdown link in the repo resolves. Run it before pushing anything that touches `docs/adr/`.
+
+## Numbers never get reused
+
+`0009` means the deployment ADR and will not come to mean anything else, even though a per-break ADR briefly had it. Commits and issue comments from before 2026-09-02 that say "ADR-0009" and mean per-break are history and stay as written — [ADR-0011](0011-a-fixture-is-addressed-per-break.md) carries a `Renumbered:` line so they stay followable.

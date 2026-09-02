@@ -43,6 +43,12 @@ previz package.
   Capture meters universes per edition, from one at €395 to unlimited at €2,195, with the limit
   reaching into documentation; ETC's Eos cannot build a multi-cell fixture from a GDTF import at
   all. Pixel-heavy DIY rigs are the case the market serves worst.
+
+  **[corrected 2026-09-02 — #35]** The *capability* claim was too strong. Capture 2026 ships
+  fixtures patched across universe boundaries and modes exceeding 512 channels, and exposes a
+  second break as suffixed `Patch #2` / `Mode #2` columns. ADR-0011 is therefore **aligned with
+  Capture, not ahead of it** — the goal is unmetered *access* to that capability, which is the
+  half that stands. The Eos limitation is unaffected.
 - **Shareable.** Live over LAN or a tunnel; or as a static bundle anyone can open later, with
   no bridge running. **[sharpened 2026-09-02]** No product surveyed lets a third party open a
   link and watch a rig move — Vectorworks Cloud's Web View is the nearest and is static geometry
@@ -312,6 +318,22 @@ You will nudge a tube ten centimetres forty times in an evening; that loop has t
 - **Parametric arrays.** A star of ten tubes is `count / radius / angle_step`, not ten
   hand-placed transforms. Generators for radial, line and grid; the array stays live.
 - Multi-select with align and distribute.
+
+**[gap noted 2026-09-02 — #35]** Those four affordances are the *only* description of the screen
+anywhere in this document. There is no layout, no navigation model, and nothing that says what is
+visible when the app opens — a gap the size of the ones the ADRs closed, and the one a user
+actually touches. #35 carries a survey of how grandMA3, Capture 2026, BlenderDMX, DMXpressions and
+Showcase solve it, with screenshots, and produces a design canvas. Four things it found that this
+document should adopt on sight: **`universe.address` as one token** (Capture and BlenderDMX
+converged on it independently), **a second break as suffixed columns** with `Unpatched` as a
+literal value, **patch errors as in-cell glyphs rather than modals**, and **state chips that show
+their value and open on click**, which is where §06's unconsumed signals (#31) can live for free.
+
+It also found the four things nobody has solved for us: the rig moves while you edit it (we never
+send DMX, so we cannot hold a fixture still); the transport is wanted in the diagnostics and is
+deliberately absent from the §07 frame (ADR-0007) — if it returns it must return on the control
+channel, not in the frame; the M3a viewer's degradation ladder (§9.2) is entirely a UI problem with
+no design; and the override layer, this design's most load-bearing idea, is invisible.
 
 ### 4.5 Overrides are stored separately — this matters
 
@@ -802,6 +824,9 @@ These are the wayfinder map's tickets. See the map issue for current state.
 14. **Which consoles does Beamhouse serve?** (#33) Whether the live repatch loop generalises past
     Mizer — and if it does, ADR-0003's integer id reopens, because the UUID it declined exists in
     every source but Mizer's.
+15. **What does the screen look like?** (#35) The whole UI — navigation model, notation, where the
+    bridge's signals live, and the M3a viewer's degradation ladder. Surveyed against the field
+    with screenshots; deliverable is a design canvas and a new §UI here.
 
 ## 12 · Dependencies
 
