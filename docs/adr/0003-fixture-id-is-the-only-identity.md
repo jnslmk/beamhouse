@@ -1,4 +1,4 @@
-# The integer fixture id is a fixture's only identity
+# ADR-0003: The integer fixture id is a fixture's only identity
 
 Beamhouse merges a patch it does not own (Mizer's project YAML, or an MVR file) with placement
 it does own, so it needs a key that survives a re-read of the patch. MVR carries a UUID and a

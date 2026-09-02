@@ -37,7 +37,7 @@ previz package.
   **Strips are per-pixel only** (decided 2026-08-31): the tubes are driven per pixel, via gled2
   or WLED's virtual per-pixel DMX output. See the effect-mode exclusion below.
 - **Unmetered.** Any number of universes, any pixel count, no tier. A fixture is addressed
-  **per break** and may therefore span universes ([ADR-0009a](adr/0009-a-fixture-is-addressed-per-break.md)) —
+  **per break** and may therefore span universes ([ADR-0011](adr/0011-a-fixture-is-addressed-per-break.md)) —
   the STAR-TENT's 230 pixels are 690 slots across two universes and that is a normal rig, not an
   edge case. **[added 2026-09-02]** Stated as a goal because the paid field prices exactly this:
   Capture meters universes per edition, from one at €395 to unlimited at €2,195, with the limit
@@ -519,7 +519,7 @@ start-order ritual, and group join/leave maps directly onto the `subscribe` mess
    document consumes**: staleness, sACN priority, `Preview_Data`, and the out-of-order drop
    count. The bridge prevents the silence job 4 warns about; the UI is where it stops being
    silent, and there is no UI section. #31 writes one, covering a universe read-out, whole-fixture
-   staleness (a multi-break fixture with one stale break renders **wholly** stale per ADR-0009a —
+   staleness (a multi-break fixture with one stale break renders **wholly** stale per ADR-0011 —
    a strip half live and half frozen is job 4's failure made *more* convincing by the live half),
    blind indication, and a false-colour mode over resolved `Dimmer`, which ADR-0010 makes nearly
    free.

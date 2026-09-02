@@ -83,7 +83,7 @@ _Avoid_: channel, address, DMX value
 **Address**:
 The first slot a **break** occupies in a universe. What an operator sets on the fixture itself. A
 fixture has one per break, so a fixture with more than one break has more than one address and may
-sit in more than one universe ([ADR-0009](docs/adr/0009-a-fixture-is-addressed-per-break.md)). A
+sit in more than one universe ([ADR-0011](docs/adr/0011-a-fixture-is-addressed-per-break.md)). A
 single-break fixture — the common case, and the only one a Mizer patch can express — has exactly
 one.
 _Avoid_: start channel, DMX address, "the fixture's universe" (a fixture need not have just one)

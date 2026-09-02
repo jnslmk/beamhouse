@@ -287,7 +287,7 @@ of the hardware. Emitters are `TYPE_FW1906` — **RGB + CW + WW**, not RGBW.
 [ADR-0005](../adr/0005-emitter-grouping-is-by-dmx-stride.md) rejects the 230-pixel run as a
 single strip: ten spokes at ten angles are nowhere near collinear. Each 23-pixel spoke is
 individually collinear and passes.
-[ADR-0009](../adr/0009-a-fixture-is-addressed-per-break.md) then makes each spoke its own
+[ADR-0011](../adr/0011-a-fixture-is-addressed-per-break.md) then makes each spoke its own
 fixture. The patch unit and the render unit align — spoke = fixture = strip — which is what
 ADR-0005 §3 already arranged by making the render unit follow the patch unit.
 
@@ -303,14 +303,14 @@ ledsInFirstUniverse = (512 - DMXAddress + 1) / 3        # 3 ch/LED, Multi RGB
 
 At the node's original `DMXAddress 1` that is **170**, which is not a multiple of 23 — so spoke 7
 would have straddled the universe boundary, LEDs 161–169 in one universe and 170–183 in the next.
-Under ADR-0009 rule 3 a fixture with a stale break is stale entirely, so a spoke that needlessly
+Under ADR-0011 rule 3 a fixture with a stale break is stale entirely, so a spoke that needlessly
 straddles a boundary half-renders for no reason.
 
 At **`DMXAddress 30`** it is `(512 - 30 + 1) / 3 = 161 = 7 × 23`. The boundary lands exactly on
 the spoke 6 → spoke 7 seam, universe 2 fills to the byte, and every fixture is single-break.
 Slots 1–29 of universe 2 are left free — that is the cost, and it buys the alignment.
 
-**This is rig configuration, not architecture.** ADR-0009 rule 1 stands on its own: a fixture
+**This is rig configuration, not architecture.** ADR-0011 rule 1 stands on its own: a fixture
 *can* span universes, and v1 resolves the multi-break case for real. The re-addressing is not a
 substitute for that, which is why the multi-break path is tested against
 [#26](https://github.com/jnslmk/beamhouse/issues/26)'s offline oracle rather than against this
@@ -493,7 +493,7 @@ tubes is only 140 — and noticing it was right. Reading the node turned it into
 2. **RGB vs RGBW** — **neither**: `TYPE_FW1906`, RGB + CW + WW. And it does not matter, because
    WLED's per-pixel modes stop at 4 ch/LED, so there is no wire path to CW/WW at all (§3).
 3. **How 690 channels map onto DMX** — **two universes**, unavoidably in every mode WLED offers.
-   Answered as architecture by [ADR-0009](../adr/0009-a-fixture-is-addressed-per-break.md) (a
+   Answered as architecture by [ADR-0011](../adr/0011-a-fixture-is-addressed-per-break.md) (a
    fixture is addressed per break) and as rig configuration by the move to `DMXAddress 30`, which
    puts the boundary on a spoke boundary so no fixture straddles it (§3).
 4. **Whether the node is in per-pixel input** — it was not, it was in effect mode 9. #23 cut it
@@ -582,7 +582,7 @@ What remains is fidelity work on definitions that already exist and already patc
   ([`impression-90-geometry-sources.md`](impression-90-geometry-sources.md) §3.1) if a polish
   pass ever wants them.
 - **The STAR-TENT is finished** (#23), and it is the part with the strongest evidence behind it:
-  ten 23-pixel spokes, addressed per ADR-0009, loaded through Mizer's own OFL provider, and
+  ten 23-pixel spokes, addressed per ADR-0011, loaded through Mizer's own OFL provider, and
   round-tripped 230/230 pixels through the live node. What remains is one tape measure for the
   pixel pitch (§5) and the spoke reversal, which has nowhere to live until the `.bhs` placement
   layer exists — §3 holds the table meanwhile.

@@ -5,7 +5,7 @@ ten-fixture per-pixel patch, verified against the live node rather than against 
 
 ## What it checks
 
-[ADR-0009](../../docs/adr/0009-a-fixture-is-addressed-per-break.md) re-addresses the node to
+[ADR-0011](../../docs/adr/0011-a-fixture-is-addressed-per-break.md) re-addresses the node to
 `DMXAddress 30` so that WLED's fixed
 
 ```
@@ -54,7 +54,7 @@ is exactly the spoke 6 -> spoke 7 boundary. Universe 2 fills to the byte: spoke 
 **Reproduced after a power cycle.** The node dropped off and came back mid-session; the run above
 is the post-reboot one. WLED persists `cfg.json` to flash, so `addr 30` / `mode 4` survived, and
 the round-trip is identical. That makes the cutover durable rather than a runtime setting -- and
-it is also the failure mode ADR-0009 decision 4 guards against, since the day someone reflashes
+it is also the failure mode ADR-0011 decision 4 guards against, since the day someone reflashes
 or factory-resets the node it comes back at `DMXAddress 1` and this patch is silently wrong.
 
 ## Preconditions
@@ -72,6 +72,6 @@ client at a time.
 
 Different jobs. `prototypes/wled-peek-oracle/` is a captured **offline** oracle for the strip
 render path — frames on disk, no hardware needed ever again. This is a **live** check of one
-specific patch, and it is not a substitute for anything: ADR-0009 rule 4 explicitly tests the
+specific patch, and it is not a substitute for anything: ADR-0011 rule 4 explicitly tests the
 multi-break path against that offline oracle rather than against this rig, precisely so that the
 re-addressing here stays revertible rather than load-bearing.

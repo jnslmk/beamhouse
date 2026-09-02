@@ -1,8 +1,14 @@
-# ADR-0009: A fixture is addressed per break, and is stale if any break is stale
+# ADR-0011: A fixture is addressed per break, and is stale if any break is stale
 
 - **Status:** Accepted
 - **Date:** 2026-09-02
 - **Decides:** [#22](https://github.com/jnslmk/beamhouse/issues/22)
+- **Renumbered:** published as **ADR-0009** on 2026-09-02 and moved to 0011 the same day
+  ([#34](https://github.com/jnslmk/beamhouse/issues/34)). A concurrent session resolving
+  [#24](https://github.com/jnslmk/beamhouse/issues/24) had taken 0009 34 minutes earlier, and
+  0010 was taken by [#25](https://github.com/jnslmk/beamhouse/issues/25) before this was
+  noticed. Earlier commits, issue comments and the wayfinder map's own history may still say
+  "ADR-0009" or "ADR-0009a" and mean this document. Nothing in the decision changed.
 
 ## Context
 
