@@ -670,10 +670,19 @@ What makes pixel fixtures work generically. A `GeometryReference` instantiates a
 with a `Break` offset per DMX break. Expand into N concrete nodes, each with channel offsets
 shifted by its break offset.
 
-A 35-pixel RGB tube resolves to 35 nodes × 3 bindings = 105 channels. The renderer should then
-recognise that a run of collinear emitter nodes is a strip, not 35 separate beams — the
-detection heuristic is ticket 7, with the `.bhs` `classes` block as an explicit override,
-keyed by definition id.
+A 35-pixel RGB tube resolves to 35 nodes × 3 bindings = 105 channels. The renderer then
+recognises that run as a strip rather than 35 separate lamps.
+
+**[corrected 2026-09-02 — #36]** This paragraph named two things that no longer exist. The
+"detection heuristic is ticket 7" — collinear nodes become a strip — was replaced by
+[ADR-0005](adr/0005-emitter-grouping-is-by-dmx-stride.md): grouping is by **constant DMX offset
+stride**, never by spatial evenness, because the one real strip on disk is 70 % off even. And the
+"`.bhs` `classes` block as an explicit override" was **subsumed into the `definitions` block** by
+[ADR-0012](adr/0012-beamhouse-may-define-pixels-placement-mints-nothing.md) (§4.5). No render-class
+override was reinstated in its place
+([ADR-0022](adr/0022-beamtype-selects-the-path-stride-aggregates-within-it.md) rule 6): a wrong
+third-party profile is corrected in `gdtf-ts`'s quirks table, and a missing one is supplied as a
+`bhs:` definition — both of which fix the file for every consumer rather than for this show.
 
 **Performance.** Resolve on a fixed 30 Hz tick, not per packet. Diff against the previous frame:
 beam fixtures move rarely, strips change constantly.
@@ -832,7 +841,19 @@ what makes an agent's screenshot exercise the real pipeline rather than sit on t
 
 Render each tube as **the geometry its definition declares** — the declared `PrimitiveType`, or a
 real mesh where the definition ships one — carrying a `DataTexture` of N texels sampled along the
-run's axis, `LinearFilter` on. Interpolation gives the continuous COB glow for free, and it is one
+run's axis, `LinearFilter` on.
+
+**Which geometry, when a definition declares more than one.** The textured geometry is the
+strided run's **common parent**
+([ADR-0022](adr/0022-beamtype-selects-the-path-stride-aggregates-within-it.md)). "The geometry its
+definition declares" was singular and the authored STAR-TENT tube declares two models — an opaque
+aluminium body and the translucent diffuser that is what actually glows. A naming convention would
+not generalise to a third-party profile; the parent does, reproduces `MarkeEigenbau` unchanged (its
+30 references sit under `Body`, the visible 25 x 50 x 1000 mm cube), and is *checkable* — hang the
+references off the wrong parent and the aluminium lights up instead of the diffuser, visibly rather
+than silently. Where the parent carries no model at all — the WLED profile ships **zero**
+`<Model>` elements — the emitter falls back to an emissive body of the declared `BeamRadius` and
+the definition defect is surfaced. Interpolation gives the continuous COB glow for free, and it is one
 draw call per fixture rather than thirty-five. A 2D matrix is the same path with an `M × N`
 texture (ADR-0005). Do not substitute a cylinder for a declared `Cube`: the real
 `MarkeEigenbau` strip declares a 25 x 50 x 1000 mm cube, and overriding that is the renderer
@@ -872,8 +893,18 @@ HDR target above, for free.
 
 ### 8.2 Beams — write them as a density function
 
-Cone geometry from each `Beam` node, additively blended, depth-write off, sorted back to front,
-cone angle driven by the resolved `Zoom`.
+**[corrected 2026-09-02 — #36]** This opened "Cone geometry from each `Beam` node", which is the
+same defect `CONTEXT.md`'s **Beam class** entry carried and draws thirty cones down a pixel tube.
+A cone comes from each `Beam` node **whose `BeamType` is `Wash`, `Fresnel`, `PC`, `Spot` or
+`Rectangle`**; `None` and `Glow` draw none
+([ADR-0022](adr/0022-beamtype-selects-the-path-stride-aggregates-within-it.md)). §5.1's table was
+already right — a `Beam` node is a *beam origin*, and nothing about declaring one says a cone is
+drawn.
+
+Cone geometry from each cone-drawing `Beam` node, additively blended, depth-write off, sorted back
+to front, cone angle driven by the resolved `Zoom`. The cone is **added to** the emissive body
+every emitter has, not chosen instead of it — which is what makes a `Wash` mover visible before
+any atmosphere exists to scatter in.
 
 **`BeamAngle` is the FULL cone angle, apex to apex.** This document, `CONTEXT.md`, ADR-0010 and
 three research docs all called it a half-angle until 2026-09-02; treating it as one renders every
@@ -1376,6 +1407,107 @@ that should be at 30% ([ADR-0019](adr/0019-the-intensity-map-is-relative-not-pho
 
 The degradation ladder of §9.2 and the invisibility of the override layer (§4.5) are UI problems
 with no design, and §4.4 lists both. Neither is signal health, and neither is settled here.
+
+## 14 · The UI: layout, navigation and notation
+
+**[added 2026-09-02 — [#35](https://github.com/jnslmk/beamhouse/issues/35)]** §13 is the signal
+*inventory* — **what** must be visible. This is **where** it sits, and the rest of the screen with
+it. §4.4's four editing affordances were, until now, the only description of the UI in this
+document.
+
+The canvas: **[Beamhouse UI](https://claude.ai/code/artifact/55aa72b4-ab78-4d5c-91e4-71c992fca7b5)**
+— seven artboards. It is drawn on top of the command layer
+([ADR-0016](adr/0016-every-scene-mutation-is-one-undo-grained-command.md)), not against scene
+state, so **every affordance it draws is also an agent tool and anything it omits the agent cannot
+do either**.
+
+### 14.1 The shape of the screen
+
+Viewport-dominant; **nothing is docked**
+([ADR-0023](adr/0023-the-chip-bar-is-the-navigation.md)). Eight state chips across the top are the
+navigation — each shows its current value and opens **one** tabbed overlay at its tab — plus a left
+tool rail.
+
+| Chip | Shows | Opens |
+| ---- | ----- | ----- |
+| Feed | `live` / `recorded` / `generated` — §13's table keys off this | — |
+| Universes | count and worst state (`5 · 1 stale`) | Universes |
+| Patch | the watched file, and the count of unreconciled items | Issues |
+| Selection | `4 · Spoke 3 +3` | Fixtures |
+| Render | `normal` / `intensity map` (§13.5) | — |
+| Hold | the selection pin ([ADR-0024](adr/0024-a-selection-hold-pins-the-render.md)) | — |
+| Snap | grid step | — |
+| Camera | named view | — |
+
+The overlay's tabs are **Fixtures · Objects · Universes · History · Issues**. There is no ninth
+chip for issues: the count rides **Patch**, because every issue class originates in an ingest.
+
+**First run is the empty grid**, not a start screen — §4.6 auto-saves to IndexedDB, so the honest
+normal case is that the app opens where you left it. The picker takes **Mizer YAML and MVR**, and
+refuses a BlinderKitten `.olga` or a MagicQ CSV **with the reason**
+([ADR-0020](adr/0020-the-live-loop-serves-patch-files-not-consoles.md) measured that neither names
+its definitions resolvably) rather than with a parse error, which would send you to debug the wrong
+thing.
+
+Off a live feed the bridge-dependent chips are **absent, not greyed** — §13 says those signals are
+*unreachable, not false*. The Pages viewer therefore runs the same shell minus those chips, with a
+persistent viewer indication in the chrome, after Vectorworks Showcase's purple border.
+
+### 14.2 The notation, adopted from the field
+
+Four of these `§4.4` already said to adopt on sight; #35's survey supplied two more.
+
+- **`universe.address` as one token** — `20.102`. Capture 2026 and BlenderDMX converged on it
+  independently.
+- **A second break as a suffixed column set** — `Patch #2`, `Mode #2` — with **`Unpatched` as a
+  literal value**. [ADR-0011](adr/0011-a-fixture-is-addressed-per-break.md) rendered as UI, and it
+  degrades correctly: a one-break fixture shows the columns empty rather than the UI changing
+  shape. `Unpatched` is a literal in the *primary* column too, for a fixture placed but never
+  addressed.
+- **Patch errors as in-cell glyphs, never modals** — Capture's interlocking circles for an overlap.
+- **The table and the viewport are one selection**, bound both ways. Universal across all five
+  surveyed products.
+- **Multi-row edit with no modifier keys** (Capture).
+- **`Editable` as a toggle on the table itself** rather than a separate edit surface (BlenderDMX).
+  It earns its place because the table is *summoned* here, so "open it to look" and "open it to
+  edit" want to be distinguishable.
+
+### 14.3 The four nobody had solved
+
+#35 was worth more for where the survey ran out than for what it found.
+
+1. **The rig moves while you edit it.** Settled:
+   [ADR-0024](adr/0024-a-selection-hold-pins-the-render.md).
+2. **Transport wanted in diagnostics, absent from the wire.** Already settled before #35 ran, by
+   [ADR-0018](adr/0018-signal-health-is-one-per-universe-snapshot.md) — it returned on the
+   **control** channel, and ADR-0007's rule about the frame is untouched.
+3. **The override layer is invisible.** Settled:
+   [ADR-0025](adr/0025-trust-and-provenance-marks-are-additive.md), which also gives the three
+   homeless "must be surfaced" requirements of ADR-0012, ADR-0020 and §4.5 one shared **Issues**
+   surface.
+4. **The M3a viewer's degradation ladder** (§9.2) — still unsolved, and now its own ticket
+   ([#37](https://github.com/jnslmk/beamhouse/issues/37)).
+
+### 14.4 What the screen shows besides fixtures
+
+**[opened 2026-09-02 — #35]** An implicit **ground plane at `y = 0`** always exists, and beam pools
+land on it whether or not any scenery is placed — which keeps the pool a *render* decision,
+independent of scene objects. A **stage and human proxies** are wanted as scale reference, and the
+pool is the grandMA3 *spot reflection* fader rather than a lighting solution. Both are
+[#39](https://github.com/jnslmk/beamhouse/issues/39), which also carries the amendment they force
+on [ADR-0013](adr/0013-atmosphere-is-one-closed-form-scattering-term.md)'s finding 6.
+
+Fixtures and objects share **one selection space and one command layer** — you can select a
+musician and a mover together and align them — but a **separate `Objects` tab**, because the
+Fixtures table's columns are patch columns and a human proxy has none of them.
+
+### 14.5 Still owed
+
+Both of §13.6's items now have tickets rather than silence:
+[#37](https://github.com/jnslmk/beamhouse/issues/37) for the degradation ladder and
+[#38](https://github.com/jnslmk/beamhouse/issues/38) for `bhs:` definition authoring — the screen
+for [ADR-0012](adr/0012-beamhouse-may-define-pixels-placement-mints-nothing.md)'s third definition
+source, which **no surveyed product has**, because none of them has a definition source of its own.
 
 ## References
 

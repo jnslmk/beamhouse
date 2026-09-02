@@ -191,6 +191,8 @@ internal model
 **Emitter**:
 Any geometry in a definition that gives off light — a beam origin or a single pixel. The unit
 colour is resolved for, which is why "every emitter is RGB in v1" covers movers and tape alike.
+**Every** emitter has an emissive body; only a cone-drawing **`BeamType`** adds a **beam class**
+cone on top ([ADR-0022](docs/adr/0022-beamtype-selects-the-path-stride-aggregates-within-it.md)).
 _Avoid_: light, lamp, LED
 
 **Pixel**:
@@ -199,10 +201,15 @@ definition. A tube of N pixels has N of them. Not a screen pixel and not a texel
 _Avoid_: LED, segment, cell
 
 **Beam class**:
-The rendering class for a fixture whose definition declares a `Beam` geometry: rendered as a
-volumetric cone from that emitter's origin. One of the two *rendering paths* v1 handles; the
-other is the emissive surface shared by **strip class** and **matrix class**.
-_Avoid_: mover, moving head, spot (those are fixture kinds, not rendering classes)
+The rendering class for an emitter whose `Beam` geometry declares a cone-drawing **`BeamType`** —
+`Wash`, `Fresnel`, `PC`, `Spot` or `Rectangle` — rendered as a volumetric cone from that emitter's
+origin ([ADR-0022](docs/adr/0022-beamtype-selects-the-path-stride-aggregates-within-it.md)).
+Declaring a `Beam` geometry is *not* the test: `None` and `Glow` declare one and draw no cone, and
+reading it that way rendered the 30-pixel strip as thirty cones. Not one of two exclusive paths —
+the cone is **added to** the emissive body every emitter already has, which is why a `Wash` mover
+is visible before any **atmosphere** exists to scatter in.
+_Avoid_: mover, moving head, spot (those are fixture kinds, not rendering classes), beam geometry
+(a `Beam` node is an emitter; its `BeamType` is what selects this class)
 
 **Cone angle**:
 The **full** angle of a **beam class** fixture's volumetric cone — apex to apex, not apex to axis
@@ -220,7 +227,10 @@ The rendering class for a **one-dimensional** pixel run: rendered as one continu
 surface sampled along its length, not as N separate lamps. A run is grouped by **constant DMX
 offset stride** among sibling emitters of one fixture — never by even spatial spacing, which real
 definitions do not have ([ADR-0005](docs/adr/0005-emitter-grouping-is-by-dmx-stride.md)). A strip
-never crosses a fixture boundary.
+never crosses a fixture boundary. Grouping runs **only within the non-cone set** — `BeamType`
+selects the path first, stride aggregates within it, so the two rules never claim the same emitter
+([ADR-0022](docs/adr/0022-beamtype-selects-the-path-stride-aggregates-within-it.md)). The geometry
+that carries the run's texture is the run's **common parent**, not the referenced emitter.
 _Avoid_: tape, tube, bar, pixel bar (those are fixture kinds)
 
 **Matrix class**:

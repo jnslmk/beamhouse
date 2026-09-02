@@ -86,5 +86,13 @@ all**, so it cannot carry a CAD-derived model.
 - #23 grows: it becomes "author a GDTF carrying the CAD mesh" rather than "re-author the OFL
   JSON". The build123d model of the tube **does not exist yet** — no such model is on disk — so
   that work is real and is gated on #21's confirmed pixel count and pitch.
+
+  **[corrected 2026-09-02 — #36]** The blocker is false and has been since 7 August:
+  `~/git-projects/build123d/build123d-models` carries `models/led_profiles`, whose default
+  `LENGTH = 1500.0` is "a full 1.5 m stick", exported as `exports/led_profiles.glb`, `.step` and
+  per-part STLs. Rule 7's *conclusion* stands unchanged — the mesh reaches the renderer as an
+  authored GDTF, not a Beamhouse-side attachment layer — and
+  [ADR-0022](0022-beamtype-selects-the-path-stride-aggregates-within-it.md) rules 8 and 9 say
+  which parts of it ship and at what fidelity.
 - `DESIGN.md` §8.1 needs amending: "cylinder or quad" is now "the declared primitive, or a real
   mesh where one exists".
