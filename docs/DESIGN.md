@@ -6,7 +6,7 @@ A live GDTF/MVR lighting visualiser: a browser app, a 150-line bridge, and nothi
 | -------- | -------------------------------------- |
 | Status   | design, pre-code                       |
 | Target   | TypeScript · WebGL2 · Linux            |
-| Drivers  | Mizer · BlinderKitten · gled2 · WLED    |
+| Drivers  | Mizer · gled2 · WLED                   |
 | Estimate | ~2 weeks of evenings                   |
 
 > **Verification note (2026-08-31).** Claims about Mizer, gled2 and BlinderKitten in this
@@ -55,7 +55,11 @@ previz package.
   on a two-week expiry. This is the only capability in the design with no competitor, which is
   why §10 no longer leaves it to the end.
 - **Coexists.** Runs on the same laptop as the console without fighting over ports or GPU.
-  Assumes the console *is* on this laptop; #33 asks whether that stays true.
+  **[settled 2026-09-02 — #33]** Same-laptop is a property of the **live repatch loop**, not of
+  Beamhouse: it is condition (i) of [ADR-0020](adr/0020-the-live-loop-serves-patch-files-not-consoles.md)'s
+  predicate — a patch file on a watchable path. MVR file import never carried the assumption and is
+  machine-agnostic already, and [ADR-0009](adr/0009-deployment-is-inferred-from-origin.md)'s origin
+  inference plus §9.4's fragment override already cover the LAN case.
 
 ### Not in v1 — but do not architect them out
 
@@ -134,8 +138,14 @@ tier is a switch rather than a rewrite.
   **The ceiling that buys is explicit:** Beamhouse can be half of the Mizer pair and cannot
   appear in a multi-tool room. §4.3's MVR *file* import is now the legacy path rather than the
   current one. #30 settles the wording and whether the patch reader gets a defined source
-  interface; #33 asks the prior question, since the "no station" argument holds only while
-  Mizer is the only console — and #30 is blocked on it.
+  interface.
+
+  **[strengthened 2026-09-02 — #33]** The "no station" argument was expected to weaken once
+  Beamhouse looked past Mizer. It did the opposite. Of MVR-xchange's six named peers **only
+  grandMA3 is a console** — the rest are design and previz tools — and neither of the two other
+  consoles measured on this machine speaks the protocol either: BlinderKitten has no MVR export at
+  all, and MagicQ links Vectorworks' `libMVRgdtf` for *reading* only, with no xchange station. #30
+  is no longer blocked.
 - **Being a control surface. Beamhouse never sends DMX.** Mizer is the control surface;
   Beamhouse is the preparation visualiser. The pair is the product.
 - **QLC+ as a *resolved runtime* format.** Settled in
@@ -261,6 +271,24 @@ configurable library paths (`fixtures/gdtf`, settable in Mizer's settings). The 
 treated "point both at the same GDTF folder" as an integration trick to arrange; it is a
 feature that already exists on both sides.
 
+**[added 2026-09-02 — #33] Two other consoles are on this machine, and neither is a driver.**
+They are **reference implementations to read**, recorded so their status is not mistaken again —
+BlinderKitten was in the Drivers row above until #33, on the strength of an MVR-export claim that
+is false.
+
+- **BlinderKitten** (`~/git-projects/BlinderKitten`) — declares `importMVR` (`BKEngine.h:124`) and
+  **no export**; the single `.mvr` hit in `Source/` is a file-open filter. Its MVR importer keys on
+  `<FixtureID>` as an integer and **ignores the UUID**, falling back to `<UnitNumber>` then
+  synthesising from 1000 — a second implementation independently making
+  [ADR-0003](adr/0003-fixture-id-is-the-only-identity.md)'s choice. Its project file
+  (`workFile.olga`, plain JSON) is watchable but **not resolvable**: `/fixtureType` names a
+  project-internal type, universe is absent from the patch, and OrganicUI omits default-valued
+  parameters, so fixture 1 carries no `/id` key at all.
+- **MagicQ** (`/opt/magicq`, `magicq-beta 1.9.8.3-1`) — imports MVR, cannot write one, and exports a
+  CSV patch list. Worth keeping for one reason: `bin/mqqt` statically links **Vectorworks' own
+  `libMVRgdtf`**, the canonical GDTF/MVR implementation `gdtf-ts` is reimplementing. That makes it
+  an **M4 conformance instrument**, the way #26's WLED Peek readback is one for the strip class.
+
 ### 4.2 Patch comes from the console's project file
 
 Mizer's project file is YAML, with the patch sitting in plain sight:
@@ -312,13 +340,18 @@ because BlinderKitten exports it and BlenderDMX reads and writes it. It is a sid
 than the spine: a zip containing `GeneralSceneDescription.xml` plus the GDTF files it
 references. Use `pymvr` as the reference implementation.
 
-**[reframed 2026-09-02 — #33]** "Side door" undersells what this already delivers. Because MVR
-carries positions, per-break addresses, `FixtureID` and layers, **every console that exports MVR
-is a supported patch source today** — M5b is that, not a nicety. What is Mizer-only is the *live
-repatch loop* (§4.2, §4.6), which rests on a file on the same disk that no other console writes.
-So the open question is not "support more consoles" but whether the live loop generalises, and it
-drags ADR-0003 with it: the integer id was chosen as the only key both sources supply **because
-Mizer has no UUID**, and MVR has one. #33 grills it.
+**[settled 2026-09-02 — #33, [ADR-0020](adr/0020-the-live-loop-serves-patch-files-not-consoles.md)]**
+This section briefly claimed that "every console that exports MVR is a supported patch source
+today". That was measured and it is **empty**. Not one console reachable on this machine writes an
+MVR: Mizer's `PatchExporter` has only `export_csv()`; BlinderKitten declares `importMVR` and no
+export at all; MagicQ 1.9.8.3 links Vectorworks' own `libMVRgdtf` but binds only its *read* symbols,
+and its manual's section is titled "MVR File Import" with no counterpart in ~31,000 lines.
+
+**MVR is a format consoles read and design tools write.** So this is not a side door onto the
+console world — it is the **front door onto a different population**: Vectorworks, BlenderDMX,
+Depence, Capture. Consoles reach Beamhouse through the live repatch loop (§4.2, §4.6) or not at
+all. Two doors, two populations, and ADR-0020 states the predicate that decides which door a given
+source comes through.
 
 | Element   | Use                                            |
 | --------- | ---------------------------------------------- |
@@ -387,7 +420,7 @@ carries `FixtureID` too, so the id is the one key both patch formats can supply.
   "patch": { "kind": "mizer", "path": "~/mizer/warehouse.yml" },
   "gdtfDir": "~/lighting/gdtf",
   "overrides": {
-    "12": { "pos": [1.2, 4.1, -0.6], "rot": [0, 45, 0] }
+    "12": { "pos": [1.2, 4.1, -0.6], "rot": [0, 45, 0], "uuid": "8f3c…" }
   },
   "arrays": [{
     "id": "star",
@@ -412,6 +445,14 @@ today; or, as in the `fixtures` entry above, as a **local fixture** carrying its
 **negative id**. Where a `bhs:` definition and the patch disagree about extent, the definition wins
 for *rendering* and the patch for *addressing*, and the mismatch is **surfaced as an error rather
 than truncated** — a silently shortened strip is wrong in a way that looks right.
+
+**[added 2026-09-02 — #33]** The optional `uuid` on an override is the **MVR re-import
+reconciliation hint** ([ADR-0020](adr/0020-the-live-loop-serves-patch-files-not-consoles.md)). MVR's
+mandatory key is the UUID, not `FixtureID` — which `pymvr` types as an *optional string* — so an
+MVR that omits it has its integer id synthesised, and without the hint a re-import synthesises
+different integers and silently drops every override. Nothing resolves, selects or arrays on the
+hint; it is written on ingest and read only by the next ingest. A synthesised id is **surfaced**,
+like the extent mismatch above.
 
 ### 4.6 Persistence and hot reload
 
@@ -956,7 +997,7 @@ cube move.
 | M3b | Agent surface | An agent configures the STAR-TENT's ten spokes in 3D and screenshots it | 1 d   |
 | M4  | gdtf-ts       | An arbitrary GDTF patches and its real GLB renders with working pan/tilt| 3–5 d |
 | M5a | Mizer patch   | Beamhouse reads the project YAML; repatching updates the rig live       | ½ d   |
-| M5b | MVR import    | A rig exported from BlinderKitten loads, overrides merge cleanly        | 1 d   |
+| M5b | MVR import    | A rig exported from BlenderDMX loads, overrides merge cleanly           | 1 d   |
 | M6  | Beams         | Six movers in haze, cones and strobe correct; an X4 patched in for zoom | 1–2 d |
 | M7  | Record/replay | A committed `.bhr` plays back through the same shared link              | 1 d   |
 
@@ -1058,10 +1099,15 @@ These are the wayfinder map's tickets. See the map issue for current state.
     hand-written surface is **one** pair rather than two — the strip is a texture `map` — and the
     ADR-0013 tier is fragment-shader raymarching WebGL2 reaches. Closes §12 outright rather than
     half of it: `postprocessing` leaves the table and `three` pins exactly.
-13. **Is MVR-xchange a ceiling we accept, and where is the seam?** (#30) Blocked by #33.
-14. **Which consoles does Beamhouse serve?** (#33) Whether the live repatch loop generalises past
-    Mizer — and if it does, ADR-0003's integer id reopens, because the UUID it declined exists in
-    every source but Mizer's.
+13. **Is MVR-xchange a ceiling we accept, and where is the seam?** (#30) **Unblocked** by
+    [ADR-0020](adr/0020-the-live-loop-serves-patch-files-not-consoles.md), and handed the
+    admission criterion plus the finding that only grandMA3 is a console among its six peers.
+14. ~~**Which consoles does Beamhouse serve?**~~ **Answered: the live repatch loop serves patch
+    files, not consoles** (#33, [ADR-0020](adr/0020-the-live-loop-serves-patch-files-not-consoles.md)).
+    Any patch file on a watchable path whose definitions name a library Beamhouse resolves. Mizer is
+    the only source that passes; BlinderKitten and MagicQ fail because both flatten a GDTF into their
+    own channel model. ADR-0003 stands, **amended** with an MVR ingest ladder and a UUID
+    reconciliation hint. Opens the `GDTFSpec` → `gdtf:` resolution rule as its own question.
 15. **What does the screen look like?** (#35) The whole UI — navigation model, notation, where the
     bridge's signals live, and the M3a viewer's degradation ladder. Surveyed against the field
     with screenshots; deliverable is a design canvas and the layout of §13.

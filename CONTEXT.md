@@ -13,8 +13,11 @@ _Avoid_: setup, plot, install
 
 **Fixture**:
 One addressable device in the rig — a single mover, a single tube. Identified by an integer
-**fixture id**, which is the only key both a console patch and an MVR file can supply, and
-therefore the key everything else in Beamhouse refers to a fixture by.
+**fixture id**, the key everything else in Beamhouse refers to a fixture by
+([ADR-0003](docs/adr/0003-fixture-id-is-the-only-identity.md)). A console patch always supplies
+one; **MVR does not have to** — its mandatory key is a UUID and its `FixtureID` is an optional
+string — so on MVR ingest the id comes from a ladder and a synthesised one is surfaced, never
+silent ([ADR-0020](docs/adr/0020-the-live-loop-serves-patch-files-not-consoles.md)).
 _Avoid_: lamp, head, instrument, device, unit
 
 **Definition**:
@@ -49,6 +52,17 @@ where each is addressed. Authored in the console and read by Beamhouse — with 
 exception, the **local fixture**
 ([ADR-0012](docs/adr/0012-beamhouse-may-define-pixels-placement-mints-nothing.md)).
 _Avoid_: patch sheet, fixture list
+
+**Patch source**:
+Where a patch is read from. Beamhouse has two kinds and they serve different populations
+([ADR-0020](docs/adr/0020-the-live-loop-serves-patch-files-not-consoles.md)). A **live** source is
+any patch file that (i) sits on a watchable path and (ii) names its definitions in a **Library**
+Beamhouse resolves — repatch, save, and the rig updates with the socket still live. Mizer's project
+YAML is the only one that passes today; BlinderKitten and MagicQ fail (ii), because both flatten a
+definition into their own channel model. An **imported** source is an MVR file, which carries no
+watch and serves design and previz tools rather than consoles — no console measured writes one.
+Say "patch source", not "console": the predicate is about the file, not the product.
+_Avoid_: console (when the file is meant), import path, patch reader
 
 **Placement**:
 The half of the scene that says where each fixture sits in space — position and orientation.

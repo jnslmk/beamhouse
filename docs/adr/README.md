@@ -6,7 +6,7 @@ Every accepted decision on this project, newest last. The **map** ([#1](https://
 |---|----------|------|------|
 | **0001** | [Resolve GDTF and OFL as fixture-definition formats](0001-gdtf-and-ofl-as-definition-formats.md) | 2026-09-01 | [#13](https://github.com/jnslmk/beamhouse/issues/13) |
 | **0002** | [The bridge speaks both sACN and Art-Net](0002-bridge-speaks-both-sacn-and-artnet.md) | 2026-09-01 | [#4](https://github.com/jnslmk/beamhouse/issues/4) |
-| **0003** | [The integer fixture id is a fixture's only identity](0003-fixture-id-is-the-only-identity.md) | 2026-09-01 | `/domain-modeling` |
+| **0003** | [The integer fixture id is a fixture's only identity](0003-fixture-id-is-the-only-identity.md) | 2026-09-01 | `/domain-modeling` · amended by ADR-0020 |
 | **0004** | [`gdtf-ts` is a published package that parses and resolves GDTF, and nothing else](0004-gdtf-ts-is-a-published-gdtf-only-package.md) | 2026-09-01 | [#7](https://github.com/jnslmk/beamhouse/issues/7) |
 | **0005** | [Emitter grouping is by DMX stride, and the strip path generalises to matrices](0005-emitter-grouping-is-by-dmx-stride.md) | 2026-09-01 | [#8](https://github.com/jnslmk/beamhouse/issues/8) |
 | **0006** | [The bridge is TypeScript on Bun](0006-bridge-is-typescript-on-bun.md) | 2026-09-01 | [#10](https://github.com/jnslmk/beamhouse/issues/10) |
@@ -23,6 +23,7 @@ Every accepted decision on this project, newest last. The **map** ([#1](https://
 | **0017** | [Shaders are hand-written GLSL, and WebGPU is out of scope](0017-shaders-are-hand-written-glsl-webgpu-is-out-of-scope.md) | 2026-09-02 | [#29](https://github.com/jnslmk/beamhouse/issues/29) · amends ADR-0013 |
 | **0018** | [Signal health is one per-universe snapshot, and it belongs to the feed](0018-signal-health-is-one-per-universe-snapshot.md) | 2026-09-02 | [#31](https://github.com/jnslmk/beamhouse/issues/31) · amends ADR-0007 |
 | **0019** | [The intensity map is relative, per-emitter, and not photometric](0019-the-intensity-map-is-relative-not-photometric.md) | 2026-09-02 | surfaced by [#31](https://github.com/jnslmk/beamhouse/issues/31) |
+| **0020** | [The live repatch loop serves patch files, not consoles](0020-the-live-loop-serves-patch-files-not-consoles.md) | 2026-09-02 | [#33](https://github.com/jnslmk/beamhouse/issues/33) · amends ADR-0003 |
 
 ## What each one actually says
 
@@ -45,6 +46,7 @@ Every accepted decision on this project, newest last. The **map** ([#1](https://
 - **[ADR-0017](0017-shaders-are-hand-written-glsl-webgpu-is-out-of-scope.md)** — Hand-written GLSL on `WebGLRenderer`, and **one** shader pair: the strip is a texture `map`, not a shader. WebGPU is **out of scope**, because the ADR-0013 tier is fragment-shader raymarching that WebGL2 reaches; only a *simulated* atmosphere would reopen it. `postprocessing` leaves the dependency table and `three` pins exactly.
 - **[ADR-0018](0018-signal-health-is-one-per-universe-snapshot.md)** — One `universes` snapshot replaces `stale` and `sacn_source`. Blind and priority are **sACN-only** and report `null` on Art-Net, which means *unknown*, not *not blind*; the stale threshold is **per transport**, because 2.5 s is E1.31's and Art-Net re-transmits an idle input only every ~4 s. Signal health belongs to the **feed**, so it is unreachable — not false — off a live one. Amends ADR-0007's reach: the transport returns on the **control channel**, never in the frame.
 - **[ADR-0019](0019-the-intensity-map-is-relative-not-photometric.md)** — The mode ships in v1, reads **resolved per-emitter intensity**, and is **not called false colour**. Measured: every `Dimmer` `ChannelFunction` in all six profiles is `PhysicalUnit="None"` over 0 → 1, and no profile carries a credible `LuminousFlux` — so v1 makes **no photometric prediction**, stated as a non-claim rather than left as a gap.
+- **[ADR-0020](0020-the-live-loop-serves-patch-files-not-consoles.md)** — Beamhouse names no console list. The live repatch loop serves any patch file that sits on a **watchable path** and names its definitions in a **library Beamhouse resolves**. Mizer is the only source that passes; BlinderKitten and MagicQ fail on the second condition, because both flatten a GDTF into their own channel model and discard the definition identity. Measured: **no console on this machine writes an MVR** — Mizer exports CSV, BlinderKitten and MagicQ only *import* it — so MVR import serves **design and previz tools**, not consoles. Amends ADR-0003 with an MVR ingest ladder and a UUID reconciliation hint; re-targets M5b to BlenderDMX; unblocks #30.
 
 ## Writing a new one
 
