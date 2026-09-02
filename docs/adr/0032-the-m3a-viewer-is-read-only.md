@@ -4,6 +4,7 @@
 - **Date:** 2026-09-02
 - **Surfaced by:** [#40](https://github.com/jnslmk/beamhouse/issues/40)
 - **Amends:** [ADR-0023](0023-the-chip-bar-is-the-navigation.md)
+- **Amended by:** [#55](https://github.com/jnslmk/beamhouse/issues/55) (2026-09-02) — decision 4's landscape claim measured false and the landscape frame now draws the rig's content box, not the whole canvas
 - **Related:** [ADR-0031](0031-a-share-link-carries-resolved-definitions.md), [ADR-0014](0014-the-agent-surface-is-two-surfaces.md), [ADR-0018](0018-signal-health-is-one-per-universe-snapshot.md)
 
 ## Context
@@ -68,9 +69,20 @@ what makes decision 2's cut affordable.
 
 **4 · Portrait gives the viewport a band and spends the rest on the list.** 320 px of rig, then
 the fixture list. 320 is the largest band that still slices to the rig's own content span
-(x 174..1217 of 1392) instead of cropping into it. **The payoff frame is the phone turned
-sideways**: 844 × 390 is 2.16:1, the only orientation in which the rig gets the screen, and
-portrait says so in one line.
+(x 174..1217 of 1392) instead of cropping into it. **[amended 2026-09-02 — [#55](https://github.com/jnslmk/beamhouse/issues/55)]**
+The payoff sentence originally claimed landscape was *"the only orientation in which the rig gets
+the screen"* — and measured against the whole-canvas fit it was not: the rig took **407 of
+844 px (48%)**, with the other half spent on the canvas's own margins (the sky above the truss,
+the empty floor below the stage lip) plus letterbox. Landscape now frames the rig's **content
+box** — x 174..1217 × y 190..716, everything the scene draws between the truss and the stage
+lip — at `meet`, which puts the rig at **662 of 844 px (78%)**. The ~91 px of dark margin either
+side are the honest residue of the box's 1.98:1 against the frame's 2.53:1, and the portrait
+precedent — never crop *into* the rig — forbids spending them. The claim's substance survives in
+a form that parses: landscape is the only orientation where the rig dominates the frame, and
+portrait still says so in one line. The portrait band cannot take the same y-trim: at 320 px it
+slices to the full content span at exactly full canvas height, so trimming its y would force an
+x-crop into the rig — the two orientations express the rule differently, each by its own
+geometry.
 
 This is the one place the viewer departs from ADR-0023's *viewport-dominant, nothing is docked*.
 It is not a preference: a docked band is what 0.46:1 leaves. The desktop is untouched.

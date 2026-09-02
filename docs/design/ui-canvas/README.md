@@ -122,6 +122,14 @@ its own ADR:
   ADR-0032 decision 4 makes for this orientation. It also shows that *fits* is the honest word and
   *fills* is not: the rig's content span is ~1.49:1 against a 2.53:1 frame, so it is bounded by
   height with horizontal margins either side.
+  **[#55, 2026-09-02]** That measurement went one step further and changed the drawing: a
+  full-canvas `meet` left the rig at 407 of 844 px (48%), which is not what "the rig gets the
+  screen" means. The landscape scene now frames the rig's **content box** — `viewBox="174 190
+  1043 526"`, x 174..1217 × y 190..716, everything the scene draws between the truss and the
+  stage lip — so the rig takes 662 px (78%) and the ~91 px side margins are the honest residue of
+  a 1.98:1 content box in a 2.53:1 frame. Cropping x alone (the portrait band's lever) is a no-op
+  here: the frame is height-bound at every x-window, so the trim is in y. The same rule reaches
+  `Recorded`'s landscape frame — #45 made them one component.
 
 ## Regenerating
 

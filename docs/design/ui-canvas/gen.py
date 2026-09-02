@@ -758,15 +758,24 @@ def a_phone():
 
 
 def a_phone_land():
-    """844 x 390. A phone turned sideways is 2.16:1 against the rig's 1.63:1 - the
-    only orientation in which the whole rig gets the whole screen."""
+    """844 x 390. A phone turned sideways is the only orientation with room for the rig
+    to dominate the frame."""
     # [corrected 2026-09-02 - #45] This drew S.scene() at the default "slice", which
     # scales to the 844 WIDTH and crops the floor away - the exact opposite of the claim
     # this artboard exists to make. 844x334 is 2.53:1 against the rig's 1.63:1, so the
     # rig fits by HEIGHT with room to spare: "meet" is what ADR-0032 decision 4 means.
+    # [corrected 2026-09-02 - #55] But a full-canvas "meet" leaves the rig at 407 of
+    # 844px (48%) - the claim "the rig gets the screen" measured false. Landscape frames
+    # the rig's CONTENT BOX (x 174..1217 x y 190..716, everything drawn between truss
+    # and stage lip) instead: the rig then takes 662px (78%), and the ~91px margins are
+    # the honest residue of 1.98:1 content in a 2.53:1 frame. Fitting the whole canvas
+    # here only adds empty sky and empty near-floor grid; the x-only crop of the
+    # portrait band is a no-op in this orientation (the frame is height-bound at every
+    # x-window), so the box is trimmed in y as well.
     body = ('<div class="app land">' + chipbar(
         [chip("Sel", "\u2014", "mute"), chip("Cam", "Front")], mark=VIEWER_MARK) +
-        '<div class="body"><div class="view">' + S.scene(preserve="xMidYMid meet") +
+        '<div class="body"><div class="view">' +
+        S.scene(preserve="xMidYMid meet", vb=(174, 190, 1043, 526)) +
         '<div class="ptag">Snapshot \u00b7 2 Sep 14:02</div></div></div></div>')
     return _phone_page(body)
 
@@ -788,9 +797,12 @@ def a_recorded():
             '</div></div></div>')
 
     # 2 - the payoff frame. 844 x 390, full-bleed, the transport in the same corner.
+    # The scene is framed to the rig's content box like PhoneLandscape's (x 174..1217 x
+    # y 190..716) - #45 made the two one component, so #55's framing rule reaches both.
     land = ('<div class="app land">' + chipbar(
         [chip("Sel", "\u2014", "mute"), chip("Cam", "Front")], mark=REC_MARK) +
-        '<div class="body"><div class="view">' + S.scene(preserve="xMidYMid meet") +
+        '<div class="body"><div class="view">' +
+        S.scene(preserve="xMidYMid meet", vb=(174, 190, 1043, 526)) +
         xport(392, "Snapshot \u00b7 2 Sep 14:02", "04:12", "18:30", 22.5) +
         '</div></div></div>')
 

@@ -186,15 +186,22 @@ def _dimmers():
 
 def scene(*, skip_beams=(), stale_beams=(), star_stale=(), star_sel=False, star_handles=False,
           sel_mover=None, ghost_mover=None, empty=False, extra="",
-          preserve="xMidYMid slice"):
+          preserve="xMidYMid slice", vb=None):
     """Assemble the viewport SVG.
 
     ``preserve`` is the SVG preserveAspectRatio. The desktop artboards slice, because the
     viewport is wider than it is tall and cropping loses nothing. A portrait phone frame
     must ``meet`` instead: slicing a 1392x856 rig into a 390-wide column would crop away
     everything but the middle 428 units, which is most of the rig.
+
+    ``vb`` optionally narrows the viewBox to ``(minx, miny, w, h)``. The landscape phone
+    frames the rig's content box (x 174..1217 x y 190..716) rather than the whole canvas,
+    because at 2.53:1 the frame is height-bound and the canvas's own margins -- the sky
+    above the truss, the empty floor below the stage lip -- are pure dead weight there.
     """
-    p = ['<svg class="scene" viewBox="0 0 %d %d" preserveAspectRatio="%s">' % (VW, VH, preserve),
+    box = vb or (0, 0, VW, VH)
+    p = ['<svg class="scene" viewBox="%d %d %d %d" preserveAspectRatio="%s">'
+         % (box[0], box[1], box[2], box[3], preserve),
          _defs(),
          '<rect width="%d" height="%d" fill="oklch(0.155 0.006 75)"/>' % (VW, VH),
          _grid()]

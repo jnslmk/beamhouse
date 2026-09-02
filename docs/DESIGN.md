@@ -2191,9 +2191,16 @@ dropping the `Feed` chip affordable.
 390 × 844 phone is 0.46:1: the whole rig at full width is a **240 px strip on an 844 px screen**.
 No framing fixes that. So portrait spends **320 px** on the rig — the largest band that still
 slices to the rig's own content span rather than cropping into it — and the rest on the fixture
-list, and the payoff frame is the phone **turned sideways**, where 844 × 390 is 2.16:1 and the rig
-gets the screen. This is the one place the viewer departs from ADR-0023's *nothing is docked*, and
-it is not a preference: a docked band is what 0.46:1 leaves.
+list, and the payoff frame is the phone **turned sideways**, where 844 × 390 is 2.16:1 and the
+rig gets the screen. This is the one place the viewer departs from ADR-0023's *nothing is docked*,
+and it is not a preference: a docked band is what 0.46:1 leaves. **[amended 2026-09-02 — [#55](https://github.com/jnslmk/beamhouse/issues/55)]**
+"Gets the screen" measured against a whole-canvas fit was 407 of 844 px (48%) — the other half
+spent on the canvas's own margins. The landscape viewer frames the rig's **content box**
+(x 174..1217 × y 190..716 — everything drawn between the truss and the stage lip), which puts the
+rig at **662 of 844 px (78%)**; the ~91 px side margins are the residue of the box's 1.98:1 in a
+2.53:1 frame, and the portrait rule — never crop into the rig — forbids spending them. Portrait
+cannot trim its y the same way: at 320 px it slices to the full content span at exactly full
+canvas height, so a y-trim would force an x-crop into the rig.
 
 **The five-tab overlay collapses to the fixture list.** `Universes` has no bridge to read,
 `History` no commands to show, and `Issues` nothing to reconcile — §9.2's link arrives already

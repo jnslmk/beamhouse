@@ -195,7 +195,10 @@ td.name{color:var(--hi)}
    its intrinsic 1392x856 and was simply CLIPPED by the 844px frame - preserveAspectRatio
    never even applied, and the floor was cropped away in the one orientation ADR-0032
    decision 4 calls "the payoff frame". Sizing it to the box is what lets "meet" fit the
-   whole rig. */
+   whole rig. [corrected 2026-09-02 - #55] Fitting the whole CANVAS then left the rig at
+   48% of the width: the landscape scene is drawn with the rig's own content box
+   (x 174..1217 x y 190..716, viewBox "174 190 1043 526", see scene.py) so the rig, not
+   the canvas, is what meets the frame. */
 .app.land .view svg.scene{width:100%;height:100%}
 .app.phone .plist{flex:1;min-height:0;position:relative;overflow:hidden;
   display:flex;flex-direction:column}
