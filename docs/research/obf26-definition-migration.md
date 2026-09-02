@@ -8,22 +8,24 @@ never QLC+ as a resolved runtime format.
 - **Source (untouched, still the reference):** `~/git-projects/mizer-shows/OBF26_Bunte-Stube.yml`
 - **Migrated:** `~/git-projects/mizer-shows/OBF26_Bunte-Stube_gdtf-ofl.yml`
 
-**Headline: 13 of 13 fixtures migrated. No `qlc:` id remains in the rig.** The two dimmer packs
-and the fogger moved cleanly and channel-for-channel — dimmers to OFL, fogger to the pinned
-GDTF. The four WLED tubes moved to a newly authored 35-pixel OFL definition and had to be
-**re-addressed**, because an 18-channel effect segment cannot become a 105-channel per-pixel
-fixture at its old address — **that part is provisional and now known wrong, see below**. The six GLP impression 90 RGB movers moved to the GDTF definition
+**Headline: the whole rig is migrated, and the WLED half was rebuilt from scratch afterwards.**
+The two dimmer packs and the fogger moved cleanly and channel-for-channel — dimmers to OFL,
+fogger to the pinned GDTF. The six GLP impression 90 RGB movers moved to the GDTF definition
 authored for this project in [#16](https://github.com/jnslmk/beamhouse/issues/16) — the one
-fixture with no profile anywhere, now with one built from GLP's own dimensioned CAD. `id` and
-`universe` are preserved for all 13 fixtures; `channel` for 10 of 13, the three exceptions all
-being WLED tubes.
+fixture with no profile anywhere, now with one built from GLP's own dimensioned CAD.
 
-> **⚠ The four WLED tubes are migrated but the model behind them is known wrong.** A user
-> correction after this was written gives **23 pixels per LED profile, not 35**, and the four
-> patched entries are WLED *segments* over one physical run rather than four physical tubes —
-> so both the pixel count and the unit are wrong, and per-pixel at the real scale
-> (230 px × 3 = 690 ch) overruns a 512-slot universe. **§3 is superseded**; see the banner
-> there. Ticketed separately. Everything in §1 and §2 about ids 1–8 and 10 is unaffected.
+The WLED half is on its **second** pass. #6 patched four 35-pixel "tubes";
+[#21](https://github.com/jnslmk/beamhouse/issues/21) read the node and falsified every number in
+that, and [#23](https://github.com/jnslmk/beamhouse/issues/23) rebuilt it as **ten 23-pixel
+spokes** — see §3, which is rewritten rather than annotated. The rig therefore holds **19**
+fixtures, not 13. `id` and `universe` are preserved for ids 1–8 and 10; the four WLED ids
+9 / 11 / 12 / 13 are **retired**, because #21 proved they named WLED segments rather than
+fixtures.
+
+> **The WLED half of this record was rewritten on 2026-09-02.** #6's four 35-pixel tubes are
+> gone. What replaced them, and why every one of #6's tube numbers was wrong, is
+> [§3](#3--the-star-tent-per-pixel-patch). Everything in §1 and §2 about ids 1–8 and 10 is
+> unaffected and was never in doubt.
 
 > **Sequencing note.** This migration first landed with 7 of 13 and the six movers left on
 > `qlc:`, because the authored profile
@@ -42,14 +44,14 @@ being WLED tubes.
 | 7 | Dimmerpack 4ch | `qlc:Generic:Dimmer` | `4 Channel` | `ofl:generic:4-channel-dimmer-pack` | `4-channel` | 4 | clean, 1:1 |
 | 8 | Dimmerpack 1ch | `qlc:Generic:Dimmer` | `1 Channel` | `ofl:generic:4-channel-dimmer-pack` | `1-channel` | 1 | clean, 1:1 |
 | 10 | Fog Fury Jett | `qlc:American DJ:Fog Fury Jett (HTP Fog)` | `7 Channel` | `gdtf:26D59406-1AE9-4D59-8E00-A9DAF08EA018` | `7 Channel Mode` | 7 | clean, 1:1 |
-| 9 | WLED Star | `qlc:WLED:WLED Segment Effect` | `18 Channel` | `ofl:beamhouse:wled-t8-pixel-tube-35px` | `35px RGB 105-channel` | 105 | **provisional — superseded, see §3** |
-| 11 | WLED Highlight | `qlc:WLED:WLED Segment Effect` | `18 Channel` | `ofl:beamhouse:wled-t8-pixel-tube-35px` | `35px RGB 105-channel` | 105 | **provisional — superseded, see §3** |
-| 13 | WLED Sparkle | `qlc:WLED:WLED Segment Effect` | `18 Channel` | `ofl:beamhouse:wled-t8-pixel-tube-35px` | `35px RGB 105-channel` | 105 | **provisional — superseded, see §3** |
-| 12 | WLED Flash | `qlc:WLED:WLED Segment Effect` | `18 Channel` | `ofl:beamhouse:wled-t8-pixel-tube-35px` | `35px RGB 105-channel` | 105 | **provisional — superseded, see §3** |
+| ~~9, 11, 12, 13~~ | ~~WLED Star / Highlight / Sparkle / Flash~~ | `qlc:WLED:WLED Segment Effect` | `18 Channel` | — | — | — | **retired**: these were WLED *segments*, not fixtures (#21) |
+| 101–110 | STAR-TENT Spoke 1–10 | *(part of the same four segments)* | — | `ofl:beamhouse:wled-star-tent-spoke-23px` | `23px RGB 69-channel` | 69 | clean — verified on the live node, §3 |
 
-Everything outside the `fixtures:` block — `groups`, `connections`, `presets`, `layouts`,
-`plans`, `version`, `playback` — is byte-identical to the original, verified by parsing both
-files and comparing every top-level key.
+Everything outside the `fixtures:` block was byte-identical to the original after #6. #23
+changed three things in it, all forced by the tent becoming ten fixtures: group 12 (`WLED` →
+`STAR-TENT`, now selecting 101–110), the `plans` entries for the retired ids, and the `dmx-1`
+connection host — the node **moved to `192.168.1.243`** (#21; same Ethernet MAC, only the subnet
+changed). `presets`, `layouts`, `version` and `playback` are still untouched.
 
 ### Addressing
 
@@ -59,24 +61,25 @@ files and comparing every top-level key.
 | 7 | 1 | 85 | 85 | 85–88 |
 | 8 | 1 | 89 | 89 | 89 |
 | 10 | 1 | 90 | 90 | 90–96 |
-| 9 | 2 | 1 | **1** | 1–105 *(provisional)* |
-| 11 | 2 | 19 | **106** | 106–210 *(provisional)* |
-| 13 | 2 | 37 | **211** | 211–315 *(provisional)* |
-| 12 | 2 | 55 | **316** | 316–420 *(provisional)* |
+| 101–107 | 2 | *(9, 11, 13, 12 were at 1 / 19 / 37 / 55)* | **30 / 99 / 168 / 237 / 306 / 375 / 444** | 30–512, spoke by spoke |
+| 108–110 | 3 | — | **1 / 70 / 139** | 1–207 |
 
-Universe 1: 96 slots used. Universe 2: 420 of 512, next free slot 421. No overlaps, no
-overruns — checked programmatically against each fixture's new channel count.
+Universe 1: 96 slots used. Universe 2: slots 30–512, **filled to the byte** — spoke 7 (id 107)
+ends at 512 exactly, and 1–29 are left free deliberately (see §3). Universe 3: 1–207. No
+overlaps, no overruns, checked programmatically, and then checked again *on the hardware*: all
+230 pixels round-trip through exactly this patch (§3).
 
-**On the "preserve `id`, `universe`, `channel`" requirement.** It holds for 10 of 13 fixtures
-and for the thing the requirement exists to protect: the placement-override layer is keyed by
-fixture id ([ADR-0003](../adr/0003-fixture-id-is-the-only-identity.md), DESIGN §4.5), and every
-`id` and `universe` is unchanged. It cannot hold for WLED ids 11, 12 and 13: four 18-channel
-segments were packed 18 slots apart, and four 105-channel per-pixel fixtures physically cannot
-be. The new addresses are not an arbitrary reshuffle — WLED's per-pixel DMX input maps its start
-address straight onto the LED string and consumes 3 slots per LED contiguously, so
-1 / 106 / 211 / 316 is what the hardware actually wants. The four tubes keep their original
-relative order (Star, Highlight, Sparkle, Flash), which is the only ordering information the old
-patch carried.
+**On the "preserve `id`, `universe`, `channel`" requirement.** It holds for the nine fixtures it
+can hold for — ids 1–8 and 10 keep all three — and for the thing the requirement exists to
+protect: the placement-override layer is keyed by fixture id
+([ADR-0003](../adr/0003-fixture-id-is-the-only-identity.md), DESIGN §4.5).
+
+For the tent it cannot hold, and #23 stopped trying. #6 preserved ids 9 / 11 / 12 / 13 on the
+grounds that the override layer keys on them. #21 then showed those ids named four **fully
+overlapping whole-strip effect layers**, all four spanning `start 0, stop 230` — WLED segments,
+not fixtures. There is no placement to preserve for a thing that was never in a place. Reusing
+four of the ids for four of the ten spokes would have implied a continuity that does not exist,
+so they are retired and the spokes get a fresh block at 101–110.
 
 ---
 
@@ -225,25 +228,28 @@ Channel-for-channel, the only fully clean GDTF migration in the rig:
 The GDTF profile offers only this one mode. Note OFL has `american-dj/fog-fury-jett-pro` — the
 **Pro**, a different fixture with 1/2/3/7/9-channel modes — not a substitute.
 
-### WLED tubes → authored OFL  *(provisional — superseded, see §3)*
+### WLED segments → ten authored OFL spokes  *(rewritten by #23)*
 
 `qlc:WLED:WLED Segment Effect` (`15 Channel` / `18 Channel`, both effect-parameter layouts)
-→ `ofl:beamhouse:wled-t8-pixel-tube-35px`, mode `35px RGB 105-channel`.
+→ `ofl:beamhouse:wled-star-tent-spoke-23px`, mode `23px RGB 69-channel`, **ten of them**.
 
-**The target definition and the four-fixture shape are both wrong** — 23 px per profile rather
-than 35, and these four entries are segments over one physical run rather than four physical
-tubes. The mode-name row below is recorded for completeness; do not carry it forward. What does
-carry forward is the point immediately following it: this is not a mode rename at all.
+There is no mode-to-mode mapping here and there cannot be, for two independent reasons.
 
-There is no mode-to-mode mapping here and there cannot be: the old 18 channels were
-`Segment Opacity`, `Effect`, `Effect Speed`, `Effect Intensity`, `Palette`, `Effect Option`,
-then primary/secondary/tertiary RGB and W. Under effect mode WLED computes the pixels
-on-device, so per-pixel data never crosses the wire — the exclusion in
-[`docs/DESIGN.md` §01](../DESIGN.md) and the standing decision on #1 (2026-08-31). The
-migration is a change of *what is patched*, not a mode rename.
+**The channels mean different things.** The old 18 were `Segment Opacity`, `Effect`,
+`Effect Speed`, `Effect Intensity`, `Palette`, `Effect Option`, then primary/secondary/tertiary
+RGB and W — parameters WLED expands into pixels on-device. Effect mode is out of scope for
+Beamhouse v1, re-ruled in [#18](https://github.com/jnslmk/beamhouse/issues/18) on grounds that
+have nothing to do with the original ones. The migration is a change of *what is patched*.
+
+**And the units are different things.** #6 read the four blocks as four physical tubes. #21 read
+the node: they are four WLED **segments**, addressed by WLED's own mode-9 stride formula
+`dataOffset = DMXAddress + id * (18 + DMXSegmentSpacing)` → 1 / 19 / 37 / 55, which is exactly
+the QLC+ patch. All four span `start 0, stop 230`. They are stacked effect layers over the whole
+run, not zones of it. Four blocks did not become four fixtures; they became **zero** fixtures,
+and the ten physical spokes underneath them became ten.
 
 For completeness, the two GDTF profiles that do model effect mode, both already pinned and both
-now unused by this rig:
+still unused by this rig:
 
 | Definition | rid | Mode |
 |------------|-----|------|
@@ -252,131 +258,198 @@ now unused by this rig:
 
 ---
 
-## 3 · The WLED per-pixel patch
+## 3 · The STAR-TENT per-pixel patch
 
-> ## ⚠ SUPERSEDED — the tube half of this migration is wrong
->
-> **Do not build on the numbers in §3, or on the WLED rows of §1 and §2.** The reasoning
-> survives; the model does not.
->
-> After this was written the user corrected a fact this record had inferred rather than
-> measured: **an LED profile contains 23 pixels, not 35.** Three things follow, and they
-> compound:
->
-> 1. **23 px per profile, not 35.** The 35 came from `docs/DESIGN.md` §4.5's
->    `diy_t8_35px` class and was carried forward here as given. It was never measured.
-> 2. **The physical unit is probably not four.** `~/qlc/README.md:513` records the
->    STAR-TENT as 230 RGBW LEDs, and 230 ÷ 23 = 10 — so there are likely **10 profiles**,
->    not 4 tubes. (That division is inference, not a stated fact; treat the 10 as
->    unconfirmed.)
-> 3. **The segment-to-fixture mapping is the wrong shape.** Star, Highlight, Flash and
->    Sparkle at ch 1 / 19 / 37 / 55 are WLED **segments** — effect zones layered over one
->    physical run — not four physical tubes. Mapping one segment to one per-pixel fixture
->    was wrong regardless of the pixel count.
->
-> **And per-pixel no longer fits the universe.** 230 px × 3 ch = **690 channels** against a
-> 512-slot universe. The 4 × 105 = 420 in §3 fitted comfortably; 690 does not fit at all.
-> That is an unresolved modelling problem — it needs either a second universe, a different
-> pixel-to-slot mapping, or a coarser strip model — and it is **ticketed separately**, not
-> resolved here.
->
-> **What still stands, and is why this section is kept rather than deleted:**
->
-> - **OFL over GDTF on licensing** — the argument in §3 is about redistribution rights and
->   the manifest's rid requirement, not about pixel counts. It applies unchanged to a 23px
->   fixture, or a 230px one.
-> - **Per-pixel over effect mode** — the conclusion stands, but **not for the reason given
->   here.** “The data never crosses the wire” is false: WLED's Live LED Stream returns the
->   computed buffer on request. #18 re-grounded the exclusion on the stream being
->   node-present-only, pre-brightness, white-clipping and single-client — see `docs/DESIGN.md`
->   §01. Unaffected by how many pixels there are, under either reasoning.
-> - **The 230-vs-140 discrepancy flagged in §5** was the right thing to notice; it is what
->   surfaced this.
->
-> `definitions/ofl/beamhouse.json` is **left in place**, not deleted — the follow-up ticket
-> decides whether to re-author it at the real pixel count or replace the whole model. The
-> patched addresses in the migrated project file are likewise left as they are: they are
-> known-provisional, not silently wrong.
+Rewritten in full for [#23](https://github.com/jnslmk/beamhouse/issues/23). What was here
+before described four 35-pixel tubes at universe 2 slots 1 / 106 / 211 / 316. Every number in it
+was falsified by [#21](https://github.com/jnslmk/beamhouse/issues/21), which read the live node.
+The old text is in git history; nothing in it is worth carrying forward except the licensing
+argument, which is restated below because it still decides the format.
 
+### What the device actually is
 
-### The choice: author a 35-pixel OFL fixture
+One WLED controller (`STAR-TENT`, WLED 16.0.1, `ESP32_Ethernet`, MAC `68:FE:71:A5:2A:37`) at
+**`192.168.1.243`** — it moved subnets since #6 was written. It drives **230 LEDs as one
+continuous index space** over two physical buses:
 
-The ticket offered three routes. Taken: **author a 35px definition, in OFL, not GDTF.**
+| bus | pin | LEDs | = |
+|-----|-----|------|---|
+| 0 | 5 | 0–137 | 6 × 23 |
+| 1 | 16 | 138–229 | 4 × 23 |
 
-- **Use the pinned 30px GDTF as-is — rejected.** `MarkeEigenbau RGB LED Pixel Strip 30px 1m`
-  (rid 138539) is 30 pixels / 90 channels against real hardware of 35 pixels / 105 channels.
-  Five pixels would go unrendered and every fixture addressed after the first would sit 15
-  slots off. The whole point of migrating this rig is to have a *genuine* multi-pixel fixture
-  for the strip-detection work (#8); a deliberately wrong pixel count defeats that.
-- **Author a 35px GDTF from its pattern — rejected on licensing.** Mechanically it is trivial:
-  the profile is 16.7 KB of `description.xml` with no meshes, 30 `GeometryReference` nodes on a
-  `Beam` template at 32 mm spacing with `Break` `DMXOffset` 1, 4, 7 … , and extending it to 35
-  is a loop. But it would be a derivative of a GDTF Share file that grants no redistribution
-  right (ADR-0001, T&C §36–38), it would land in the gitignored `definitions/gdtf/`, and it
-  would have no rid — so `gdtf-share.sh restore` could never rebuild it. The definition would
-  exist on exactly one laptop, untracked.
-- **Author it in OFL — taken.** OFL is MIT, ungated and vendorable, which is precisely why
-  ADR-0001 added it and why the bundled library is OFL-only. An authored OFL fixture commits
-  into this repo, matches the hardware exactly, and exercises OFL's declarative
-  `matrix.pixelCount` + `physical.matrixPixels.spacing` — the path ADR-0001 calls the bonus for
-  the strip class, and the newer of the two readers.
+Physically that is **ten 1.5 m aluminium LED profiles arranged as radial spokes** — the tent is
+literally a star. The 6/4 bus split is a cabling artifact, not a spatial grouping: the data index
+runs continuously across it, and it is what turns `230 ÷ 23 = 10` from arithmetic into a reading
+of the hardware. Emitters are `TYPE_FW1906` — **RGB + CW + WW**, not RGBW.
 
-No 35-pixel strip exists to copy: GDTF Share has 20, 30, 40, 60 and 80-pixel strips and nothing
-at 35; OFL's largest 1-D matrices are Astera FP3 (32 px), Gruft Pixel Tube (30 px), Chroma-Q
-Color Force II 72 (24 px). Confirmed by searching both catalogues.
+### One spoke is one fixture is one strip
+
+[ADR-0005](../adr/0005-emitter-grouping-is-by-dmx-stride.md) rejects the 230-pixel run as a
+single strip: ten spokes at ten angles are nowhere near collinear. Each 23-pixel spoke is
+individually collinear and passes.
+[ADR-0009](../adr/0009-a-fixture-is-addressed-per-break.md) then makes each spoke its own
+fixture. The patch unit and the render unit align — spoke = fixture = strip — which is what
+ADR-0005 §3 already arranged by making the render unit follow the patch unit.
+
+### Addressing: why the node is at DMXAddress 30
+
+WLED packs a fixed number of LEDs into its first universe and then spans consecutive universes
+upward, each subsequent one starting at channel 1 (channel 0 for Art-Net). The count is not
+configurable (`wled00/e131.cpp:347`):
+
+```
+ledsInFirstUniverse = (512 - DMXAddress + 1) / 3        # 3 ch/LED, Multi RGB
+```
+
+At the node's original `DMXAddress 1` that is **170**, which is not a multiple of 23 — so spoke 7
+would have straddled the universe boundary, LEDs 161–169 in one universe and 170–183 in the next.
+Under ADR-0009 rule 3 a fixture with a stale break is stale entirely, so a spoke that needlessly
+straddles a boundary half-renders for no reason.
+
+At **`DMXAddress 30`** it is `(512 - 30 + 1) / 3 = 161 = 7 × 23`. The boundary lands exactly on
+the spoke 6 → spoke 7 seam, universe 2 fills to the byte, and every fixture is single-break.
+Slots 1–29 of universe 2 are left free — that is the cost, and it buys the alignment.
+
+**This is rig configuration, not architecture.** ADR-0009 rule 1 stands on its own: a fixture
+*can* span universes, and v1 resolves the multi-break case for real. The re-addressing is not a
+substitute for that, which is why the multi-break path is tested against
+[#26](https://github.com/jnslmk/beamhouse/issues/26)'s offline oracle rather than against this
+rig. Reset the node to address 1 and the patch is wrong, but nothing in Beamhouse breaks.
+
+### The address map
+
+Beamhouse/Mizer universe = Art-Net Port-Address + 1
+([ADR-0007](../adr/0007-one-universe-space-sacn-numbered.md)). WLED reads the Port-Address
+**raw** while its own UI calls that field "universe" (#26), so the node's configured "universe 1"
+is Port-Address 1, which is **Beamhouse universe 2**. The tent needs Port-Addresses 1 *and* 2.
+
+| id | Name | Universe | Slots | LEDs | Cable direction |
+|----|------|----------|-------|------|-----------------|
+| 101 | STAR-TENT Spoke 1 | 2 | 30–98 | 0–22 | centre → outer |
+| 102 | STAR-TENT Spoke 2 | 2 | 99–167 | 23–45 | outer → centre |
+| 103 | STAR-TENT Spoke 3 | 2 | 168–236 | 46–68 | centre → outer |
+| 104 | STAR-TENT Spoke 4 | 2 | 237–305 | 69–91 | outer → centre |
+| 105 | STAR-TENT Spoke 5 | 2 | 306–374 | 92–114 | centre → outer |
+| 106 | STAR-TENT Spoke 6 | 2 | 375–443 | 115–137 | outer → centre |
+| 107 | STAR-TENT Spoke 7 | 2 | 444–**512** | 138–160 | centre → outer |
+| 108 | STAR-TENT Spoke 8 | 3 | 1–69 | 161–183 | outer → centre |
+| 109 | STAR-TENT Spoke 9 | 3 | 70–138 | 184–206 | centre → outer |
+| 110 | STAR-TENT Spoke 10 | 3 | 139–207 | 207–229 | outer → centre |
+
+Within a spoke, pixel *n* = 1…23 from its `channel` **c**:
+`R → c + 3(n−1)`, `G → c + 3(n−1) + 1`, `B → c + 3(n−1) + 2`.
+
+### The serpentine, and the flag not to reach for
+
+The spokes are cabled back and forth, so **odd-indexed spokes run outer → centre in data order**
+(0-based: spokes 1, 3, 5, 7, 9 — ids 102, 104, 106, 108, 110). Authoring ten identical outward
+spokes would render five of them mirrored, and on a symmetric star that looks entirely
+plausible — the same silent-failure family as the 2θ rotation error in
+[#20](https://github.com/jnslmk/beamhouse/issues/20).
+
+Mizer's `reverse_pixel_order` looks like the answer and is not: it reorders sub-fixture *lookup*
+only (`fixture.rs:171`) and never the slot mapping in `write_dmx`, so it changes what the console
+writes rather than how the wire is laid out, and is invisible to a listener. The reversal belongs
+in **Beamhouse's placement layer** (ADR-0005 §8): one outward-spoke definition, reversed spokes
+placed rotated 180° about their own mid-point so pixel 0 lands at the tip on the same ray. Mizer
+cannot carry it — `FixturePosition` is `{fixture, x, y, width, height}`, no Z and no rotation —
+so this table is the record until the `.bhs` schema exists.
 
 ### The definition
 
-[`definitions/ofl/beamhouse.json`](../../definitions/ofl/beamhouse.json) — an OFL
-`ofl`-export-format library file (`{version, fixtures:[…]}`), the shape Mizer's OFL provider
-reads. One fixture:
+[`definitions/ofl/beamhouse.json`](../../definitions/ofl/beamhouse.json), an OFL AGLight-export
+library file (`{version, fixtures:[…]}`), which is the shape Mizer's OFL provider reads. One
+fixture, **replacing** the 35px one rather than sitting beside it — nothing references the old
+id after this re-patch, git holds the history, and a wrong definition left in a bundled library
+is a trap rather than an archive.
 
 ```
 manufacturer  Beamhouse            (explicitly not upstream OFL)
-fixtureKey    wled-t8-pixel-tube-35px
-name          WLED T8 Pixel Tube 35px
-Mizer id      ofl:beamhouse:wled-t8-pixel-tube-35px
-matrix        pixelCount [35, 1, 1]
-physical      dimensions [600, 26, 26] mm
-              matrixPixels.dimensions [16.667, 26, 26], spacing [16.667, 0, 0] mm
-channels      Red 1..35, Green 1..35, Blue 1..35 — each ColorIntensity, pixelKey "n"
-mode          "35px RGB 105-channel", channels ordered R1 G1 B1 R2 G2 B2 … R35 G35 B35
+fixtureKey    wled-star-tent-spoke-23px
+name          WLED STAR-TENT Spoke 23px
+Mizer id      ofl:beamhouse:wled-star-tent-spoke-23px
+matrix        pixelCount [23, 1, 1]
+physical      dimensions [1500, 20, 20] mm
+              matrixPixels.dimensions [65.217, 20, 20], spacing [0, 0, 0] mm
+channels      Red 1..23, Green 1..23, Blue 1..23 — ColorIntensity, pixelKey "n"
+mode          "23px RGB 69-channel", channels ordered R1 G1 B1 … R23 G23 B23
 ```
 
-**The physical numbers are derived, not measured.** 35 pixels is the count this project has
-carried since DESIGN §4.5 (`"diy_t8_35px": { "kind": "strip", "pixels": 35 }`) and is what the
-ticket specifies. 16.667 mm spacing and a 600 mm body follow from the only self-consistent
-reading of that: a 60 LED/m WS2812 strip cut into a 2 ft T8 diffuser gives 35 pixels over
-583 mm. Nothing in `~/qlc/README.md` or the QLC+ workspace records the tube's length or LED
-density, so **this needs one physical measurement to confirm** before the strip class is
-trusted for real geometry. See the discrepancy in §5.
+**OFL, not GDTF, and the reason is still licensing.** A 23-pixel GDTF derived from the pinned
+`MarkeEigenbau` strip profile is mechanically trivial — that profile is `description.xml` with no
+meshes, `GeometryReference` nodes on a `Beam` template with `Break` `DMXOffset` 3 apart — but it
+would be a derivative of a GDTF Share file that grants no redistribution right
+([ADR-0001](../adr/0001-gdtf-and-ofl-as-definition-formats.md)), so it would land in the
+gitignored `definitions/gdtf/` with no rid and exist on exactly one laptop. OFL is MIT, ungated
+and vendorable. It also exercises OFL's declarative `matrix.pixelCount` +
+`physical.matrixPixels` path, which is the newer of the two readers.
 
-### Slot layout
+**A defect #6 shipped, found and fixed here.** Mizer's OFL provider matches `ColorIntensity`
+against **hex** colours (`COLOR_RED = "#ff0000"`, `lib.rs:658`), because the AGLight export emits
+hex. #6's file wrote OFL's *named* form, `"color": "Red"`. It parsed, and it resolved — into 35
+sub-fixtures with **zero** colour controls, confirmed by loading the old file through Mizer's own
+provider: `color_mixer = None`, `intensity = None` on every pixel. It would have patched, listed
+and shown in the UI while being undrivable. The new definition uses hex and resolves an `Rgb`
+mixer on all 23 pixels.
 
-Per fixture, with `start` = its `channel`, pixel *n* = 1…35:
+**What is measured and what is not.**
+
+- **Measured** (#21, off the node's `hw.led.ins`, 2026-09-02): 23 px per spoke, 230 total, the
+  6/4 bus split, `TYPE_FW1906`.
+- **Stated by the rig owner:** ten spokes, 1.5 m each, radial, cabled back and forth.
+- **Derived, not measured:** the 65.217 mm pitch is 1500/23, the pixels tiling the profile. If
+  the first and last pixel instead sit at the profile's ends it is 1500/22 = 68.182 mm, 4.6%
+  larger. One tape measure settles it; nothing depends on it yet.
+- **Placeholder:** the 20 mm cross-section. No v1 render path reads it — ADR-0005 takes ordering,
+  axis and extent from pixel positions and nothing else.
+
+Note that OFL's `matrixPixels.spacing` is the **gap between pixels, not the pitch** — confirmed
+against the AGLight export, where Litebar H9 declares 9 pixels of 50 mm with a 61 mm gap over a
+1000 mm body. #6's file set both `dimensions` and `spacing` to 16.667 mm, which declares a 33.3 mm
+pitch: double what it intended. The new definition declares the whole 65.217 mm cell as the
+pixel's own dimension with a zero gap, the idiom 13 of the 17 `matrixPixels` fixtures in the
+export use.
+
+**RGB is the protocol's limit, not a v1 concession.** The emitters are RGB + CW + WW, but WLED's
+per-pixel DMX modes top out at 4 ch/LED (`is4Chan`, `setRealtimePixel(i, r, g, b, w)`) and derive
+CW/WW on-device from W plus segment CCT. There is no wire path to the fifth channel in any mode
+WLED offers, so the map's RGB-only exclusion is *reinforced* here rather than merely tolerated.
+
+### The node cutover, and how to undo it
+
+The node was in `DMX_MODE_EFFECT_SEGMENT_W` (mode 9) at `DMXAddress 1` — the configuration the
+QLC+ show drives. #6's per-pixel patch could not have played against it, and neither could this
+one. #23 cut it over:
 
 ```
-Red   pixel n  ->  start + 3(n-1)
-Green pixel n  ->  start + 3(n-1) + 1
-Blue  pixel n  ->  start + 3(n-1) + 2
+POST http://192.168.1.243/json/cfg   {"if":{"live":{"dmx":{"addr":30,"mode":4}}}}
 ```
 
-Universe 2, in full:
+`/json/cfg` is a deep merge, so nothing else moved: `uni` stays 1, `en` true, port 6454,
+`maxbri` true, `no-gc` true, `timeout` 25. **This takes the tent away from the QLC+ workspace**,
+which expects mode 9. The revert is the same call with `{"addr":1,"mode":9}`.
 
-| id | Name | Start | Pixel 1 (R,G,B) | Pixel 35 (R,G,B) | Range |
-|----|------|-------|-----------------|------------------|-------|
-| 9 | WLED Star | 1 | 1, 2, 3 | 103, 104, 105 | 1–105 |
-| 11 | WLED Highlight | 106 | 106, 107, 108 | 208, 209, 210 | 106–210 |
-| 13 | WLED Sparkle | 211 | 211, 212, 213 | 313, 314, 315 | 211–315 |
-| 12 | WLED Flash | 316 | 316, 317, 318 | 418, 419, 420 | 316–420 |
+### Verified on the hardware
 
-Slots 421–512 free.
+`prototypes/star-tent-repatch/verify.py` drives #26's index-ramp pattern into the node **through
+this ten-fixture patch** — building each universe by writing each spoke into its own patched
+slots, rather than as one flat 690-byte ramp split in two, because the thing under test is that
+ten independent 69-channel patches reassemble into the node's one index space — then reads all
+230 pixels back off the Peek websocket.
 
-**The WLED node must be reconfigured to match.** This patch assumes WLED is switched from
-effect/segment DMX mode to per-pixel (Multi RGB) input on Art-Net universe 1, with the four
-tubes ordered Star → Highlight → Sparkle → Flash along the string. The node was not reachable
-from this machine (`192.168.8.243`), so the tube order is the migration's assumption, taken
-from the segments' original channel order, and is the second thing to confirm on site.
+```
+ledsInFirstUniverse = (512 - 30 + 1) / 3 = 161  (7 x 23)
+frames=30 distinct=1 leds=230 bytes=692
+exact pixel matches: 230/230
+  spoke 6  u2 ch 444-512  LED 138-160  OK
+  spoke 7  u3 ch   1- 69  LED 161-183  OK
+  LED 160: sent (160, 95, 242) got (160, 95, 242)   <- last LED of universe 2
+  LED 161: sent (161, 94, 0)   got (161, 94, 0)     <- first LED of universe 3
+PASS
+```
+
+All ten spokes exact, the universe seam observed at LED 160 → 161 exactly where the arithmetic
+puts it, and 30 byte-identical frames. The capture is committed beside the script.
 
 ---
 
@@ -393,7 +466,7 @@ OFL fixture. This rig has four distinct `.qxf` profiles, and the bridge helps wi
   (bundled OFL, pinned GDTF). Importing them would create *duplicate* definitions under new ids
   and buy nothing.
 - **WLED Segment Effect** would convert faithfully — into 18 channels of effect parameters,
-  the exact thing DESIGN §01 puts out of scope. The bridge cannot invent a 35-pixel matrix.
+  the exact thing DESIGN §01 puts out of scope. The bridge cannot invent a 23-pixel matrix, let alone ten of them.
 - **impression 90 RGB** is the one case where it would genuinely help, and it is out of scope
   here (#15/#16/#17 own it).
 
@@ -411,26 +484,27 @@ channel-correct definition before the geometry lands, this is how to get one.
 
 ## 5 · Open discrepancies
 
-**Resolved into something larger.** This section originally flagged one unknown — that
-`~/qlc/README.md:513` records the STAR-TENT as **230 RGBW LEDs** while four 35-pixel RGB tubes
-is only 140 pixels, and that reading the node would settle it. That was the right thing to
-notice, and the answer turned out to be worse than a miscount: the pixel count, the unit and
-the segment mapping are all wrong (see the banner in §3), and per-pixel at 230 px needs 690
-channels against a 512-slot universe.
+**All four of the questions this section carried are answered.** It originally flagged one
+unknown — `~/qlc/README.md:513` records the STAR-TENT as 230 RGBW LEDs while four 35-pixel RGB
+tubes is only 140 — and noticing it was right. Reading the node turned it into four:
 
-What is still genuinely open, now scoped to the follow-up ticket rather than to this record:
+1. **Pixel and profile count** — **23 px × 10 spokes = 230**, proven by the bus split
+   (`138 = 6 × 23`, `92 = 4 × 23`), not inferred from the README (#21).
+2. **RGB vs RGBW** — **neither**: `TYPE_FW1906`, RGB + CW + WW. And it does not matter, because
+   WLED's per-pixel modes stop at 4 ch/LED, so there is no wire path to CW/WW at all (§3).
+3. **How 690 channels map onto DMX** — **two universes**, unavoidably in every mode WLED offers.
+   Answered as architecture by [ADR-0009](../adr/0009-a-fixture-is-addressed-per-break.md) (a
+   fixture is addressed per break) and as rig configuration by the move to `DMXAddress 30`, which
+   puts the boundary on a spoke boundary so no fixture straddles it (§3).
+4. **Whether the node is in per-pixel input** — it was not, it was in effect mode 9. #23 cut it
+   over to mode 4 and verified 230/230 pixels on the hardware (§3).
 
-1. **Confirmed pixel count and profile count** — 23 px per profile is stated; 10 profiles is
-   arithmetic from the 230 figure and unconfirmed. Read the node's `/json/info` and segment map.
-2. **RGB vs RGBW** — the README says RGBW; the authored OFL fixture models RGB.
-3. **How 690 channels map onto DMX at all** — a second universe, a different pixel-to-slot
-   mapping, or a coarser strip model. This is the actual design question and it is not answered
-   anywhere yet.
-4. **Whether the node is in per-pixel (Multi RGB) input at all**, which the migrated patch
-   assumes throughout.
+The two assumptions #6 labelled as such — tube order along the string, tube length / LED pitch —
+are moot: they belonged to a four-tube model that no longer holds.
 
-The two assumptions this record made and labelled as such — tube order along the string, and
-tube length / LED pitch — are moot: they belonged to a four-tube model that no longer holds.
+**What is still open** is one tape measure: whether the 23 pixels tile the 1.5 m profile
+(65.217 mm pitch) or sit end-to-end (68.182 mm). Recorded in the definition's own comment.
+Nothing in v1 reads it yet.
 
 ---
 
@@ -440,7 +514,7 @@ tube length / LED pitch — are moot: they belonged to a four-tube model that no
 |---------|------|--------------------------------------------------------|
 | GDTF (from GDTF Share) | `definitions/gdtf/` — **gitignored**, rebuilt by `tools/gdtf-share.sh restore` from `definitions/gdtf-manifest.json` | `~/Documents/Mizer/Fixture Definitions/GDTF/` |
 | GDTF (authored) | `definitions/authored/GLP@impression 90 RGB@v1.gdtf` — **tracked** | same directory, `~/Documents/Mizer/Fixture Definitions/GDTF/` |
-| OFL (authored) | `definitions/ofl/beamhouse.json` — **tracked** | `~/Documents/Mizer/Fixture Definitions/Open Fixture Library/beamhouse.json` |
+| OFL (authored) | `definitions/ofl/beamhouse.json` — **tracked**; holds the 23px STAR-TENT spoke, which replaced the superseded 35px tube in #23 | `~/Documents/Mizer/Fixture Definitions/Open Fixture Library/beamhouse.json` |
 | OFL (upstream) | not vendored | ships with Mizer, `fixtures/open-fixture-library/fixtures.json` |
 | QLC+ | **no longer used by this rig** | — |
 
@@ -476,9 +550,13 @@ unresolvable fixture:
   `fixture_type_id`. The manifest's `uuid` field is exactly this value.
 - **OFL**: `ofl:<manufacturer-slug>:<name-slug>`, colon-separated, where the slug is
   `lowercase` with spaces and `*` replaced by `-`.
-  `crates/components/fixtures/open-fixture-library/src/lib.rs:363`. Note Mizer reads OFL as a
-  single `{version, fixtures:[…]}` library file per directory entry — the `ofl` export plugin's
-  shape — not the upstream repo's per-fixture layout.
+  `crates/components/fixtures/open-fixture-library/src/lib.rs:363`. The slug comes from **`name`,
+  not `fixtureKey`** — renaming a fixture changes its Mizer id. Note Mizer reads OFL as a single
+  `{version, fixtures:[…]}` library file per directory entry — the **AGLight** export shape
+  (`https://open-fixture-library.org/download.aglight`), not the upstream repo's per-fixture
+  layout. Match that export's conventions exactly: `manufacturer` is an **object** `{name}`, and
+  `ColorIntensity.color` is a **hex string** (`#ff0000`), not OFL's named form — see the defect
+  in §3.
 - **QLC+**: `qlc:<Manufacturer>:<Model>` from the `.qxf` itself.
 - Library search paths: `crates/runtime/settings/src/defaults/mod.rs` — each provider reads both
   an app-bundled path and `~/Documents/Mizer/Fixture Definitions/<Provider>/`.
@@ -503,12 +581,15 @@ What remains is fidelity work on definitions that already exist and already patc
   meshes exist in `heliostate/OpenGDTFLibrary`
   ([`impression-90-geometry-sources.md`](impression-90-geometry-sources.md) §3.1) if a polish
   pass ever wants them.
-- **The WLED tubes are not finished.** They patch and they resolve, but the model is known
-  wrong: 23 px per profile rather than 35, segments rather than physical tubes, and 690 channels
-  of per-pixel data against a 512-slot universe. See the banner in §3 and the scoped list in §5.
-  This is the one part of the migration that should not be treated as done.
+- **The STAR-TENT is finished** (#23), and it is the part with the strongest evidence behind it:
+  ten 23-pixel spokes, addressed per ADR-0009, loaded through Mizer's own OFL provider, and
+  round-tripped 230/230 pixels through the live node. What remains is one tape measure for the
+  pixel pitch (§5) and the spoke reversal, which has nowhere to live until the `.bhs` placement
+  layer exists — §3 holds the table meanwhile.
+- **The node no longer answers to the QLC+ workspace.** #23 moved it to `DMXAddress 30` /
+  per-pixel mode 4. §3 carries the one-call revert.
 
 The rig is now genuinely usable as the reference rig this ticket set out to produce: a real
-patch, six beam-class movers with a measured axis hierarchy, and four 35-pixel strip-class
-fixtures — one of each of the two rendering classes v1 commits to, both resolvable without
-QLC+.
+patch, six beam-class movers with a measured axis hierarchy, and ten 23-pixel strip-class
+fixtures whose addressing has been checked against the hardware — one of each of the two
+rendering classes v1 commits to, both resolvable without QLC+.
