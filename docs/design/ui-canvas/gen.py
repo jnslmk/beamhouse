@@ -199,6 +199,46 @@ def badge(x, y, cls, glyph, text=None):
     return '<div class="%s" style="left:%dpx;top:%dpx">%s</div>' % (c, x, y, inner)
 
 
+# ------------------------------------------- the recording transport (#45, ADR-0042)
+# One component, three surfaces. It is ADR-0032's `Snapshot` tag grown a scrub track,
+# in the same viewport slot - not a chip (a Time chip puts the 390px bar 93px over) and
+# not a bottom bar (the sheet rises from there). The block is 44px tall so the drag
+# target is honest at the touch floor, even though the track itself is 3px.
+XPORT_CSS = """
+.xport{position:absolute;left:10px;bottom:10px;padding:8px 11px 10px;border-radius:3px;
+  background:color-mix(in oklab,var(--bg0) 87%,transparent);
+  border:1px solid color-mix(in oklab,var(--beam) 44%,transparent)}
+.xport .lbl{display:flex;align-items:baseline;gap:7px;height:13px;font-size:9.5px;
+  font-weight:600;letter-spacing:.105em;text-transform:uppercase;color:var(--beam)}
+.xport .lbl em{font-style:normal;font-family:var(--mono);font-size:10.5px;
+  letter-spacing:.01em;text-transform:none;color:var(--hi)}
+.xport .lbl i{font-style:normal;font-family:var(--mono);font-size:10.5px;
+  letter-spacing:.01em;text-transform:none;color:var(--lo)}
+.xport .trk{position:relative;height:3px;margin-top:10px;border-radius:2px;
+  background:var(--line)}
+.xport .trk .fill{position:absolute;left:0;top:0;bottom:0;border-radius:2px;
+  background:var(--beam)}
+.xport .trk .hd{position:absolute;top:50%;width:13px;height:13px;border-radius:50%;
+  background:var(--beam);transform:translate(-50%,-50%);
+  box-shadow:0 0 0 3px color-mix(in oklab,var(--bg0) 74%,transparent)}
+.app.desk{height:900px}
+.trio{display:flex;gap:0;align-items:flex-start}
+.trio .gap{width:206px;flex:none}
+.vgap{height:16px;background:var(--bg0)}
+"""
+
+
+def xport(w, lead, pos, total, pct):
+    """The transport. ``lead`` is what you are watching: the snapshot's date on the
+    viewer, the file on the desktop - the slot's own rule (ADR-0042 decision 6)."""
+    return ('<div class="xport" style="width:%dpx">'
+            '<div class="lbl">%s \u00b7<em>%s</em><i>/ %s</i></div>'
+            '<div class="trk"><div class="fill" style="width:%.1f%%"></div>'
+            '<div class="hd" style="left:%.1f%%"></div></div></div>'
+            % (w, lead, pos, total, pct, pct))
+
+
+
 # ----------------------------------------------------------------- artboards
 
 CHIPS_REST = [
@@ -644,6 +684,7 @@ def a_history_issues():
 # ------------------------------------------------------- the M3a phone viewer (#40)
 
 VIEWER_MARK = 'Beamhouse&nbsp;\u00b7&nbsp;<b>demo</b>'
+REC_MARK = 'Beamhouse&nbsp;\u00b7&nbsp;<b>opener</b>'
 
 # The share link's own rig: OBF26, 20 fixtures across three universes. Colour keys
 # match the viewport's beams.
@@ -719,11 +760,57 @@ def a_phone():
 def a_phone_land():
     """844 x 390. A phone turned sideways is 2.16:1 against the rig's 1.63:1 - the
     only orientation in which the whole rig gets the whole screen."""
+    # [corrected 2026-09-02 - #45] This drew S.scene() at the default "slice", which
+    # scales to the 844 WIDTH and crops the floor away - the exact opposite of the claim
+    # this artboard exists to make. 844x334 is 2.53:1 against the rig's 1.63:1, so the
+    # rig fits by HEIGHT with room to spare: "meet" is what ADR-0032 decision 4 means.
     body = ('<div class="app land">' + chipbar(
         [chip("Sel", "\u2014", "mute"), chip("Cam", "Front")], mark=VIEWER_MARK) +
-        '<div class="body"><div class="view">' + S.scene() +
+        '<div class="body"><div class="view">' + S.scene(preserve="xMidYMid meet") +
         '<div class="ptag">Snapshot \u00b7 2 Sep 14:02</div></div></div></div>')
     return _phone_page(body)
+
+
+def a_recorded():
+    """1440 x 1760. The same transport overlay in the desktop app, the landscape phone
+    and the portrait phone - ADR-0042's one-component claim drawn rather than asserted.
+    Nothing else on any of the three changed: eight chips on the desktop, two on the
+    viewer, no tool rail on either phone."""
+    # 1 - desktop, bridge-local, playing a .bhr off disk. There is no Snapshot date here:
+    # a bridge-local page is not frozen, so the lead is the file (ADR-0042 decision 6).
+    desk_chips = [chip("Feed", "recorded"), chip("Univ", "3 \u00b7 ok"),
+                  chip("Patch", "warehouse.yml"), chip("Sel", "\u2014", "mute"),
+                  chip("Render", "normal"), chip("Hold", "off", "mute"),
+                  chip("Snap", "0.1 m"), chip("Cam", "Front")]
+    desk = ('<div class="app desk">' + chipbar(desk_chips) +
+            '<div class="body">' + rail() + '<div class="view">' + S.scene() +
+            xport(430, "opener.bhr", "04:12", "18:30", 22.5) +
+            '</div></div></div>')
+
+    # 2 - the payoff frame. 844 x 390, full-bleed, the transport in the same corner.
+    land = ('<div class="app land">' + chipbar(
+        [chip("Sel", "\u2014", "mute"), chip("Cam", "Front")], mark=REC_MARK) +
+        '<div class="body"><div class="view">' + S.scene(preserve="xMidYMid meet") +
+        xport(392, "Snapshot \u00b7 2 Sep 14:02", "04:12", "18:30", 22.5) +
+        '</div></div></div>')
+
+    # 3 - portrait. The transport lives in the 320px BAND, which is where the sheet
+    # never reaches; a bottom bar would land exactly under it (ADR-0032 decision 5).
+    band = (S.scene() + xport(370, "Snapshot \u00b7 2 Sep 14:02", "04:12", "18:30", 22.5))
+    plist = ('<div class="lhead"><h3>Fixtures</h3><em>20 \u00b7 warehouse.yml</em></div>' +
+             ''.join(frow(*f) for f in FLIST[:8]) +
+             '<div class="sfoot">A <b>recording</b>, playing. Signal health is unreachable '
+             'here, not false \u2014 a recording is not silent, it is finished '
+             '(\u00a713.1).</div>')
+    port = ('<div class="app phone">' + chipbar(
+        [chip("Sel", "\u2014", "mute"), chip("Cam", "Front")], mark=REC_MARK) +
+        '<div class="body"><div class="pband">' + band + '</div>'
+        '<div class="plist">' + plist + '</div></div></div>')
+
+    body = (desk + '<div class="vgap"></div>'
+            '<div class="trio">' + land + '<div class="gap"></div>' + port + '</div>')
+    return (HEAD + '<helmet>\n<style>\n' + BASE_CSS + EXTRA_CSS + PHONE_CSS + XPORT_CSS +
+            '\n</style>\n' + FONTS + '\n</helmet>\n' + body + '\n' + TAIL)
 
 
 FILES = {
@@ -737,6 +824,7 @@ FILES = {
     "HistoryIssues.dc.html": a_history_issues,
     "Phone.dc.html": a_phone,
     "PhoneLandscape.dc.html": a_phone_land,
+    "Recorded.dc.html": a_recorded,
 }
 
 CANVAS = {
@@ -760,6 +848,8 @@ CANVAS = {
          "title": "The M3a viewer · 390 px portrait"},
         {"file": "PhoneLandscape.dc.html", "x": 0, "y": 3860, "w": 844, "h": 390,
          "title": "The M3a viewer · turned sideways"},
+        {"file": "Recorded.dc.html", "x": 1520, "y": 3960, "w": 1440, "h": 1760,
+         "title": "A recording · the transport, on all three surfaces"},
     ],
     "annotations": [
         {"id": "n-nav", "x": 1520, "y": -186, "w": 1440,
@@ -824,6 +914,19 @@ CANVAS = {
                  "needs nothing \u2014 it is 46 Geometry nodes over Cylinder cords and Cube "
                  "gusset plates, drawn by the proxy path already. An object NEVER EMITS, "
                  "OCCLUDES OR RECEIVES; the ground plane is the only surface light reaches."},
+        {"id": "n-recorded", "x": 1520, "y": 5760, "w": 1440,
+         "text": "One component, three surfaces. The transport is ADR-0032's Snapshot tag "
+                 "grown a scrub track, in the same viewport slot on every screen \u2014 not a "
+                 "chip and not a bottom bar.\n"
+                 "A Time chip puts the 390px bar 93px over, and 25px over even after deleting "
+                 "the feed from the wordmark to pay for it. A bottom bar lands exactly where "
+                 "the fixture sheet rises. The one slot left is the one that already said what "
+                 "you are watching \u2014 and \u00a713.1 had already put timeline position "
+                 "there, next to snapshot age, which is the same question asked of a moving "
+                 "thing.\n"
+                 "The lead states WHAT you are watching, so it is the file on the desktop and "
+                 "the snapshot's date on the viewer. A .bhr has no date of its own: t_ms is u32, "
+                 "so it is relative by construction."},
         {"id": "n-phone", "x": 0, "y": 4340, "w": 844,
          "text": "#40. There is no degradation ladder. Every GDTF on this rig ships ZERO "
                  "meshes, so proxy geometry is the render path on the sender\u2019s desktop "

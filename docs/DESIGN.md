@@ -1017,6 +1017,13 @@ start-order ritual, and group join/leave maps directly onto the `subscribe` mess
    — serving over `http://localhost` is what sidesteps §9.4's mixed-content trap rather than
    merely documenting it.
 
+**[bounded 2026-09-02 — [#45](https://github.com/jnslmk/beamhouse/issues/45)] Recording is not an
+eighth job.** §9.3's `.bhr` had a home in §03, a milestone in §10 and **no producer named anywhere**
+until [ADR-0040](adr/0040-a-recording-is-deployment-material-and-the-bridge-records-it.md); the
+bridge now writes one under a `--record` flag, because it already constructs the exact §07 bytes and
+recording is a tee of a buffer that exists. It stays a flag rather than a job: every one of the
+seven above runs on every launch, and that is what the list is for.
+
 Confirm exact options-flag bit positions, priority range and data-loss timeout against
 ANSI E1.31-2018 before relying on them.
 
@@ -1506,8 +1513,50 @@ look ([ADR-0014](adr/0014-the-agent-surface-is-two-surfaces.md)).
 
 ### 9.3 Recordings
 
-`track.bhr` is the binary frame stream (§7) appended verbatim with length prefixes, gzipped.
-Reference one from the fragment; keep it out of the fragment itself.
+A `.bhr` is the binary frame stream (§7) appended verbatim with length prefixes, gzipped. Reference
+one from the fragment; keep it out of the fragment itself.
+
+**[specified 2026-09-02 — [#45](https://github.com/jnslmk/beamhouse/issues/45)]** Three things that
+sentence left open, and the file is no longer called `track.bhr` — `CONTEXT.md`'s **Recording**
+entry lists *track* on its own *Avoid* line.
+
+**The container is concatenated gzip members, one per 10 s**
+([ADR-0041](adr/0041-a-bhr-is-a-sequence-of-independently-decompressible-members.md)). Measured on
+the reference rig — three universes, so a §07 frame is 1552 bytes, at §05's fixed 30 Hz tick:
+
+| Content | 30 min raw | 30 min gzipped | gzipped bitrate |
+| --- | --- | --- | --- |
+| a held look | 83.8 MB | **0.82 MB** | 0.5 KB/s |
+| a busy per-pixel chase | 83.8 MB | **6.6 MB** | 3.7 KB/s |
+
+Fetching one is free; **holding one is not**, and a single gzip stream cannot be seeked by byte
+offset. Members bound resident memory to ≈0.5 MB raw instead of 84 MB per half-hour, and the length
+prefixes become the member index — the one job they could not do while there was a single member.
+Concatenated members are legal gzip, so a `.bhr` is still one `gzip -d`-able file.
+
+**Seeking is the same operation as playing.** §07 carries `u8[512]` per universe — a complete
+state, not a delta — so every frame is independently renderable and there are no keyframes to hunt
+backwards for. `resolve.ts`'s diff against the previous frame (§05) is a throughput optimisation; a
+seek invalidates it and nothing else.
+
+**A `.bhr` has no header and does not say when it was recorded.** `t_ms` is `u32` — 49.7 days — so
+it is monotonic and relative by construction, and a Unix epoch in milliseconds needs 41 bits. The
+date the viewer states is the **scene snapshot's**, from the fragment.
+
+**A recording behind a share link is deployment material**
+([ADR-0040](adr/0040-a-recording-is-deployment-material-and-the-bridge-records-it.md)). §09's table
+already says Pages serves *hosted recordings* and §10's M7 already says a **committed** `.bhr`, so
+the reference never pointed outward: the fragment carries a **name resolved against the viewer's own
+origin** (`#s=…&r=opener`), not a URL, and the link stays pathless in exactly
+[ADR-0031](adr/0031-a-share-link-carries-resolved-definitions.md)'s sense. There is nowhere else for
+it to point — ADR-0021 rules out a service and §9.4 rules out the sender's own bridge — so
+publishing a recording is an act by whoever controls the deployment. **An operator's own recording
+plays bridge-local**, where the file is on disk; the `single` build would be their shareable form
+(0.8 MB gzipped is ~1.1 MB of base64 in a self-contained page) and v1 does not build it.
+
+**The bridge records, under a CLI flag, with no surface** — `--record shows/opener.bhr`. It already
+constructs the exact §07 bytes, so recording is a tee of a buffer that exists. There is no ninth
+chip, no eleventh tool and no control-channel request.
 
 ### 9.4 The mixed-content trap
 
@@ -1781,6 +1830,13 @@ the renderer ([ADR-0018](adr/0018-signal-health-is-one-per-universe-snapshot.md)
 | `generated` | "no network". Frames are computed; there is nothing to be stale |
 | §9.2 Pages viewer | nothing. There is no bridge to ask |
 
+**[sited 2026-09-02 — [#45](https://github.com/jnslmk/beamhouse/issues/45)]** The `recorded`
+row's *timeline position* now has a place to be: it is the viewport transport of §14.8, which is the
+`Snapshot` tag grown a scrub track
+([ADR-0042](adr/0042-the-transport-is-a-viewport-overlay.md)). It also has a producer — the bridge
+under a `--record` flag ([ADR-0040](adr/0040-a-recording-is-deployment-material-and-the-bridge-records-it.md)) —
+which it did not when this row was written.
+
 Off a live feed these signals are **unreachable, not false**. This is the load-bearing half: if
 staleness merely evaluated false, a shared link running §9.2's demo motion mode would ship a rig
 that looks fine; if it evaluated true, every shared link would ship a greyed-out rig. The mode
@@ -1942,6 +1998,9 @@ tool rail.
 
 The overlay's tabs are **Fixtures · Objects · Universes · History · Issues**. There is no ninth
 chip for issues: the count rides **Patch**, because every issue class originates in an ingest.
+**[reused 2026-09-02 — [#45](https://github.com/jnslmk/beamhouse/issues/45)]** The same precedent
+refuses a ninth chip for the recording transport, which is §14.8's viewport overlay; `Feed` is
+unchanged and keeps stating `live` / `recorded` / `generated`.
 
 **First run is the empty grid**, not a start screen — §4.6 auto-saves to IndexedDB, so the honest
 normal case is that the app opens where you left it. The picker takes **Mizer YAML and MVR**, and
@@ -2059,12 +2118,14 @@ negative keyspace stays *what Beamhouse minted*, not *this is an object*.
 Both of §13.6's items had tickets rather than silence, and both are closed: the degradation ladder
 (#40) was **retired** rather than designed (§14.6), and `bhs:` definition authoring
 ([#41](https://github.com/jnslmk/beamhouse/issues/41)) is §14.7 — where the screen turns out not to
-exist either. §14 is complete. The one UI-adjacent ticket left on the map is
-[#45](https://github.com/jnslmk/beamhouse/issues/45), a transport rather than a screen.
+exist either. §14 is complete.
 
-Added by #40: [#45](https://github.com/jnslmk/beamhouse/issues/45), the recording transport
-(§9.3) on the same link — the only part of the viewer with prior art to copy, and a second
-interaction model on a screen §14.6 gives two chips.
+**[closed 2026-09-02 — [#45](https://github.com/jnslmk/beamhouse/issues/45)]** The last
+UI-adjacent ticket on the map was the recording transport, added here by #40 as *"the only part of
+the viewer with prior art to copy"*. It is §14.8, and the prior art is the part that did not
+survive: Showcase's bottom bar lands where §14.6's sheet rises, so the transport went into the
+`Snapshot` tag instead — which makes it one overlay on three surfaces rather than a second
+interaction model on a screen with two chips.
 
 ### 14.6 The M3a viewer, on a phone
 
@@ -2128,8 +2189,15 @@ persistent in the viewport — and the fixture sheet says the definitions travel
 *How old is this* is the recipient's real question, and it is the one the ladder was going to
 answer badly.
 
-Not settled here: the recording transport (§9.3) is
-[#45](https://github.com/jnslmk/beamhouse/issues/45), and `Objects` on the viewer is #43's.
+**[closed 2026-09-02 — [#45](https://github.com/jnslmk/beamhouse/issues/45)]** The recording
+transport is §14.8. It is **not** a third chip — measured, a `Time` chip puts the bar 93 px over 390
+and 25 px over even after deleting the feed from the wordmark — and it is not a bottom bar either,
+because the sheet rises from there. It is the `Snapshot` tag grown a scrub track, in both
+orientations. The wordmark reads `Beamhouse · opener`: the slot carries **which canned thing you are
+watching**, which is what `demo` was always naming
+([ADR-0042](adr/0042-the-transport-is-a-viewport-overlay.md) decision 6).
+
+Still open on this screen: `Objects` on the viewer is #43's.
 
 ### 14.7 Authoring a `bhs:` definition
 
@@ -2170,6 +2238,73 @@ field only buys the chance to type a positive one and claim an id the console ma
 it the same way from its side, *the negative keyspace is what Beamhouse minted*. The **tab split
 stays the DMX mode**, not the sign: addressed to `Fixtures`, empty to `Objects`, so a gled2 tube and
 a human proxy never share a table.
+
+### 14.8 The recording transport
+
+**[added 2026-09-02 — [#45](https://github.com/jnslmk/beamhouse/issues/45),
+[ADR-0042](adr/0042-the-transport-is-a-viewport-overlay.md)]** The one screen element §9.3's `.bhr`
+needs, and the only place in this design where the field's prior art — Vectorworks Showcase's
+media-player bar, from #35's survey — did **not** survive contact with the layout it was to be
+copied into.
+
+**It is a persistent viewport overlay, bottom-left, and it is the same element on every surface.**
+Desktop, landscape phone, portrait phone: one component, one slot. It is
+[ADR-0032](adr/0032-the-m3a-viewer-is-read-only.md) decision 7's `Snapshot` tag grown a scrub track,
+not a second thing beside it — §13.1 says a `recorded` feed shows **timeline position** and the tag
+was already showing **snapshot age**, which is the same question asked of a moving thing.
+
+```
+┌──────────────────────────────────────────────────┐
+│  Snapshot · 2 Sep 14:02 · 04:12 / 18:30          │
+│  ▬▬▬▬▬▬▬▬▬▬▬▬▬▬●─────────────────────────────    │
+└──────────────────────────────────────────────────┘
+```
+
+**The label states what you are watching, then the position.** On the viewer that is the snapshot's
+date; on the desktop there is none — a bridge-local page is not frozen — so the lead is the file,
+`opener.bhr · 04:12 / 18:30`.
+
+**One date, and it is the scene's.** A `.bhr` has none of its own —
+[ADR-0041](adr/0041-a-bhr-is-a-sequence-of-independently-decompressible-members.md) decision 4, `t_ms`
+is `u32` and therefore relative — and a header would carry a date that agrees with the fragment's
+every time, which §07 already refused for `contended`.
+
+**Not a chip, on either surface.** Measured through the canvas's own `parts.py` at 390 px:
+
+| Bar | Width | Against 390 px |
+| --- | --- | --- |
+| `demo` mark, `Sel —` `Cam Front` — §14.6 as built | 331 px | fits |
+| `demo` mark, widest realistic (`Sel 12`, `Cam Front-L`) | 352 px | fits, **38 px spare** |
+| `recorded` mark, same chips | 381 px | fits, **9 px spare** |
+| **+ a `Time 04:12` chip** | **483 px** | **93 px over** |
+| + a `Time` chip, mark stripped to bare `Beamhouse` | 415 px | **25 px over** |
+| + `Time 04:12 / 18:30` | 539 px | **149 px over** |
+
+A chip costs ~102 px and there are 38. #45 read ADR-0032's *a chip earns its place by being
+actionable* together with "~35 px spare" and made the transport the first candidate for a third
+chip; the test admits it and the bar will not hold it. On the desktop there is room and it is
+refused anyway, by §14.1's own *no ninth chip for issues* — a new signal rides the chip that already
+states it.
+
+**Not a bottom bar either.** ADR-0032 decision 5 docks the fixture list and the selection sheet
+rises from `bottom: 0` of it, so Showcase's form lands exactly where the sheet does, on the only
+screen it would live on. And the 320 px band **is** the rig — 390 px across the content span
+x 174..1217 is a 0.374 scale, and 856 × 0.374 = 320 — so height taken from the band crops it.
+
+**The wordmark carries the recording's name.** `Beamhouse · opener`, beside `Beamhouse · demo`.
+ADR-0032 called that slot *the feed*; §13.1's feeds are `live`, `recorded` and `generated` and
+`demo` is none of them — it is §9.2's demo motion *mode*, one of ADR-0014's two callers of
+`generated`. The slot has been carrying **which canned thing you are watching** since it was drawn.
+The feed is stated where it already was: §13.1's table, ADR-0028's capture stamp, the desktop `Feed`
+chip — and, on the viewer, by whether a transport is on screen at all.
+
+**A recording autoplays from `t=0`.** ADR-0041's 10 s members put the first of them in 5–66 KB, so
+the rig moves before the file is down. §9.2 gave a shared link a demo motion mode to make it look
+**alive**; a recipient who opens a recording to a still rig gets the failure that mode exists to
+prevent.
+
+The artboard is [`Recorded`](design/ui-canvas/renders/Recorded.png) — the same overlay in all three
+frames, which is the single-component claim drawn rather than asserted.
 
 ## 15 · The agent scene surface: the request vocabulary
 

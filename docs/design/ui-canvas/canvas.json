@@ -79,6 +79,14 @@
       "w": 844,
       "h": 390,
       "title": "The M3a viewer \u00b7 turned sideways"
+    },
+    {
+      "file": "Recorded.dc.html",
+      "x": 1520,
+      "y": 3960,
+      "w": 1440,
+      "h": 1760,
+      "title": "A recording \u00b7 the transport, on all three surfaces"
     }
   ],
   "annotations": [
@@ -137,6 +145,13 @@
       "y": 3872,
       "w": 1440,
       "text": "#43. There is no object model. EMEX7 publishes seven human proxies on GDTF Share whose own Description is 'Environment from MVR' and whose bodies are empty everywhere a lamp is full \u2014 zero attributes, zero emitters, an empty <DMXChannels/>. So a SCENE OBJECT IS A FIXTURE WITH AN EMPTY DMX MODE, and this is not a second table: it is the fixtures table filtered on 'has no address', with the patch columns replaced by the definition ones.\nIds follow from that: negative for what Beamhouse minted (ADR-0012), the MVR-supplied id for what a design tool authored. Backdrop is an MVR Fixture node with NO GDTFSpec at all \u2014 a name and a matrix \u2014 so it renders ADR-0034's fixed marker, because there is no definition to size it from.\nThe human proxy is a 0.64 x 0.59 x 1.77 m BOX, EMEX7's own measured bounding box: PrimitiveType='Undefined' plus a .3ds renders as an empty transform node, v1 has no mesh loader, and ADR-0001 forbids shipping their profile. A truss needs nothing \u2014 it is 46 Geometry nodes over Cylinder cords and Cube gusset plates, drawn by the proxy path already. An object NEVER EMITS, OCCLUDES OR RECEIVES; the ground plane is the only surface light reaches."
+    },
+    {
+      "id": "n-recorded",
+      "x": 1520,
+      "y": 5760,
+      "w": 1440,
+      "text": "One component, three surfaces. The transport is ADR-0032's Snapshot tag grown a scrub track, in the same viewport slot on every screen \u2014 not a chip and not a bottom bar.\nA Time chip puts the 390px bar 93px over, and 25px over even after deleting the feed from the wordmark to pay for it. A bottom bar lands exactly where the fixture sheet rises. The one slot left is the one that already said what you are watching \u2014 and \u00a713.1 had already put timeline position there, next to snapshot age, which is the same question asked of a moving thing.\nThe lead states WHAT you are watching, so it is the file on the desktop and the snapshot's date on the viewer. A .bhr has no date of its own: t_ms is u32, so it is relative by construction."
     },
     {
       "id": "n-phone",

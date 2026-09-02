@@ -150,6 +150,12 @@ PHONE_CSS = """
 .app.phone .pband{height:320px;flex:none;position:relative;background:var(--bg0);
   border-bottom:1px solid var(--line2);overflow:hidden}
 .app.phone .pband svg.scene{position:absolute;inset:0;width:100%;height:100%;display:block}
+/* [corrected 2026-09-02 - #45] Landscape had no size rule at all, so the SVG rendered at
+   its intrinsic 1392x856 and was simply CLIPPED by the 844px frame - preserveAspectRatio
+   never even applied, and the floor was cropped away in the one orientation ADR-0032
+   decision 4 calls "the payoff frame". Sizing it to the box is what lets "meet" fit the
+   whole rig. */
+.app.land .view svg.scene{width:100%;height:100%}
 .app.phone .plist{flex:1;min-height:0;position:relative;overflow:hidden;
   display:flex;flex-direction:column}
 .app.phone .plist .sfoot{margin-top:auto}
@@ -168,15 +174,19 @@ PHONE_CSS = """
   text-align:right}
 .frow.on{background:color-mix(in oklab,var(--sel) 13%,var(--bg1))}
 .frow.on .nm{color:var(--sel)}
-.app.phone .chips{gap:6px;padding:0 10px}
-.app.phone .mark{padding-right:9px;margin-right:2px}
-.app.phone .mark .wm{font-size:11px;letter-spacing:.045em}
-.app.phone .mark .wm b{color:var(--beam);font-weight:600}
-/* 44px touch floor: the chips grow to it, the bar grows with them. */
-.app.phone .chips{height:56px}
-.app.phone .chip{height:44px;padding:0 8px 0 9px;gap:6px}
-.app.phone .chip .k{font-size:9px}
-.app.phone .chip .v{font-size:11px}
+.app.phone .chips,.app.land .chips{gap:6px;padding:0 10px}
+.app.phone .mark,.app.land .mark{padding-right:9px;margin-right:2px}
+.app.phone .mark .wm,.app.land .mark .wm{font-size:11px;letter-spacing:.045em}
+.app.phone .mark .wm b,.app.land .mark .wm b{color:var(--beam);font-weight:600}
+/* 44px touch floor: the chips grow to it, the bar grows with them.
+   [corrected 2026-09-02 - #45] Landscape is still a phone, and was drawn with the
+   DESKTOP 44px bar and 28px chips - which contradicts ADR-0032 decision 6 outright.
+   It costs 12px of the 390px height and buys the touch floor in the orientation
+   ADR-0032 calls "the payoff frame". */
+.app.phone .chips,.app.land .chips{height:56px}
+.app.phone .chip,.app.land .chip{height:44px;padding:0 8px 0 9px;gap:6px}
+.app.phone .chip .k,.app.land .chip .k{font-size:9px}
+.app.phone .chip .v,.app.land .chip .v{font-size:11px}
 /* The phone Sel chip carries the COUNT, never the name: the bar then has a constant
    width, and identity belongs to the sheet, which has all 390px to say it in. */
 .sheet{position:absolute;left:0;right:0;bottom:0;background:var(--bg1);

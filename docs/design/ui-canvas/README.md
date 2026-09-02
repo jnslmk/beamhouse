@@ -14,7 +14,7 @@ These are **mockups, not components**. Nothing here is meant to be imported; it 
 when M3 builds the scene editor, the numbers do not have to be reinvented or guessed from a
 screenshot. Lift the values, not the markup.
 
-## The ten artboards
+## The eleven artboards
 
 | Artboard | Shows | Embodies |
 | --- | --- | --- |
@@ -28,9 +28,13 @@ screenshot. Lift the values, not the markup.
 | [`HistoryIssues`](renders/HistoryIssues.png) | The overlay at **History** (top, agent commands marked) and **Issues** (bottom, the ingest inbox) | ADR-0016, ADR-0025 |
 | [`Phone`](renders/Phone.png) | The M3a share-link viewer at 390 px — resting (top) and one fixture tapped (bottom) | [ADR-0031](../../adr/0031-a-share-link-carries-resolved-definitions.md), [ADR-0032](../../adr/0032-the-m3a-viewer-is-read-only.md) |
 | [`PhoneLandscape`](renders/PhoneLandscape.png) | The same viewer turned sideways — 844 × 390, the only orientation the rig fits | ADR-0032 |
+| [`Recorded`](renders/Recorded.png) | A recording playing: the **same transport overlay** in the desktop app (top), the landscape phone and the portrait phone | [ADR-0042](../../adr/0042-the-transport-is-a-viewport-overlay.md), [ADR-0040](../../adr/0040-a-recording-is-deployment-material-and-the-bridge-records-it.md) |
 
 `Overlay` and `HistoryIssues` are 1440 × 1800 — two 900 px frames stacked, one per tab. `Phone`
-is 390 × 1688, two 844 px frames stacked; `PhoneLandscape` is 844 × 390. The rest are 1440 × 900.
+is 390 × 1688, two 844 px frames stacked; `PhoneLandscape` is 844 × 390. `Recorded` is 1440 × 1760,
+a composite: the 1440 × 900 desktop above the two phone frames side by side, so that the claim it
+makes — one component, three surfaces — is visible in a single frame rather than asserted across
+three. The rest are 1440 × 900.
 
 **[updated 2026-09-02 — [#43](https://github.com/jnslmk/beamhouse/issues/43)]** The human proxies in
 `Main`, `Trouble`, `Place` and `Array` are **boxes** at EMEX7's own measured bounding box,
@@ -96,13 +100,36 @@ The two chips plus the marked wordmark measure **355 px of 390** in the widest r
 which is why the phone `Selection` chip carries the count rather than the name
 ([ADR-0032](../../adr/0032-the-m3a-viewer-is-read-only.md)).
 
+**[#45, 2026-09-02]** The recording transport is an overlay, not a chip, and the measurement is why:
+a third chip puts the bar at **483 px** — 93 px over — and **415 px** even with the feed deleted from
+the wordmark to pay for it. It is 44 px tall so the drag target meets the touch floor, though the
+track itself is 3 px.
+
+| | |
+| --- | --- |
+| Transport block | 44 px tall; 8/11/10 px padding, bottom-left of the viewport at 10 px |
+| Scrub track | 3 px, 13 px head with a 3 px halo |
+| Label | 9.5 px/600/`.105em` uppercase in `--beam`; position and duration 10.5 px mono |
+
+**Two defects in the #40 artboards were corrected here**, both cases of the drawing contradicting
+its own ADR:
+
+- **`PhoneLandscape` used the desktop 44 px chip bar with 28 px chips.** ADR-0032 decision 6 sets
+  the phone bar at 56 px with 44 px chips and landscape is still a phone. It costs 12 px of 390.
+- **`PhoneLandscape` cropped the rig.** Its scene SVG had no size rule, so it rendered at its
+  intrinsic 1392 × 856 and was simply clipped by the 844 px frame — `preserveAspectRatio` never
+  applied at all. Sized to the box and set to `meet`, the whole rig is visible, which is the claim
+  ADR-0032 decision 4 makes for this orientation. It also shows that *fits* is the honest word and
+  *fills* is not: the rig's content span is ~1.49:1 against a 2.53:1 frame, so it is bounded by
+  height with horizontal margins either side.
+
 ## Regenerating
 
 The artboards are generated, not hand-written, so the chips and the scene stay identical across
-all nine:
+all eleven:
 
 ```
-python3 gen.py          # writes the seven .dc.html files and canvas.json
+python3 gen.py          # writes the .dc.html files and canvas.json
 python3 render.py       # writes renders/*.png  (Playwright + Chromium; viewport per artboard)
 optipng -o3 renders/*.png
 ```
@@ -122,16 +149,22 @@ snapshot, and the live artifact is the one the tickets link.
   retire the generator.
 - To push a change up: edit here, re-run `gen.py`, re-seed, and republish to the **same URL**.
 
-## What this canvas does not decide
+## Nothing here is speculative any more
 
-Two screens were split out of #35 rather than guessed at, and each is unprecedented in the field
-survey. (The third, #40's M3a viewer, is now the `Phone` artboards above — §9.2's degradation
-ladder was retired rather than designed.)
+Two screens were split out of #35 rather than guessed at, each unprecedented in the field survey,
+and both have since landed — as has #40's M3a viewer, whose §9.2 degradation ladder was **retired**
+rather than designed.
 
-- [#41](https://github.com/jnslmk/beamhouse/issues/41) — authoring a `bhs:` definition.
-- [#43](https://github.com/jnslmk/beamhouse/issues/43) — scene objects, the stage and musicians,
-  and the analytic floor pool. **The stage and pool in these artboards are drawn ahead of that
-  decision** and are the only speculative thing here.
+| Split out | Landed as | Outcome |
+| --- | --- | --- |
+| [#40](https://github.com/jnslmk/beamhouse/issues/40) | `Phone`, `PhoneLandscape` | the ladder does not exist ([ADR-0031](../../adr/0031-a-share-link-carries-resolved-definitions.md)) |
+| [#41](https://github.com/jnslmk/beamhouse/issues/41) — authoring a `bhs:` definition | no artboard | the screen does not exist either ([ADR-0039](../../adr/0039-definition-authoring-has-no-surface-of-its-own.md)) |
+| [#43](https://github.com/jnslmk/beamhouse/issues/43) — scene objects, stage, musicians, floor pool | `Objects` | a scene object is a fixture with an empty DMX mode ([ADR-0035](../../adr/0035-a-scene-object-is-a-fixture-with-an-empty-dmx-mode.md)) |
+| [#45](https://github.com/jnslmk/beamhouse/issues/45) — the recording transport | `Recorded` | one overlay, three surfaces ([ADR-0042](../../adr/0042-the-transport-is-a-viewport-overlay.md)) |
 
-The `Objects` tab appears in the overlay's tab strip with an empty count for the same reason: the
-tab is settled, its contents are #43's.
+**[updated 2026-09-02 — #45]** This section used to say the stage and floor pool were "drawn ahead
+of that decision" and "the only speculative thing here". #43 settled both: the pool is analytic and
+the ground plane is the only surface light reaches
+([ADR-0036](../../adr/0036-the-ground-plane-is-the-only-surface-light-reaches.md)), and the human
+proxies became boxes at EMEX7's measured bounding box. The `Objects` tab's count is no longer a
+placeholder either.

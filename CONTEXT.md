@@ -416,8 +416,22 @@ delivers and a recording stores.
 _Avoid_: packet (that is one universe on the wire), update
 
 **Recording**:
-A stored sequence of frames, replayable through the same feed interface as live data.
+A stored sequence of frames, replayable through the same feed interface as live data. Every frame is
+a complete state, so any frame is independently renderable and seeking is the same operation as
+playing ([ADR-0041](docs/adr/0041-a-bhr-is-a-sequence-of-independently-decompressible-members.md)).
+One reachable from a share link is **deployment material** — committed and shipped in the build, not
+carried by the link ([ADR-0040](docs/adr/0040-a-recording-is-deployment-material-and-the-bridge-records-it.md)).
 _Avoid_: capture, playback file, track
+
+**Recording transport**:
+The viewport overlay that states a **recording**'s position and lets you scrub it — the same element
+on the desktop and on both phone orientations
+([ADR-0042](docs/adr/0042-the-transport-is-a-viewport-overlay.md)).
+
+**Always written with the qualifier.** The bare word `transport` is taken: it is a §07 field and a
+§13.2 column meaning **sACN or Art-Net** — how a universe arrived. That sense is on the wire and
+keeps the bare word; this one never gets it.
+_Avoid_: transport (unqualified), player, scrubber, timeline bar, playback controls
 
 **Stale**:
 A universe the bridge has heard nothing on for longer than **its transport's** threshold — 2.5 s

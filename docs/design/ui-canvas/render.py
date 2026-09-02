@@ -36,7 +36,11 @@ def main(names):
             # The phone artboards (#40) are narrower than the desktop 1440; a 1440
             # viewport would pad them out to the right.
             w, h = 1440, 900
-            if 'class="app phone"' in src:
+            # Recorded (#45) is a composite: a 1440 desktop above a landscape and a
+            # portrait phone, so it must be measured before the per-phone cases below.
+            if 'class="app desk"' in src:
+                w, h = 1440, 900
+            elif 'class="app phone"' in src:
                 w, h = 390, 844
             elif 'class="app land"' in src:
                 w, h = 844, 390
