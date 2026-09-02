@@ -1408,6 +1408,11 @@ that should be at 30% ([ADR-0019](adr/0019-the-intensity-map-is-relative-not-pho
 The degradation ladder of §9.2 and the invisibility of the override layer (§4.5) are UI problems
 with no design, and §4.4 lists both. Neither is signal health, and neither is settled here.
 
+**[both answered 2026-09-02 — #35]** The override layer is settled by
+[ADR-0025](adr/0025-trust-and-provenance-marks-are-additive.md) and §14.3; the degradation ladder
+is now [#40](https://github.com/jnslmk/beamhouse/issues/40). §14 is where this section's inventory
+was given a place to sit.
+
 ## 14 · The UI: layout, navigation and notation
 
 **[added 2026-09-02 — [#35](https://github.com/jnslmk/beamhouse/issues/35)]** §13 is the signal
@@ -1486,7 +1491,7 @@ Four of these `§4.4` already said to adopt on sight; #35's survey supplied two 
    homeless "must be surfaced" requirements of ADR-0012, ADR-0020 and §4.5 one shared **Issues**
    surface.
 4. **The M3a viewer's degradation ladder** (§9.2) — still unsolved, and now its own ticket
-   ([#37](https://github.com/jnslmk/beamhouse/issues/37)).
+   ([#40](https://github.com/jnslmk/beamhouse/issues/40)).
 
 ### 14.4 What the screen shows besides fixtures
 
@@ -1494,7 +1499,7 @@ Four of these `§4.4` already said to adopt on sight; #35's survey supplied two 
 land on it whether or not any scenery is placed — which keeps the pool a *render* decision,
 independent of scene objects. A **stage and human proxies** are wanted as scale reference, and the
 pool is the grandMA3 *spot reflection* fader rather than a lighting solution. Both are
-[#39](https://github.com/jnslmk/beamhouse/issues/39), which also carries the amendment they force
+[#43](https://github.com/jnslmk/beamhouse/issues/43), which also carries the amendment they force
 on [ADR-0013](adr/0013-atmosphere-is-one-closed-form-scattering-term.md)'s finding 6.
 
 Fixtures and objects share **one selection space and one command layer** — you can select a
@@ -1504,8 +1509,8 @@ Fixtures table's columns are patch columns and a human proxy has none of them.
 ### 14.5 Still owed
 
 Both of §13.6's items now have tickets rather than silence:
-[#37](https://github.com/jnslmk/beamhouse/issues/37) for the degradation ladder and
-[#38](https://github.com/jnslmk/beamhouse/issues/38) for `bhs:` definition authoring — the screen
+[#40](https://github.com/jnslmk/beamhouse/issues/40) for the degradation ladder and
+[#41](https://github.com/jnslmk/beamhouse/issues/41) for `bhs:` definition authoring — the screen
 for [ADR-0012](adr/0012-beamhouse-may-define-pixels-placement-mints-nothing.md)'s third definition
 source, which **no surveyed product has**, because none of them has a definition source of its own.
 
