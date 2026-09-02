@@ -17,6 +17,9 @@ Every accepted decision on this project, newest last. The **map** ([#1](https://
 | **0011** | [A fixture is addressed per break, and is stale if any break is stale](0011-a-fixture-is-addressed-per-break.md) | 2026-09-02 | [#22](https://github.com/jnslmk/beamhouse/issues/22) · was ADR-0009 |
 | **0012** | [Beamhouse may define pixels; placement mints nothing](0012-beamhouse-may-define-pixels-placement-mints-nothing.md) | 2026-09-02 | [#27](https://github.com/jnslmk/beamhouse/issues/27) |
 | **0013** | [Atmosphere is one closed-form scattering term](0013-atmosphere-is-one-closed-form-scattering-term.md) | 2026-09-02 | [#28](https://github.com/jnslmk/beamhouse/issues/28) · amends ADR-0010 |
+| **0014** | [The agent surface is two surfaces, and only the look half is a feed](0014-the-agent-surface-is-two-surfaces.md) | 2026-09-02 | [#5](https://github.com/jnslmk/beamhouse/issues/5) |
+| **0015** | [Agent control is an MCP server over the bridge's control channel](0015-agent-control-is-mcp-over-the-bridge-control-channel.md) | 2026-09-02 | surfaced by [#5](https://github.com/jnslmk/beamhouse/issues/5) |
+| **0016** | [Every scene mutation is one undo-grained command](0016-every-scene-mutation-is-one-undo-grained-command.md) | 2026-09-02 | surfaced by [#5](https://github.com/jnslmk/beamhouse/issues/5) |
 
 ## What each one actually says
 
@@ -33,6 +36,9 @@ Every accepted decision on this project, newest last. The **map** ([#1](https://
 - **[ADR-0011](0011-a-fixture-is-addressed-per-break.md)** — A fixture carries one address **per break**, so it can span universes — and is stale if *any* break is stale. Mizer's singular pair is the degenerate one-break case.
 - **[ADR-0012](0012-beamhouse-may-define-pixels-placement-mints-nothing.md)** — Beamhouse may carry its own `bhs:` pixel definitions, because gled2 streams universes Mizer never patched. **Placement still mints nothing** — a local fixture has a definition, an address and a *negative* id, which Mizer's `u32` cannot collide with.
 - **[ADR-0013](0013-atmosphere-is-one-closed-form-scattering-term.md)** — A constant-density single-scattering term ships in v1, closed-form because it drops extinction and anisotropy. The deferred tier begins at the **second sample of `density(p)`**. Also corrects `BeamAngle` to the **full** cone angle at six sites, where it was called a half-angle. Amends ADR-0010.
+- **[ADR-0014](0014-the-agent-surface-is-two-surfaces.md)** — "The agent surface" was two surfaces sharing a word. The **look** half is a feed and is `generated`, carrying DMX slot values so it exercises the real pipeline; it takes the slot ADR-0009 emptied by deleting `relay`, and is shared with §9.2's demo motion mode. The **scene** half is not a feed at all.
+- **[ADR-0015](0015-agent-control-is-mcp-over-the-bridge-control-channel.md)** — An agent arranges the rig through an **MCP server** speaking the bridge's control channel. The bridge forwards **opaque envelopes it never opens**, so ADR-0006's ignorance survives; exactly one client owns the scene, commands are loopback-only, and capture is a command.
+- **[ADR-0016](0016-every-scene-mutation-is-one-undo-grained-command.md)** — One command layer, with the UI and the agent as two front-ends. A command is **undo-grained** — one command, one undo entry, one thing a person would say out loud. Constrains #35.
 
 ## Writing a new one
 

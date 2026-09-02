@@ -235,11 +235,26 @@ knows how a universe arrived.
 _Avoid_: server, sidecar, daemon, backend, native process (it is no longer one)
 
 **Feed**:
-Where frames come from, as one pluggable interface with two implementations in v1 — live and
-recorded ([ADR-0009](docs/adr/0009-deployment-is-inferred-from-origin.md) removed the undefined
-third, `relay`). Distinct from an **sACN source**, which is E1.31's own term for a transmitting
-device and is always written with the `sACN` prefix.
+Where frames come from, as one pluggable interface with three implementations in v1 — live,
+recorded and generated ([ADR-0009](docs/adr/0009-deployment-is-inferred-from-origin.md) removed
+the undefined `relay`; [ADR-0014](docs/adr/0014-the-agent-surface-is-two-surfaces.md) filled the
+slot with `generated`). Distinct from an **sACN source**, which is E1.31's own term for a
+transmitting device and is always written with the `sACN` prefix.
 _Avoid_: source (unqualified), stream, input, relay
+
+**Generated feed**:
+The **feed** whose frames are *computed* rather than received from the network or read from
+storage. Two callers: a seeded chase for a shared link, and an agent holding a **look**. It is
+what "the agent surface" turned out to mean on the feed side
+([ADR-0014](docs/adr/0014-the-agent-surface-is-two-surfaces.md)).
+_Avoid_: injected feed, synthetic feed, fake feed, agent feed
+
+**Look**:
+One **frame** held rather than streamed — a lighting state, in DMX slot values, standing still.
+Never a synonym for **scene**, which is the physical arrangement of the rig: a look changes what
+the fixtures are *doing*, a scene changes where they *are*. A look is what an agent sets before it
+captures.
+_Avoid_: cue, state, snapshot, scene
 
 **Frame**:
 One tick's worth of slot values for every subscribed universe, timestamped. The unit a feed
@@ -249,6 +264,28 @@ _Avoid_: packet (that is one universe on the wire), update
 **Recording**:
 A stored sequence of frames, replayable through the same feed interface as live data.
 _Avoid_: capture, playback file, track
+
+**Control channel**:
+The non-frame traffic on the bridge's socket — file-reload notices, and the **command** envelopes
+an agent sends. The bridge **forwards envelopes it never opens**, which is how it carries scene
+traffic while staying ignorant of fixtures
+([ADR-0015](docs/adr/0015-agent-control-is-mcp-over-the-bridge-control-channel.md)).
+_Avoid_: command socket, RPC, control plane, API
+
+**Command**:
+One **undo-grained** mutation of the scene — one command, one undo entry, one thing a person would
+say out loud. The unit *both* the editing UI and an agent produce, because they are two front-ends
+onto one layer rather than two paths into scene state
+([ADR-0016](docs/adr/0016-every-scene-mutation-is-one-undo-grained-command.md)). A drag is one
+command, committed on release.
+_Avoid_: action, operation, edit, mutation, transaction
+
+**Owning client**:
+The single connected page that holds the scene and applies **commands**. The bridge deployment
+serves the LAN, and each page keeps its own working state, so without one owner a broadcast
+command would leave every client saving a different `.bhs`. Ownership is about who may *write*;
+every other client still views.
+_Avoid_: primary, leader, master, host, active tab
 
 ### Delivery
 

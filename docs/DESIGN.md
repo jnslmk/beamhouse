@@ -85,8 +85,11 @@ tier is a switch rather than a rewrite.
   version is genuinely out of scope rather than deferred — it would force generated geometry over
   the declared primitive, reversing ADR-0005 rule 6.
 - Gobos, prisms, framing shutters. GDTF carries wheel media in the same zip.
-- The agent surface — a fourth feed implementation injecting state directly. Undecided
-  for v1.
+- ~~The agent surface.~~ **[answered 2026-09-02 — #5]** It is **in v1**, and it was never one
+  thing: [ADR-0014](adr/0014-the-agent-surface-is-two-surfaces.md) splits it into a **look**
+  surface (a `generated` feed, §07) and a **scene** surface (an agent arranging the rig, §4.7).
+  "A fourth feed implementation injecting state directly" was wrong twice — `relay` had already
+  been deleted, so it is the *third*, and the half the ticket actually wanted is not a feed.
 
 ### Genuinely out of scope
 
@@ -205,7 +208,9 @@ beamhouse/
 ├─ src/
 │  ├─ mvr.ts            # MVR scene reader
 │  ├─ scene.ts          # rig state, overrides, persistence
-│  ├─ feed.ts           # pluggable: live | relay | recorded
+│  ├─ feed.ts           # pluggable: live | recorded | generated (ADR-0014)
+│  ├─ command.ts        # the one scene-mutation path — UI and agent (ADR-0016)
+│  ├─ agent.ts          # control-channel command endpoint (ADR-0015)
 │  ├─ resolve.ts        # DMX buffers → fixture attributes, 30 Hz
 │  ├─ render/
 │  │  ├─ fixture.ts     # GLB instance + axis rig (pan/tilt)
@@ -293,7 +298,7 @@ and zero `.mvr` files on disk.
 
 That rig is a past show, not a constraint. The decision is to **move off QLC+**: Beamhouse
 resolves GDTF only, and the OBF26 rig gets migrated onto `gdtf:` definitions where definitions exist
-(ticket 5), primarily to serve as a real test rig. Future rigs may use entirely different
+([#6](https://github.com/jnslmk/beamhouse/issues/6)), primarily to serve as a real test rig. Future rigs may use entirely different
 lamps, which is exactly why the generic-from-GDTF goal is the first goal.
 
 The CSV export remains a fallback — `ID,Name,Address,Manufacturer,Model,Mode` — but note it is
@@ -337,6 +342,12 @@ You will nudge a tube ten centimetres forty times in an evening; that loop has t
 - **Parametric arrays.** A star of ten tubes is `count / radius / angle_step`, not ten
   hand-placed transforms. Generators for radial, line and grid; the array stays live.
 - Multi-select with align and distribute.
+
+All four are **front-ends onto the command layer**, not direct writes to scene state — see
+§4.7 and [ADR-0016](adr/0016-every-scene-mutation-is-one-undo-grained-command.md). This is a
+constraint on [#35](https://github.com/jnslmk/beamhouse/issues/35) rather than a free choice
+for it, and it is recorded before #35 runs because retrofitting it afterwards is the
+expensive version.
 
 **[gap noted 2026-09-02 — #35]** Those four affordances are the *only* description of the screen
 anywhere in this document. There is no layout, no navigation model, and nothing that says what is
@@ -409,6 +420,37 @@ than truncated** — a silently shortened strip is wrong in a way that looks rig
   message on change.
 - **Never reload the socket.** Rig changes rebuild the scene graph in place. The DMX stream is
   independent of the scene and must survive every edit.
+
+### 4.7 The scene is also edited by an agent
+
+**[added 2026-09-02 — [#5](https://github.com/jnslmk/beamhouse/issues/5)]** §4.4 assumes a person
+with a mouse. An agent is the second editor, and the case that motivates it is the STAR-TENT: ten
+spokes, five of which must sit rotated 180° about their own mid-point
+([#23](https://github.com/jnslmk/beamhouse/issues/23)) — a thing Mizer cannot represent at all,
+since `FixturePosition` has no Z and no rotation.
+
+**Every mutation goes through one command layer**
+([ADR-0016](adr/0016-every-scene-mutation-is-one-undo-grained-command.md)). The gizmo, numeric
+entry, the array generators and the agent are **front-ends onto it**, never parallel paths into
+scene state. A command is **undo-grained**: one command, one undo entry, one thing a person would
+say out loud — a drag commits *once*, on release. That is what makes an agent's edits undoable,
+which is the property you need at 4pm when it rotated the wrong five spokes.
+
+**The agent arrives over the bridge's control channel, through an MCP server**
+([ADR-0015](adr/0015-agent-control-is-mcp-over-the-bridge-control-channel.md)). The bridge
+forwards command envelopes **it never opens**, so §02's ignorance holds; the MCP server is a
+separate process holding the tool schemas; exactly one connected client owns the scene; commands
+are loopback-only, while frames may still cross §9.4's tunnel. Capture is a command — the owning
+page renders and reads back inside one `requestAnimationFrame`, so no `preserveDrawingBuffer` tax
+is paid by users who never ask for a screenshot.
+
+Files are **not** the mechanism, and not because of latency — §4.6 already rebuilds in place
+without dropping the socket. A `.bhs` is a whole-document write, so a file-driven agent would
+read-modify-write the entire scene to move one fixture, against IndexedDB working state it never
+saw.
+
+Patch, cues, animations, triggers and MIDI are **not** part of this. The agent does that work in
+Mizer, and §4.2 plus M5a already make Beamhouse follow.
 
 ## 05 · GDTF in the browser
 
@@ -617,10 +659,18 @@ and Art-Net into one universe space before anything is written here
 ([ADR-0007](adr/0007-one-universe-space-sacn-numbered.md)). Nothing downstream can tell, or needs
 to tell, how a universe arrived.
 
-Keep a `feed.ts` interface in front of it with two implementations — `live` and `recorded`.
-`relay` was removed by [ADR-0009](adr/0009-deployment-is-inferred-from-origin.md): nothing ever
-defined it, and §9.4's tunnel is `live` at a different URL rather than a different
-implementation. A third, injected-state implementation is the agent surface (ticket 4).
+Keep a `feed.ts` interface in front of it with three implementations — `live`, `recorded` and
+`generated`. `relay` was removed by [ADR-0009](adr/0009-deployment-is-inferred-from-origin.md):
+nothing ever defined it, and §9.4's tunnel is `live` at a different URL rather than a different
+implementation.
+
+**[answered 2026-09-02 — [#5](https://github.com/jnslmk/beamhouse/issues/5)]** `generated` takes
+the slot `relay` vacated, with a definition this time
+([ADR-0014](adr/0014-the-agent-surface-is-two-surfaces.md)): frames **computed** rather than
+received or stored, behind one `nextFrame(t)`. It has two callers — §9.2's demo motion mode, and
+an agent holding a **look**. A look carries DMX slot values, never resolved fixture attributes,
+because `CONTEXT.md` defines a **Frame** as slot values and because entering above `resolve.ts` is
+what makes an agent's screenshot exercise the real pipeline rather than sit on top of it.
 
 ## 08 · Rendering
 
@@ -804,7 +854,9 @@ resolve. The one fixture kind immune to that is a `bhs:` definition, which carri
 ([ADR-0012](adr/0012-beamhouse-may-define-pixels-placement-mints-nothing.md)).
 
 Worth building early: give a shared link a **demo motion mode** — a canned chase generated from
-a seed, running on the real rig geometry.
+a seed, running on the real rig geometry. **[owned 2026-09-02 — #5]** This is not its own
+mechanism: it is the `generated` feed of §07, sharing one `nextFrame(t)` with the agent's held
+look ([ADR-0014](adr/0014-the-agent-surface-is-two-surfaces.md)).
 
 ### 9.3 Recordings
 
@@ -837,6 +889,7 @@ cube move.
 | M2  | Strips        | One tube renders as a smooth gradient driven by gled2 or WLED           | 1 d   |
 | M3  | Scene editor  | Drag a fixture, edit a radial array, reload the tab, it persists        | 1½ d  |
 | M3a | Share link    | A Pages URL with the scene in its fragment opens the rig on a phone     | ½ d   |
+| M3b | Agent surface | An agent configures the STAR-TENT's ten spokes in 3D and screenshots it | 1 d   |
 | M4  | gdtf-ts       | An arbitrary GDTF patches and its real GLB renders with working pan/tilt| 3–5 d |
 | M5a | Mizer patch   | Beamhouse reads the project YAML; repatching updates the rig live       | ½ d   |
 | M5b | MVR import    | A rig exported from BlinderKitten loads, overrides merge cleanly        | 1 d   |
@@ -870,6 +923,19 @@ the `fflate` already depended on, and §9.2's degradation ladder starts at **pro
 ships `description.xml` with no meshes at all). A crude M3a that shares a scene of proxies is worth
 more than a polished one that arrives at the end.
 
+**[added 2026-09-02 — [#5](https://github.com/jnslmk/beamhouse/issues/5)]** **M3b sits before the
+wall for the same reason M3a does.** The scene surface (§4.7) needs M2 and M3 and explicitly *not*
+M4: the STAR-TENT is a `bhs:` definition rendered as proxy geometry
+([ADR-0012](adr/0012-beamhouse-may-define-pixels-placement-mints-nothing.md)), and the strip
+profile ships no meshes at all ([#2](https://github.com/jnslmk/beamhouse/issues/2)), so nothing in
+the motivating case waits on `gdtf-ts`. Putting the way the rig is most likely to actually get
+configured behind a 3–5 day wall makes it the first casualty if the wall overruns.
+
+**M3 gains a constraint rather than a sibling.** The command layer
+([ADR-0016](adr/0016-every-scene-mutation-is-one-undo-grained-command.md)) lands *with* the scene
+editor, not with M3b — M3b adds the transport, the MCP server and capture on top of a layer that
+already exists.
+
 ## 11 · Open questions
 
 These are the wayfinder map's tickets. See the map issue for current state.
@@ -882,8 +948,14 @@ These are the wayfinder map's tickets. See the map issue for current state.
    `LuminousIntensity`, so only the `ColorComponent` → radiance reading is genuinely assumed. The
    enumeration is a branded `LinearRGB` type rather than a marker convention, so correcting it is
    a compiler error, not archaeology. Surfaced #25.
-3. **Agent surface.** The renderer taking injected state directly, bypassing DMX, would let an
-   agent set a look and screenshot it with no console running. Nearly free given `feed.ts`.
+3. ~~**Agent surface.**~~ **Answered:** it was **two** surfaces sharing a word
+   ([ADR-0014](adr/0014-the-agent-surface-is-two-surfaces.md)). The **look** half is a feed and is
+   `generated` (§07), carrying DMX slot values so it *does not* bypass resolution — "bypassing
+   DMX" was the wrong instinct, since entering above `resolve.ts` is the whole value. The **scene**
+   half — an agent arranging the rig (§4.7) — is not a feed at all, and is where the real want
+   turned out to be. "Nearly free" held only for the half nobody was asking for. Surfaced
+   [ADR-0015](adr/0015-agent-control-is-mcp-over-the-bridge-control-channel.md) and
+   [ADR-0016](adr/0016-every-scene-mutation-is-one-undo-grained-command.md).
 4. ~~**Bridge language.**~~ **Answered:** TypeScript on Bun
    ([ADR-0006](adr/0006-bridge-is-typescript-on-bun.md)). The Rust-vs-Node framing was wrong on
    both sides — ADR-0004 had already made the TS option Bun rather than Node, and the static
