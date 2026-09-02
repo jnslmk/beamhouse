@@ -33,6 +33,7 @@ Every accepted decision on this project, newest last. The **map** ([#1](https://
 | **0027** | [Ownership is claimed implicitly and released on silence, and a non-owner follows along with its auto-save off](0027-ownership-is-implicit-and-a-non-owner-stops-saving.md) | 2026-09-02 | [#37](https://github.com/jnslmk/beamhouse/issues/37) · amends ADR-0015 |
 | **0028** | [A capture is a handle fetched over HTTP, and it states the feed it fired against](0028-a-capture-is-a-handle-fetched-over-http.md) | 2026-09-02 | [#37](https://github.com/jnslmk/beamhouse/issues/37) · amends ADR-0015 |
 | **0029** | [The bridge detects contention and never arbitrates, and the universe record becomes source-shaped](0029-the-bridge-detects-contention-and-never-arbitrates.md) | 2026-09-02 | [#38](https://github.com/jnslmk/beamhouse/issues/38) · amends ADR-0007, ADR-0018 |
+| **0030** | [`GDTFSpec` resolves inside the archive, and a `gdtf:` id names a fixture type](0030-gdtfspec-resolves-inside-the-archive.md) | 2026-09-02 | [#39](https://github.com/jnslmk/beamhouse/issues/39) · confirms ADR-0004 |
 
 ## What each one actually says
 

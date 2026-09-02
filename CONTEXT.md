@@ -22,18 +22,40 @@ _Avoid_: lamp, head, instrument, device, unit
 
 **Definition**:
 The device-model description a fixture is an instance of: its geometry, its DMX modes, its
-attributes. A `.gdtf` file holds exactly one definition. Six movers of the same model share one
-definition.
+attributes. A `.gdtf` file holds exactly one. Six movers of the same model share one definition.
+
+**[sharpened 2026-09-02 — #39]** One file, one definition — but *not* one definition, one file. A
+`gdtf:` id is a `FixtureTypeID`, which names a fixture **type**: measured over GDTF Share's 12,623
+revisions, 1,681 of those UUIDs cover more than one file, up to 17
+([ADR-0030](docs/adr/0030-gdtfspec-resolves-inside-the-archive.md)). Which of them you resolved is a
+**Revision**.
 _Avoid_: profile, personality, "the GDTF" (when the concept rather than the file is meant)
 
 **Mode**:
 One named DMX layout a definition offers, fixing how many channels the fixture occupies and what
-each one controls. A fixture is patched in exactly one mode.
+each one controls. A fixture is patched in at most one mode — exactly one in the normal case, and
+**none** when the source named a mode the definition does not offer, which leaves the fixture
+placed and rendered but with no DMX binding
+([ADR-0030](docs/adr/0030-gdtfspec-resolves-inside-the-archive.md)).
 _Avoid_: personality, channel mode
+
+**Revision**:
+One dated edit of a **definition**, labelled by the last `<Revision>` element's `Text` — document
+order, never latest date. It is what distinguishes two files sharing a `FixtureTypeID`, and
+revisions genuinely differ: 606 of the 1,681 shared UUIDs have revisions whose mode sets differ,
+and 134 carry the same mode *name* at a different DMX footprint. A patch may carry a revision as a
+**hint** for reconciliation; nothing resolves, selects or arrays on it
+([ADR-0030](docs/adr/0030-gdtfspec-resolves-inside-the-archive.md)), the same standing ADR-0020
+gives the MVR fixture UUID.
+_Avoid_: version, release
 
 **Library**:
 A resolvable collection of definitions, addressed by a prefix — `gdtf:`, `ofl:`, `qlc:`, `bhs:`.
-What a patch's definition ids are looked up against. `bhs:` is Beamhouse's own
+What a patch's definition ids are looked up against. An **MVR is the exception that needs none**:
+its `<GDTFSpec>` is a file inside its own archive, so an MVR is a self-contained patch source and
+resolves with no library present at all
+([ADR-0030](docs/adr/0030-gdtfspec-resolves-inside-the-archive.md)) — which is what lets a dropped
+`.mvr` work in the M3a viewer. `bhs:` is Beamhouse's own
 ([ADR-0012](docs/adr/0012-beamhouse-may-define-pixels-placement-mints-nothing.md)): definitions
 carried inside a `.bhs` rather than resolved from a path, which is why they are the only kind that
 survives a shared URL.
@@ -47,8 +69,8 @@ The rig as Beamhouse knows it: patch plus placement. Not a file format and not a
 _Avoid_: show, plot, rig state
 
 **Patch**:
-The half of the scene that says which fixtures exist, which definition and mode each uses, and
-where each is addressed. Authored in the console and read by Beamhouse — with one bounded
+The half of the scene that says which fixtures exist, which definition and — where it resolved —
+which **mode** each uses, and where each is addressed. Authored in the console and read by Beamhouse — with one bounded
 exception, the **local fixture**
 ([ADR-0012](docs/adr/0012-beamhouse-may-define-pixels-placement-mints-nothing.md)).
 _Avoid_: patch sheet, fixture list

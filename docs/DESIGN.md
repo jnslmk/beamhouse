@@ -408,6 +408,35 @@ that supplies a `u32` directly. Every parser emits a `Patch` whose ids are alrea
 merge pass below knows nothing about formats — §02's discipline for transports, ADR-0008's for
 colour.
 
+#### The definition ladder, which is a different ladder
+
+**[settled 2026-09-02 — [#39](https://github.com/jnslmk/beamhouse/issues/39),
+[ADR-0030](adr/0030-gdtfspec-resolves-inside-the-archive.md)]** The ladder above resolves a
+fixture's **id**. Resolving its **definition** is a separate problem and a much shorter ladder,
+because `<GDTFSpec>` is not a library key: MVR types it as a `FileName`, *"the case-sensitive name
+of a file within the archive including the extension"*, and mandates keeping that file in the zip
+on export.
+
+- **The archive is the only place we look.** The embedded file *is* the definition the author
+  patched against. A miss is a malformed MVR, surfaced — never a cue to substitute a library
+  definition, which would trade a loud error for a silently wrong channel count.
+- **Two documented malformities are tolerated, each marked.** Exact match → append `.gdtf` (the
+  spec's own examples omit the extension its own type mandates) → case-insensitive (the spec
+  forbids two entries differing only by case, so the retry cannot be ambiguous).
+- **`GDTFMode` never guesses.** Exact → case-insensitive → the sole mode if the file offers exactly
+  one. Past that the fixture stays placed, rendered and marked, with **no DMX binding**: one uuid
+  can cover 17 files, 134 of which reuse a mode *name* at a different footprint, so picking the
+  first of several modes is picking a channel count at random.
+- **A `Fixture` with no `GDTFSpec` at all** — the spec allows it — is not a patchable fixture and
+  goes to §4.x's positioned objects, not the patch.
+- **Nothing is cached.** An MVR-extracted `.gdtf` has no GDTF Share `rid`, so `gdtf-manifest.json`
+  could neither pin nor restore it. **An MVR therefore needs no library at all**, which is what
+  makes a dropped `.mvr` work in the M3a viewer where there is none.
+
+`gdtf-ts` is untouched by all of it: the `mvr` parser owns the zip lookup and hands over bytes,
+exactly as [ADR-0004](adr/0004-gdtf-ts-is-a-published-gdtf-only-package.md) decision 6 already
+described.
+
 **`bhs:` local fixtures are a contribution, not a source.** They arrive from the `.bhs` after
 whatever parser ran and merge into the patch alongside the override layer — same file, same merge
 pass. ADR-0012's phrase "a limited patch source" is loose: a source *produces* a patch, and a local
@@ -513,6 +542,23 @@ MVR that omits it has its integer id synthesised, and without the hint a re-impo
 different integers and silently drops every override. Nothing resolves, selects or arrays on the
 hint; it is written on ingest and read only by the next ingest. A synthesised id is **surfaced**,
 like the extent mismatch above.
+
+**[added 2026-09-02 — [#39](https://github.com/jnslmk/beamhouse/issues/39),
+[ADR-0030](adr/0030-gdtfspec-resolves-inside-the-archive.md)]** A patched fixture may carry a second
+hint of the same standing, one level down: an optional **revision**, the last `<Revision>` element's
+`Text` — document order, never latest date, since the X4's first two revisions run 12:31 then 10:31.
+A `gdtf:` id is a `FixtureTypeID` and names a fixture *type*: 1,681 of GDTF Share's UUIDs cover more
+than one file, 606 of those have revisions whose mode sets differ, and **134 reuse a mode name at a
+different DMX footprint**. The hint does nothing during an MVR load — §4.3's archive already
+supplied the exact file — and earns its place when that patch is saved as a `.bhs` or shared as a
+snapshot, where `gdtf:<uuid>` meets a library that may hold a different revision and the mismatch
+can be stated: *"patched against `rev-09`, library has `for-v16-rev3`"*. Nothing resolves, selects
+or arrays on it.
+
+**A hint carries only what the source knew.** Mizer mints a bare `gdtf:<uuid>` with no revision
+anywhere in `conversion.rs`, so the 134 cases stay latent on the M5a path: a Mizer patch resolves to
+*some* revision of the right fixture type and Beamhouse cannot tell which one the operator patched
+against. Bounded on the MVR side, open on the Mizer side, and stated rather than assumed.
 
 **[added 2026-09-02 — [#30](https://github.com/jnslmk/beamhouse/issues/30)]** `patch` is a **tagged
 union**, one variant per §4.3 parser, and **only one of them is shareable**:
