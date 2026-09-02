@@ -98,6 +98,36 @@ for p in root.rglob('*.md'):
 sys.exit(bad)
 PY
 
+  echo "== every backticked repo path in ADRs and prototype READMEs exists"
+  # The §10 rule (docs/DESIGN.md) says a done-when may name a file in this repo or a
+  # capability -- never a third-party tool. Its mirror: a backticked path that starts at a
+  # repo-root entry is a claim that the file is HERE. `crates/...` and `wled00/...` citations
+  # (Mizer, WLED sources) never start at a beamhouse root entry, so they are skipped as
+  # external; a `prototypes/foo/` that does not exist is the defect #56 was about.
+  python3 - "$ROOT" <<'PY' || fail=1
+import re, sys, pathlib
+root = pathlib.Path(sys.argv[1]); bad = 0
+entries = {p.name for p in root.iterdir()}
+targets = sorted(root.glob('docs/adr/*.md')) + sorted(root.glob('prototypes/*/README.md'))
+# Commands ("tools/adr.sh check"), negation ("no `tools/ofl.sh` to write"), prose
+# ellipses ("definitions/authored/…") and file:line citations are not path claims.
+pat = re.compile(r'(?<!\bno )`([^`\n]+)`')
+for p in targets:
+    for m in pat.finditer(p.read_text()):
+        tok = m.group(1).strip().rstrip('/')
+        tok = re.sub(r':\d+(-\d+)*$', '', tok)      # drop :line / :line-line citations
+        if not tok or '\u2026' in tok or any(c.isspace() for c in tok):
+            continue
+        if tok.startswith(('http', '/', '~', '.', '#')) or '://' in tok:
+            continue
+        if tok.split('/', 1)[0] not in entries:     # not claimed to live in this repo
+            continue
+        if not (root / tok).exists():
+            print(f"  FAIL: {p.relative_to(root)}: backticked path `{m.group(1)}` does not exist")
+            bad = 1
+sys.exit(bad)
+PY
+
   echo
   if [ "$fail" -eq 0 ]; then echo "ADR record OK"; else echo "ADR record has problems"; fi
   return $fail

@@ -9,6 +9,9 @@
   0010 was taken by [#25](https://github.com/jnslmk/beamhouse/issues/25) before this was
   noticed. Earlier commits, issue comments and the wayfinder map's own history may still say
   "ADR-0009" or "ADR-0009a" and mean this document. Nothing in the decision changed.
+- **Amended:** 2026-09-02 ([#56](https://github.com/jnslmk/beamhouse/issues/56)) — decision 4's
+  acceptance criterion names its artifact precisely, and the oracle that criterion names is
+  restored to the repo: it had been recorded as committed while living only on an unmerged branch.
 
 ## Context
 
@@ -57,9 +60,15 @@ Beamhouse's. The mapping from a fixture's channels to a universe's slots is a *r
    stale.
 4. **The multi-break path is covered by a synthetic test, not by the rig.** After the
    re-addressing below, no fixture in the only real rig exercises it. The acceptance criterion is a
-   two-break fixture built from #26's oracle frames — already a byte-exact offline diff, and
-   splitting its 230 pixels across two universes is exactly the shape under test. This is what
-   keeps the re-addressing revertible rather than load-bearing.
+   two-break fixture built from #26's oracle frames — the committed capture at
+   `prototypes/wled-peek-oracle/` (230/230 pixels, 30 byte-identical frames, byte-exact offline),
+   and splitting its 230 pixels across two universes is exactly the shape under test. The split
+   point is a parameter of the test, not a property of the frames: the per-pixel data can model a
+   straddling fixture at any boundary, and what the capture pins is the one real seam — observed
+   at LED 169 → 170 with the seam falling mid-spoke (spoke 7 straddles it), the rig's actual
+   pre-re-addressing shape. **[amended 2026-09-02 — #56]** The oracle this criterion names had
+   been recorded as committed while living only on an unmerged branch; it is restored, which is
+   what keeps the re-addressing revertible rather than load-bearing.
 5. **No new identity tier.** The ticket's third option — a pixel-block between fixture and emitter
    — is rejected. ADR-0003 makes the integer fixture id the *only* identity, and neither patch
    format supplies a key for such a tier.
@@ -101,3 +110,10 @@ third identity, see 5).
   so pixel 0 lands at the tip on the same ray. The work is #23's.
 - **`DESIGN.md` needs amending**: §4.2's patch example and §07's `subscribe` both read as though a
   fixture has one universe.
+- **Decision 4's oracle is real on `main` again, and the defect class is now checked.** #26's
+  capture and #46's offline re-run were stranded on unmerged branches while ADR-0011 and
+  `prototypes/star-tent-repatch/README.md` named them; nothing in this repo caught references
+  resolving to nothing. [#56](https://github.com/jnslmk/beamhouse/issues/56) restored the capture
+  to `prototypes/wled-peek-oracle/`, landed the offline ADR-0033 re-run (`conformance-gdtf.py`)
+  with the authored spoke GDTF it reads, and extended `tools/adr.sh check` to fail on ADR and
+  prototype-README text that names a repo path which does not exist.

@@ -1,0 +1,71 @@
+{
+ "captured_utc": "2026-09-02T08:02:47Z",
+ "node": {
+  "ip": "192.168.1.243",
+  "name": "STAR-TENT",
+  "mac": "68fe71a52a34",
+  "wled_version": "16.0.1",
+  "vid": 2606300,
+  "arch": "esp32",
+  "release": "ESP32_Ethernet"
+ },
+ "preconditions": {
+  "brightness": 255,
+  "force_max_brightness": true,
+  "gamma_correction_disabled": true,
+  "driven_rgb_only_white_zero": true,
+  "max_live_leds_ws": 1024,
+  "downsample_n": 1,
+  "led_count": 230,
+  "rgbw_bus": true,
+  "light_capabilities": 7,
+  "dmx_mode_during_capture": 4,
+  "dmx_mode_restored_to": 9,
+  "dmx_start_address": 1,
+  "configured_universe": 1
+ },
+ "live_state_during_capture": {
+  "live": true,
+  "lm": "Art-Net",
+  "lip": "192.168.1.171"
+ },
+ "cadence_ms": {
+  "frames": 30,
+  "intervals": [
+   41.2,
+   41.1,
+   41.9,
+   40.8,
+   41.3,
+   41.8,
+   41.2,
+   41.2,
+   41.9,
+   42.1,
+   42.6,
+   41.2,
+   41.2,
+   42.1,
+   41.9,
+   41.9,
+   41.2,
+   41.9,
+   42.1,
+   41.7,
+   40.9,
+   41.2,
+   41.0,
+   41.9,
+   41.4,
+   41.6,
+   41.2,
+   42.2,
+   41.5
+  ],
+  "min": 40.8,
+  "max": 42.6,
+  "mean": 41.6,
+  "nominal": 40
+ },
+ "frame_bytes": 692
+}
