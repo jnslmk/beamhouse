@@ -3,6 +3,7 @@
 - **Status:** Accepted
 - **Date:** 2026-09-02
 - **Surfaced by:** [#5](https://github.com/jnslmk/beamhouse/issues/5)
+- **Amended by:** [ADR-0026](0026-the-control-channel-carries-requests-only-one-class-is-a-command.md)
 
 ## Context
 

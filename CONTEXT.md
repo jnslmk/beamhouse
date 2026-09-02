@@ -75,6 +75,16 @@ local fixtures are a **merge contribution** — they add to a patch and can neve
 present. Say "patch source", not "console": the predicate is about the file, not the product.
 _Avoid_: console (when the file is meant), import path, patch reader
 
+**Ingest**:
+One reading of a **patch source** into the scene — a watcher firing, a picker, a drag-and-drop, a
+URL fragment. It is **the only writer of the `patch`**, as a **command** is the only writer of
+everything else in the `.bhs`
+([ADR-0026](docs/adr/0026-the-control-channel-carries-requests-only-one-class-is-a-command.md)).
+Not undoable: it is an **event** in the **journal**, because §4.6's watcher fires without anyone
+asking and the previous bytes were never kept. Every **issue** originates in one, which is why the
+count rides the **Patch** chip ([ADR-0023](docs/adr/0023-the-chip-bar-is-the-navigation.md)).
+_Avoid_: import, load, reload, sync
+
 **Placement**:
 The half of the scene that says where each fixture sits in space — position and orientation.
 Authored in Beamhouse and nowhere else. It is a **rigid transform and nothing more**: placement
@@ -328,25 +338,63 @@ a recorded or generated feed, and absent entirely in the Pages viewer, which has
 _Avoid_: status, diagnostics (that is the wider panel), telemetry, monitoring
 
 **Control channel**:
-The non-frame traffic on the bridge's socket — file-reload notices, and the **command** envelopes
-an agent sends. The bridge **forwards envelopes it never opens**, which is how it carries scene
-traffic while staying ignorant of fixtures
-([ADR-0015](docs/adr/0015-agent-control-is-mcp-over-the-bridge-control-channel.md)).
+The non-frame traffic on the bridge's socket — file-reload notices, scene snapshots, and the
+**request** envelopes an agent sends. The bridge **forwards envelopes it never opens**, which is
+how it carries scene traffic while staying ignorant of fixtures
+([ADR-0015](docs/adr/0015-agent-control-is-mcp-over-the-bridge-control-channel.md)). Bulk never
+rides it: a **capture** returns a handle fetched over HTTP
+([ADR-0028](docs/adr/0028-a-capture-is-a-handle-fetched-over-http.md)).
 _Avoid_: command socket, RPC, control plane, API
+
+**Request**:
+One envelope on the **control channel**, in exactly one of four classes — **`command`** (mutates
+the scene, undoable), **`query`** (reads, and moves the undo cursor), **`capture`**, and
+**`look`** (sets the **generated feed**). Only `command` is the command layer, so the agent's
+vocabulary is strictly *larger* than it
+([ADR-0026](docs/adr/0026-the-control-channel-carries-requests-only-one-class-is-a-command.md)).
+Never a synonym for **command**: ADR-0015 used "command envelope" for all four and that is the
+overload this term exists to end.
+_Avoid_: message, call, RPC, command (unqualified)
+
+**Query**:
+A **request** that reads and mutates nothing — the rig, the issues, the universes, the journal —
+and, by the same test, `undo`/`redo`, `select`, `hold` and `camera.set`, which move a cursor or the
+human's view rather than the scene. **Every query returns the marks**
+([ADR-0025](docs/adr/0025-trust-and-provenance-marks-are-additive.md)) alongside the data.
+_Avoid_: get, fetch, read (unqualified), inspection
 
 **Command**:
 One **undo-grained** mutation of the scene — one command, one undo entry, one thing a person would
 say out loud. The unit *both* the editing UI and an agent produce, because they are two front-ends
 onto one layer rather than two paths into scene state
 ([ADR-0016](docs/adr/0016-every-scene-mutation-is-one-undo-grained-command.md)). A drag is one
-command, committed on release.
+command, committed on release. It **carries its target ids**: the selection and the snap step are
+UI-side inputs that fill them, never part of the command. Commands write everything in the `.bhs`
+**except `patch`**, which only an **ingest** writes — two writers, disjoint targets, which is what
+keeps §4.6's watcher from pushing entries onto the undo stack
+([ADR-0026](docs/adr/0026-the-control-channel-carries-requests-only-one-class-is-a-command.md)).
+One kind of **request**, not the whole of it.
 _Avoid_: action, operation, edit, mutation, transaction
+
+**Journal**:
+The record of everything that changed the scene, in two row kinds — **commands**, where the undo
+cursor stops, and **events**, which are **ingests** and are not undoable. Agent-driven rows are
+marked, and there is **one stack shared by both front-ends**, because *"undo the last thing that
+happened"* is the only question anyone asks at 4pm
+([ADR-0026](docs/adr/0026-the-control-channel-carries-requests-only-one-class-is-a-command.md)).
+Surfaced as the overlay's **History** tab.
+_Avoid_: log, audit trail, undo stack (that is one of its two row kinds)
 
 **Owning client**:
 The single connected page that holds the scene and applies **commands**. The bridge deployment
 serves the LAN, and each page keeps its own working state, so without one owner a broadcast
 command would leave every client saving a different `.bhs`. Ownership is about who may *write*;
-every other client still views.
+every other client still views. **Claimed implicitly by the first connection**, taken over in one
+click, released on socket close or ~15 s of silence; a **non-owner** adopts the owner's scene,
+follows its commands, and has its auto-save **suspended** — the divergence was the saving, not the
+following ([ADR-0027](docs/adr/0027-ownership-is-implicit-and-a-non-owner-stops-saving.md)). Not
+contended between the human and the agent: the MCP server is a client of the **control channel**
+and the owning *page* applies its requests, so one tab plus an agent has no contention at all.
 _Avoid_: primary, leader, master, host, active tab
 
 ### Delivery

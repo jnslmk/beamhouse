@@ -573,6 +573,14 @@ saw.
 Patch, cues, animations, triggers and MIDI are **not** part of this. The agent does that work in
 Mizer, and §4.2 plus M5a already make Beamhouse follow.
 
+**[specified 2026-09-02 — [#37](https://github.com/jnslmk/beamhouse/issues/37)]** The vocabulary
+is **§15**. One correction lands here: ADR-0016's *"the MCP tool vocabulary is whatever the command
+layer holds"* was too strong — the channel carries **requests** in four classes and only `command`
+is that layer ([ADR-0026](adr/0026-the-control-channel-carries-requests-only-one-class-is-a-command.md)).
+And the two writers above are now a rule rather than a habit: **commands write everything in the
+`.bhs` except `patch`, ingests write only `patch`**, so §4.6's watcher can never push an entry onto
+your undo stack.
+
 ## 05 · GDTF in the browser
 
 The interesting half of the project. Three stages, all in `gdtf-ts`.
@@ -789,6 +797,14 @@ Thin, because the browser does the thinking. Text frames for control, binary for
 ]}
 { "op": "reload", "path": "shows/warehouse.mvr" }
 ```
+
+**[extended 2026-09-02 — #37]** The control channel also carries the agent's **request** envelopes,
+which the bridge forwards without opening
+([ADR-0015](adr/0015-agent-control-is-mcp-over-the-bridge-control-channel.md)), and a **scene
+snapshot** for a joining non-owner ([ADR-0027](adr/0027-ownership-is-implicit-and-a-non-owner-stops-saving.md))
+— the same shape a share link carries, so it is not a new serialisation. Bulk stays off this socket
+entirely: a capture returns a handle fetched over HTTP
+([ADR-0028](adr/0028-a-capture-is-a-handle-fetched-over-http.md)).
 
 **[revised 2026-09-02 — #31]** `universes` replaces both `stale` and `sacn_source`
 ([ADR-0018](adr/0018-signal-health-is-one-per-universe-snapshot.md)). One record per subscribed
@@ -1262,6 +1278,14 @@ These are the wayfinder map's tickets. See the map issue for current state.
     The reference rig has one source per universe, so this is a correctness question the rig cannot
     exhibit.
 
+18. ~~**What is the agent's tool vocabulary, and who owns the scene?**~~ **Answered: four request
+    classes, fourteen commands, and ownership is implicit** (#37,
+    [ADR-0026](adr/0026-the-control-channel-carries-requests-only-one-class-is-a-command.md),
+    [ADR-0027](adr/0027-ownership-is-implicit-and-a-non-owner-stops-saving.md),
+    [ADR-0028](adr/0028-a-capture-is-a-handle-fetched-over-http.md)). The ticket's premise —
+    ADR-0016's *"the vocabulary is whatever the command layer holds"* — was **false on its own
+    acceptance case**, which opens with a read and ends with a screenshot. See §15.
+
 ## 12 · Dependencies
 
 The **browser** table is settled as of 2026-09-02, by
@@ -1518,6 +1542,148 @@ Both of §13.6's items now have tickets rather than silence:
 [#41](https://github.com/jnslmk/beamhouse/issues/41) for `bhs:` definition authoring — the screen
 for [ADR-0012](adr/0012-beamhouse-may-define-pixels-placement-mints-nothing.md)'s third definition
 source, which **no surveyed product has**, because none of them has a definition source of its own.
+
+## 15 · The agent scene surface: the request vocabulary
+
+**[added 2026-09-02 — [#37](https://github.com/jnslmk/beamhouse/issues/37)]** §4.7 says an agent is
+the second editor and [ADR-0015](adr/0015-agent-control-is-mcp-over-the-bridge-control-channel.md)
+says how it arrives. This is **what it can say**.
+
+### 15.1 Four request classes, and only one is the command layer
+
+[ADR-0016](adr/0016-every-scene-mutation-is-one-undo-grained-command.md) closed with *"the MCP tool
+vocabulary is whatever the command layer holds"*, and that turned out to be **wrong on #37's own
+acceptance case** — *"enumerate the rig, build a ten-member radial array, rotate five members 180°
+about their own mid-points, capture"* opens with a read and ends with a screenshot. The control
+channel therefore carries **requests**, in four classes
+([ADR-0026](adr/0026-the-control-channel-carries-requests-only-one-class-is-a-command.md)):
+
+| Class | Mutates | Undoable |
+| ----- | ------- | -------- |
+| `command` | the scene | **yes** |
+| `query` | nothing | no |
+| `capture` | nothing | no |
+| `look` | the **feed** ([ADR-0014](adr/0014-the-agent-surface-is-two-surfaces.md)) | no |
+
+All four are **one MCP server**. ADR-0014 split the agent surface in two, but the split is in what
+the requests *reach*, not in how they arrive — and a capture is worthless if the rig is dark, so
+shipping `capture` without `look` would ship half a tool.
+
+### 15.2 The commands
+
+Fourteen, and they are the whole editing surface: **the UI draws no affordance that is not one of
+these, and the agent can do nothing else.** Sources are §4.4's four affordances, the History rows
+of #35's canvas, and ADR-0012's two bindings.
+
+| Command | Writes |
+| ------- | ------ |
+| `move(ids, …)` | overrides |
+| `rotate(ids, …, pivot)` | overrides |
+| `align(ids, axis, mode)` | overrides |
+| `distribute(ids, axis)` | overrides |
+| `revert(ids, fields?)` | overrides |
+| `array.create(ids, kind, params)` | arrays |
+| `array.set(arrayId, params)` | arrays |
+| `array.dissolve(arrayId)` | arrays |
+| `define(defId, kind, params)` | definitions |
+| `map(patchDefId, bhsDefId)` | definitions |
+| `fixture.add(defId, universe, address)` / `.remove(id)` | fixtures |
+| `object.place(kind, params)` / `.remove(id)` | objects |
+| `camera.saveView(name)` | views |
+| `scene.new()` | all |
+
+**Nothing here writes `patch`.** That is ADR-0026's second rule and it is §4.5 generalised: the
+patch and the override layer are separate writers, so **ingests write only `patch` and commands
+write everything else**. Undo therefore covers the evening of positioning §4.5 calls the thing
+worth saving, and never tries to rewind a file read — which matters because §4.6's watcher fires
+ingests *without anyone asking*.
+
+Three of the rows are load-bearing beyond their own behaviour:
+
+- **`array.set` re-places every member as one command** — the canvas's own note — and must do so
+  **without discarding the members' overrides**. That is the same merge §4.5 performs on
+  re-import, applied to a second writer.
+- **`object.place` is a command *class* whose parameter space is
+  [#43](https://github.com/jnslmk/beamhouse/issues/43)'s to fill.** Naming it now is what keeps
+  #43 from inventing a parallel path into scene state.
+- **`camera.saveView` is a command and the camera *pose* is not.** A named view is stored in the
+  `.bhs` and survives a reload; anything that writes the `.bhs` and is not `patch` is a command.
+
+### 15.3 The queries
+
+`rig.list` · `fixture.get` · `issues.list` · `universes.get` · `history.list` · `select` ·
+`measure` · `camera.set` · `hold` · `undo` · `redo`.
+
+**Every query returns the marks** — [ADR-0025](adr/0025-trust-and-provenance-marks-are-additive.md)'s
+stale, overridden and patch-overlap badges, ADR-0012's extent mismatch, ADR-0020's synthesised ids,
+§9.2's missing-definition placeholder. A read path that drops them re-opens the hole ADR-0025
+closed: an agent given bare geometry will confidently place a fixture that is drawing as a
+placeholder because its definition is absent, and report success.
+
+Three of these are not obviously reads. **`undo`/`redo` move the cursor and earn no entry of their
+own** — the one place where "the tools are the command layer" is false in the useful direction, and
+without it the stack could never be emptied. **`select` and `hold` are the human's state**, which
+the agent may set so you can see what it is about to touch, but neither mutates the scene
+([ADR-0024](adr/0024-a-selection-hold-pins-the-render.md) already ruled on `hold`). **`measure`
+earns its place as a query** rather than a rail-only readout: an agent asked to space tubes evenly
+needs the distance it is about to change.
+
+### 15.4 Targets are explicit, and so is the snap
+
+A command **carries its target ids**. The selection is a UI-side *input* that fills them at commit
+time, never part of the command — otherwise the agent would have to mutate a selection it cannot
+see, and §14.4 gives fixtures and objects one shared selection space. **The snap step is the same
+shape**: the agent passes exact values and never silently inherits your grid.
+
+This is what makes an undo entry self-describing. `Rotate 5 spokes 180°` names its five ids, which
+is what the History rows render — they could not, if the target were ambient.
+
+### 15.5 The STAR-TENT, end to end
+
+The acceptance case, and the two things it settles.
+
+**Pivot.** The sentence is *"rotate these five 180° about their own mid-points"*; ADR-0012 stores
+placement rotation **pivoting about the definition origin**. So `rotate` takes a `pivot` mode —
+`own` | `shared` | an explicit point — and **the command layer lowers it away** into ADR-0012's
+stored form, rotation plus translation. Nothing downstream learns a second rotation convention,
+which is the class of defect [#28](https://github.com/jnslmk/beamhouse/issues/28) found six sites
+of.
+
+**Where the flips live.** The canvas draws `5 MEMBERS FLIPPED · spokes 2 4 6 8 10` inside the array
+panel, but they are **overrides on top of the array, not array state**. The panel is *reporting*
+its members' overrides, not owning them — and it has to be that way, or the flip would be
+unreachable for the half of a rig that is not in an array. This is why `array.set` merges rather
+than replaces.
+
+### 15.6 Ownership, and what a second page does
+
+[ADR-0027](adr/0027-ownership-is-implicit-and-a-non-owner-stops-saving.md). **First connection owns
+implicitly**; takeover is one click behind a confirmation naming the holder; release is on socket
+close or ~15 s of silence; a woken page returns as a **non-owner** and must re-claim.
+
+This bites more rarely than it reads. The MCP server is a client of the *control channel* and the
+owning **page** applies requests, so one tab plus an agent has **no contention at all** — ownership
+is contended between pages, which only §09's *"LAN too"* produces.
+
+**A non-owner adopts the owner's scene, follows its commands, and has §4.6's auto-save suspended.**
+ADR-0015 read the hazard as the *following*; it is the *saving* — two machines, two `.bhs` files,
+seconds apart, neither wrong on its face.
+
+### 15.7 Capture
+
+[ADR-0028](adr/0028-a-capture-is-a-handle-fetched-over-http.md). `capture` returns a **handle**;
+the MCP server `GET`s `http://localhost:7070/capture/<id>` over the HTTP the bridge already serves
+(§9.4). **No bulk touches the DMX socket** — §07 is one socket, so a capture would not share the
+wire but block it, and the resulting drop is indistinguishable in §13 from a real fault.
+
+`maxEdge` defaults to **1280** and quality to **0.8**, so the normal path **cannot** reach the
+**1 MB** cap. The reply states the dimensions, the encoded size and whether it downscaled;
+exceeding the cap is an **error naming the size**, never a truncated image.
+
+**Every capture is stamped with the feed it fired against.** Beamhouse never sends DMX, so two
+captures of an unchanged scene can differ entirely — and an agent that cannot tell `live` from
+`generated` would measure chase phase as if it were its own edit, which looks exactly like a
+successful measurement.
 
 ## References
 
