@@ -578,7 +578,10 @@ mandatory key is the UUID, not `FixtureID` — which `pymvr` types as an *option
 MVR that omits it has its integer id synthesised, and without the hint a re-import synthesises
 different integers and silently drops every override. Nothing resolves, selects or arrays on the
 hint; it is written on ingest and read only by the next ingest. A synthesised id is **surfaced**,
-like the extent mismatch above.
+never silently swallowed. **[amended 2026-09-02 — [#51](https://github.com/jnslmk/beamhouse/issues/51)]**
+This read *"like the extent mismatch above"*, which the paragraph above had just retired
+([ADR-0038](adr/0038-bhs-binds-one-way-through-a-local-fixture.md) rule 4) — a live example pointing
+at a removed one.
 
 **[added 2026-09-02 — [#39](https://github.com/jnslmk/beamhouse/issues/39),
 [ADR-0030](adr/0030-gdtfspec-resolves-inside-the-archive.md)]** A patched fixture may carry a second
