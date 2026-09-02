@@ -37,7 +37,7 @@ what real profiles actually ship: GLP's own impression X4 and ADJ's Fog Fury Jet
 only `thumbnail.png` and `description.xml`, with no geometry. MIT-licensed `.3ds` meshes exist in
 `heliostate/OpenGDTFLibrary` (issue #17) if a polish pass ever wants them.
 
-## Validation
+### Validation
 
 - XML well-formed; every attribute, feature, model and geometry reference resolves; DMX offsets
   contiguous 1..14 with no duplicates.
@@ -45,7 +45,7 @@ only `thumbnail.png` and `description.xml`, with no geometry. MIT-licensed `.3ds
   `intensity → Beam_Dimmer`, `shutter → Beam_Shutter1`,
   `color_mixer → Rgb{Beam_ColorAdd_R/G/B}`, `pan → AxisGroup{Yoke_Pan}`, `tilt → AxisGroup{...}`.
 
-## Known gaps
+### Known gaps
 
 - `PhysicalDescriptions` is empty — no emitter spectrum or colour-space data.
 - The yoke arm's own lateral thickness (140 mm) is assumed equal to the base width; the drawing
@@ -78,7 +78,96 @@ Fixing these is a **definition** change, not a resolver change — no resolution
 them, per ADR-0010 and the precedent in
 [ADR-0005](../../docs/adr/0005-emitter-grouping-is-by-dmx-stride.md).
 
+## The three tungsten loads
+
+`Beamhouse@generic PAR38`, `Beamhouse@generic E27 practical`, `Beamhouse@generic profile` —
+authored for [#48](https://github.com/jnslmk/beamhouse/issues/48) under
+[ADR-0037](../../docs/adr/0037-a-dimmer-pack-is-not-a-fixture-its-loads-are.md).
+
+A dimmer pack is not a fixture; its loads are. The reference rig's two packs are repatched
+into six one-channel loads, and three definitions cover them — a PAR38 is an E27 lamp behind
+a reflector, so the PARs and the practicals share a bulb, a colour temperature and a dimming
+curve.
+
+**These are `gdtf:`, not `bhs:`.** ADR-0037 decision 3 minted them as `bhs:`;
+[ADR-0038](../../docs/adr/0038-bhs-binds-one-way-through-a-local-fixture.md) rule 5 corrects
+the prefix, because `bhs:` declares pixels and geometry and never optics — it can say none of
+`BeamType`, `BeamAngle`, `BeamRadius` or `ColorTemperature`, and all four are load-bearing
+here. Same test ADR-0033 applied to the spoke: only GDTF has a geometry tree at all.
+
+| definition | `BeamType` | angle | `BeamRadius` | CCT | `LampType` |
+| --- | --- | --- | --- | --- | --- |
+| `generic PAR38` | `Wash` | 60° flood | 0.060 | 2700 K | `Tungsten` |
+| `generic E27 practical` | `Glow` | *omitted* | 0.030 | 2700 K | `Tungsten` |
+| `generic profile` | `Spot` | `BeamAngle` == `FieldAngle`, 25° | *omitted* | 3200 K | `Halogen` |
+
+`Glow` is [ADR-0022](../../docs/adr/0022-beamtype-selects-the-path-stride-aggregates-within-it.md)
+rule 2's absence of the cone with the emissive body still on — a bare bulb in a shade. `Spot`
+with `BeamAngle == FieldAngle` is the hard-edge degeneration `CONTEXT.md`'s **Cone angle** entry
+describes; a profile is the fixture that rule was written for.
+
+**Declared, not invented.** 2700 K and 3200 K are black-body temperatures and GDTF's
+`EmitterSpectrum` documents its default as *a black body at the declared `ColorTemperature`*, so
+the white point is read from the file rather than assumed. CRI 100 is tungsten physics.
+`BeamRadius` 0.060 is half the published 121 mm PAR38 face; 0.030 is half a standard A60 bulb.
+
+**Placeholders, labelled in the files themselves** (ADR-0037 decision 8):
+
+- the halogen **3200 K** is the standard theatre figure, not a measurement;
+- the profile's **25–50° zoom range** is a nominal spec, unverified against these two units;
+- body dimensions on the practical and the profile are nominal furniture/fixture sizes.
+
+**Two numbers are deliberately omitted rather than defaulted.** The practical declares no
+`BeamAngle`/`FieldAngle` — a `Glow` draws no cone, so any value there would later read as
+measured. The profile declares no `BeamRadius` — no lens dimension is known. Both fall to the
+GDTF default, which is a visible choice rather than a hidden invention.
+
+### The profilers' manual zoom lives here, for now
+
+The two profilers are the same model hung at **different** angles, set by hand on the barrel:
+
+| fixture | id | slot | hung at |
+| --- | --- | --- | --- |
+| Profiler 1 | 16 | 87 | **30°** |
+| Profiler 2 | 17 | 88 | **42°** |
+
+That is a hang setting, and it fits nowhere yet. It cannot go in the definition — both units
+share it — and it cannot go in the placement, which
+[ADR-0012](../../docs/adr/0012-beamhouse-may-define-pixels-placement-mints-nothing.md) rule 1
+pins to a rigid transform. ADR-0037 decision 7 gives it a **per-fixture override**, a sibling of
+the placement override, and the definition carries the slot GDTF already has for it: a
+**virtual channel**, `Offset=""` — an attribute that exists logically and consumes no DMX. So
+`generic profile` declares `Zoom` over 25–50° with no offset, and the override supplies its
+value, consulted by `resolve` like any other channel.
+
+**No `.bhs` file exists anywhere on disk yet**, so this table is the migration record until the
+schema does — the same holding pattern the STAR-TENT's serpentine spoke table sits in.
+
+`gdtf-ts` has to implement virtual channels for this to resolve at all. Mizer's GDTF crate
+discards them: `add_channel` bails with a `TODO` and the attribute is dropped
+(`conversion.rs:64-67`). ADR-0004 makes `gdtf-ts` ours, so this is work rather than a blocker —
+but there is no upstream code to crib.
+
+### Validation
+
+- XML well-formed; every attribute, feature, model and geometry reference resolves;
+  `PrimitiveType`, `BeamType` and `LampType` all in the GDTF enums; DMX offsets contiguous
+  `1..n` with no duplicates, with the profile's virtual `Zoom` correctly outside that count.
+- Not yet loaded through Mizer's GDTF provider — the impression 90 was, and that check is
+  still owed here.
+
+### Known gaps
+
+- `PhysicalDescriptions` is empty on all three — no emitter spectrum. Whether GDTF can declare a
+  spectrum as a function of *level*, which ADR-0037 decision 5's tungsten dimming curve needs,
+  is open in [#50](https://github.com/jnslmk/beamhouse/issues/50). Until it answers, the curve
+  lives in the renderer (`DESIGN.md` §8.3) rather than in these files.
+- `PowerConsumption` and `LuminousFlux` are omitted on all three. No wattage was measured, and
+  no profile on this rig carries a trustworthy `LuminousFlux` anyway.
+- The `Wash` PAR38 declares `BeamAngle == FieldAngle == 60`, so its edge falloff comes from
+  `BeamType` alone. A real PAR38 flood has a measurable field/beam split; nobody measured it.
+
 ## Using it with Mizer
 
-Copy the `.gdtf` into a directory on Mizer's GDTF library path (settings key `gdtf`, defaulting
+Copy the `.gdtf` files into a directory on Mizer's GDTF library path (settings key `gdtf`, defaulting
 to `fixtures/gdtf` relative to Mizer). It then patches as a `gdtf:` id.

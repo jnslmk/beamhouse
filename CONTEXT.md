@@ -252,7 +252,14 @@ _Avoid_: supported attribute, known attribute, handled attribute (all imply the 
 **Colour space**:
 Which real-world colours a definition's `R`, `G`, `B` name — primaries plus white point. GDTF
 declares it per definition and defaults it to sRGB; OFL has no equivalent concept. Distinct from
-**transfer function**, and the two are never called "colour handling" jointly.
+**transfer function**, and the two are never called "colour handling" jointly. v1 **assumes the
+primaries** and reads neither the declared space nor the gamut — but it does read a **white
+point**, where a fixture has no `ColorAdd_*` channels and its colour therefore comes from a
+declared `<Beam ColorTemperature>`
+([ADR-0037](docs/adr/0037-a-dimmer-pack-is-not-a-fixture-its-loads-are.md) amending
+[ADR-0008](docs/adr/0008-colour-space-is-assumed-transfer-function-is-read.md) rule 5). The two
+halves of this term are therefore sourced differently, and saying "the colour space is assumed"
+is now imprecise: the primaries are.
 _Avoid_: gamut (that is the polygon a colour space encloses, which GDTF names separately), colour
 profile
 

@@ -735,8 +735,13 @@ geometry for the shared-link viewer (§9.2).
 **[added 2026-09-02 — [#42](https://github.com/jnslmk/beamhouse/issues/42)]** **Below the
 primitive there is one more step: a definition that does not resolve at all.** ADR-0012 rule 9
 fixed proxy geometry to mean "no *mesh*", which left nothing covering "no *definition*" — and that
-case is live on the reference rig, which patches `ofl:generic:4-channel-dimmer-pack` for fixtures 7
-and 8 against a file that is nowhere on disk.
+case was live on the reference rig, which patched `ofl:generic:4-channel-dimmer-pack` for fixtures 7
+and 8 against a file that is nowhere on disk. **[the example expired 2026-09-02 —
+[#48](https://github.com/jnslmk/beamhouse/issues/48)]** Those two fixtures are gone: a dimmer pack
+is not a fixture ([ADR-0037](adr/0037-a-dimmer-pack-is-not-a-fixture-its-loads-are.md)), and their
+six loads are patched on three authored GDTF definitions that do resolve. **ADR-0034 is unaffected
+— it lost its live instance, not its argument**, and the reference rig now exercises the
+unresolved case nowhere at all, which is worth knowing rather than discovering.
 [ADR-0034](adr/0034-an-unresolved-definition-is-a-marked-fixture-not-a-missing-one.md): the fixture
 **stays in the patch, stays placed, and renders a fixed-size marker**, surfaced as an
 [ADR-0025](adr/0025-trust-and-provenance-marks-are-additive.md) provenance mark. Nothing is sized —
@@ -872,7 +877,8 @@ replacement will be chosen later. Its row above is struck rather than deleted be
 [ADR-0002](adr/0002-bridge-speaks-both-sacn-and-artnet.md)'s context cites it as one of two
 protocol-agnostic field devices — **that decision is unaffected**, since Art-Net is mandatory there
 on gled2's account and not on the CueCore2's, but the sentence is now historical. Two live
-consequences: universe 1's nine wired fixtures (6 × impression 90, 2 × dimmer pack, Fog Fury) are
+consequences: universe 1's thirteen wired fixtures (6 × impression 90, 6 tungsten loads on former
+dimmer-pack slots per [#48](https://github.com/jnslmk/beamhouse/issues/48), Fog Fury) are
 undrivable until a gateway exists, so #44's on-the-wire confirmation can reach the bridge but not a
 fixture on that universe; and **the replacement must speak sACN**, or universe 1 returns to Art-Net
 and ADR-0029 decision 9's cross-transport collision comes back on exactly the universe it left.
@@ -1292,6 +1298,68 @@ export function resolveColor(ch: ColorChannels): LinearRGB {
   // later: blend warm/cool by ratio → kelvin → linear RGB, add to RGB, clamp.
 }
 ```
+
+**[extended 2026-09-02 — #48]** Some fixtures have no `ColorAdd_*` channels at all, and the
+reference rig's six tungsten loads are the first. Their colour does not arrive on the wire; it
+arrives from the file, as a declared `<Beam ColorTemperature>`.
+[ADR-0037](adr/0037-a-dimmer-pack-is-not-a-fixture-its-loads-are.md) decision 4 reopens ADR-0008
+rule 5 **exactly far enough to admit the white point and nothing else**. Primaries stay assumed
+sRGB, the fixture model still carries no `colorSpace` and no `gamut`, and `resolveColor` is still
+the sole minter of `LinearRGB` — there is no second path, only a second *input* to the one path.
+
+This is declared rather than assumed, which is the standard ADR-0008 holds everything to: GDTF
+defaults `<Beam ColorTemperature>` to 6000 K and documents `EmitterSpectrum`'s default as *a
+black body at the declared `ColorTemperature`*. 2700 K and 3200 K are read, not invented.
+
+**Tungsten dims warm, and the curve is keyed to radiance rather than to the DMX value**
+(ADR-0037 decision 5):
+
+    T / T0 = (radiance fraction) ^ 0.1235          from T ∝ V^0.42, Φ ∝ V^3.4
+
+**This costs no new assumption.** Rule 3 as amended by
+[ADR-0010](adr/0010-resolution-is-total-the-renderer-selects-by-attribute.md) already states that
+`Dimmer` resolves to a dimensionless 0..1 proportional to radiance, so the curve consumes the
+radiance fraction that is already there and adds nothing. It predicts no lux and reads no
+`LuminousFlux`, so [ADR-0019](adr/0019-the-intensity-map-is-relative-not-photometric.md)'s
+objection does not reach it: this is a chromaticity claim about a filament, not a photometric
+prediction about a room. Against the alternative — a fixed 2700 K scaled in brightness — a PAR at
+10% would read as bright white beside six LED movers that genuinely do not shift.
+
+**The white point is two numbers, not one, because the drift has to be gated.** An LED at a
+declared 5600 K does *not* shift as it dims, and the impression 90 declares exactly that. So the
+model carries the temperature **and** whether it comes off a filament; GDTF says which in
+`<Beam LampType>` (`Tungsten`, `Halogen`, `Discharge`, `LED`), and the fixture model reduces that
+enum to the one bit the renderer needs rather than importing it. ADR-0037 decision 5 argues the
+drift *is* the tungsten signature and never says what selects it; this is the narrowest gate its
+own argument requires. The alternative — drift everything with a declared white point — is
+recorded here because it is what an ungated reading would do, and it is wrong for every LED
+fixture that declares a CCT.
+
+```ts
+/** A declared `<Beam ColorTemperature>`, plus whether it drifts as the lamp dims. */
+export type WhitePoint = { readonly kelvin: number; readonly filament: boolean };
+
+export function resolveColor(ch: ColorChannels, wp?: WhitePoint, dimmer = 1): LinearRGB {
+  // ASSUMPTION (ADR-0008): PhysicalUnit `ColorComponent` is undefined photometrically;
+  // v1 reads 0..1 as proportional to radiance. The only such assumption in the codebase.
+  if (ch) return [ch.r, ch.g, ch.b] as unknown as LinearRGB;
+
+  // No ColorAdd_* on this fixture (ADR-0037 decision 4). Colour comes from the declared
+  // white point; a filament also shifts with level (decision 5), an LED does not.
+  const k = wp!.filament ? wp!.kelvin * Math.pow(Math.max(dimmer, 1e-4), 0.1235) : wp!.kelvin;
+  return kelvinToLinearRGB(k);   // Planckian locus -> xy -> XYZ -> linear sRGB, unit luminance
+}
+```
+
+`kelvinToLinearRGB` assumes sRGB primaries like everything else here, and it is the *only* new
+site: nothing gains the ability to half-consult a colour space, because no colour space is added.
+A `Glow` practical takes this path too — it draws no cone, so the white point lands on its
+emissive body alone.
+
+**Still open: whether this belongs in the file instead.** If GDTF can declare a spectrum as a
+function of level — plausibly an `<Emitter>` carrying several `<Measurement>` nodes — the curve
+ships in the authored definition and the renderer keeps only the white point.
+[#50](https://github.com/jnslmk/beamhouse/issues/50) asks. Until it answers, the curve is here.
 
 Both render paths consume that type and no other. The strip's `DataTexture` is annotated
 `LinearSRGBColorSpace` **explicitly** — it matches three.js's default for a float texture, and

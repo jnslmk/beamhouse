@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<GDTF DataVersion="1.2">
+  <FixtureType CanHaveChildren="No" Description="Generic PAR38 tungsten flood on a dimmer channel - 1ch Dimmer. Authored for this project (ADR-0037, ADR-0038 rule 5); a dimmer pack is not a fixture, its loads are. DECLARED: 2700 K and CRI 100 are black-body physics for a tungsten filament, and GDTF EmitterSpectrum defaults to a black body at the declared ColorTemperature. BeamRadius 0.060 is half the published 121 mm PAR38 face. BeamAngle 60 is the published flood spread. PLACEHOLDER: PowerConsumption and LuminousFlux are omitted rather than invented - no lamp wattage was measured." FixtureTypeID="FFC1C66D-905A-47AB-87DB-5FCEEF121B1A" LongName="Beamhouse generic PAR38" Manufacturer="Beamhouse" Name="generic PAR38" RefFT="" ShortName="PAR38" Thumbnail="">
+    <AttributeDefinitions>
+      <ActivationGroups/>
+      <FeatureGroups>
+        <FeatureGroup Name="Dimmer" Pretty="D"><Feature Name="Dimmer"/></FeatureGroup>
+      </FeatureGroups>
+      <Attributes>
+        <Attribute Feature="Dimmer.Dimmer" Name="Dimmer" PhysicalUnit="None" Pretty="Dim"/>
+      </Attributes>
+    </AttributeDefinitions>
+    <Wheels/>
+    <PhysicalDescriptions/>
+    <Models>
+      <Model File="" Height="0.136000" Length="0.121000" Name="Body" PrimitiveType="Cylinder" Width="0.121000"/>
+      <Model File="" Height="0.010000" Length="0.121000" Name="Beam" PrimitiveType="Cylinder" Width="0.121000"/>
+    </Models>
+    <Geometries>
+      <Geometry Model="Body" Name="Body" Position="{1.000000,0.000000,0.000000,0.000000}{0.000000,1.000000,0.000000,0.000000}{0.000000,0.000000,1.000000,0.000000}{0,0,0,1}">
+        <Beam BeamAngle="60.000000" BeamRadius="0.060000" BeamType="Wash" ColorRenderingIndex="100" ColorTemperature="2700.000000" FieldAngle="60.000000" LampType="Tungsten" Model="Beam" Name="Beam" Position="{1.000000,0.000000,0.000000,0.000000}{0.000000,1.000000,0.000000,0.000000}{0.000000,0.000000,1.000000,0.136000}{0,0,0,1}" RectangleRatio="1.000000" ThrowRatio="1.000000"/>
+      </Geometry>
+    </Geometries>
+    <DMXModes>
+      <DMXMode Description="One dimmer channel, as driven by a pack slot" Geometry="Body" Name="Dimmer">
+        <DMXChannels>
+          <DMXChannel DMXBreak="1" Geometry="Beam" Highlight="None" InitialFunction="Beam_Dimmer.Dimmer.Dimmer" Offset="1">
+            <LogicalChannel Attribute="Dimmer" DMXChangeTimeLimit="0.000000" Master="Grand" MibFade="0.000000" Snap="No">
+              <ChannelFunction Attribute="Dimmer" DMXFrom="0/1" Default="0/1" Max="1.000000" Min="0.000000" Name="Dimmer" OriginalAttribute="" PhysicalFrom="0.000000" PhysicalTo="1.000000"/>
+            </LogicalChannel>
+          </DMXChannel>
+        </DMXChannels>
+        <Relations/>
+        <FTMacros/>
+      </DMXMode>
+    </DMXModes>
+    <Revisions/>
+    <FTPresets/>
+    <Protocols/>
+  </FixtureType>
+</GDTF>

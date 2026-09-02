@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<GDTF DataVersion="1.2">
+  <FixtureType CanHaveChildren="No" Description="Generic halogen profile spot on a dimmer channel - 1ch Dimmer plus a VIRTUAL Zoom. Authored for this project (ADR-0037, ADR-0038 rule 5). BeamAngle equals FieldAngle, which is the hard-edge degeneration a profile is the fixture for. The Zoom channel has Offset='' - it exists logically and consumes no DMX slot, because the barrel is set by hand at hang time; its value comes from the per-fixture override (ADR-0037 decision 7), and gdtf-ts must implement virtual channels for it to resolve at all. PLACEHOLDER, per ADR-0037 decision 8: the halogen 3200 K is the standard theatre figure and NOT a measurement; the 25-50 degree zoom range is the fixture's nominal spec and is UNVERIFIED against these two units; the body dimensions are nominal. The two units are hung at 30 and 42 degrees - those are hang settings and live in the per-fixture override, never in this file. BeamRadius is deliberately OMITTED - no lens dimension is known, so it falls to the GDTF default rather than to an invented number. CRI 100 and the black-body 3200 K are tungsten-halogen physics." FixtureTypeID="1081DF90-2D92-493F-B1F7-7B7D90B778CD" LongName="Beamhouse generic profile" Manufacturer="Beamhouse" Name="generic profile" RefFT="" ShortName="PROFILE" Thumbnail="">
+    <AttributeDefinitions>
+      <ActivationGroups/>
+      <FeatureGroups>
+        <FeatureGroup Name="Dimmer" Pretty="D"><Feature Name="Dimmer"/></FeatureGroup>
+        <FeatureGroup Name="Beam" Pretty="B"><Feature Name="Beam"/></FeatureGroup>
+      </FeatureGroups>
+      <Attributes>
+        <Attribute Feature="Dimmer.Dimmer" Name="Dimmer" PhysicalUnit="None" Pretty="Dim"/>
+        <Attribute Feature="Beam.Beam" Name="Zoom" PhysicalUnit="Angle" Pretty="Zoom"/>
+      </Attributes>
+    </AttributeDefinitions>
+    <Wheels/>
+    <PhysicalDescriptions/>
+    <Models>
+      <Model File="" Height="0.180000" Length="0.500000" Name="Body" PrimitiveType="Conventional" Width="0.180000"/>
+      <Model File="" Height="0.010000" Length="0.180000" Name="Beam" PrimitiveType="Cylinder" Width="0.180000"/>
+    </Models>
+    <Geometries>
+      <Geometry Model="Body" Name="Body" Position="{1.000000,0.000000,0.000000,0.000000}{0.000000,1.000000,0.000000,0.000000}{0.000000,0.000000,1.000000,0.000000}{0,0,0,1}">
+        <Beam BeamAngle="25.000000" BeamType="Spot" ColorRenderingIndex="100" ColorTemperature="3200.000000" FieldAngle="25.000000" LampType="Halogen" Model="Beam" Name="Beam" Position="{1.000000,0.000000,0.000000,0.000000}{0.000000,1.000000,0.000000,0.000000}{0.000000,0.000000,1.000000,0.250000}{0,0,0,1}" RectangleRatio="1.000000" ThrowRatio="1.000000"/>
+      </Geometry>
+    </Geometries>
+    <DMXModes>
+      <DMXMode Description="One dimmer channel on the wire, plus a virtual Zoom the barrel sets by hand" Geometry="Body" Name="Dimmer">
+        <DMXChannels>
+          <DMXChannel DMXBreak="1" Geometry="Beam" Highlight="None" InitialFunction="Beam_Dimmer.Dimmer.Dimmer" Offset="1">
+            <LogicalChannel Attribute="Dimmer" DMXChangeTimeLimit="0.000000" Master="Grand" MibFade="0.000000" Snap="No">
+              <ChannelFunction Attribute="Dimmer" DMXFrom="0/1" Default="0/1" Max="1.000000" Min="0.000000" Name="Dimmer" OriginalAttribute="" PhysicalFrom="0.000000" PhysicalTo="1.000000"/>
+            </LogicalChannel>
+          </DMXChannel>
+          <DMXChannel DMXBreak="1" Geometry="Beam" Highlight="None" InitialFunction="Beam_Zoom.Zoom.Zoom" Offset="">
+            <LogicalChannel Attribute="Zoom" DMXChangeTimeLimit="0.000000" Master="None" MibFade="0.000000" Snap="No">
+              <ChannelFunction Attribute="Zoom" DMXFrom="0/1" Default="0/1" Max="1.000000" Min="0.000000" Name="Zoom" OriginalAttribute="" PhysicalFrom="25.000000" PhysicalTo="50.000000"/>
+            </LogicalChannel>
+          </DMXChannel>
+        </DMXChannels>
+        <Relations/>
+        <FTMacros/>
+      </DMXMode>
+    </DMXModes>
+    <Revisions/>
+    <FTPresets/>
+    <Protocols/>
+  </FixtureType>
+</GDTF>

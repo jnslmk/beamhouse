@@ -5,7 +5,7 @@
 - **Decides:** [#47](https://github.com/jnslmk/beamhouse/issues/47)
 - **Amends:** [ADR-0008](0008-colour-space-is-assumed-transfer-function-is-read.md) rule 5
 - **Confirms:** [ADR-0003](0003-fixture-id-is-the-only-identity.md), [ADR-0012](0012-beamhouse-may-define-pixels-placement-mints-nothing.md), [ADR-0035](0035-a-scene-object-is-a-fixture-with-an-empty-dmx-mode.md), [ADR-0036](0036-the-ground-plane-is-the-only-surface-light-reaches.md)
-- **Amended by:** [ADR-0038](0038-bhs-binds-one-way-through-a-local-fixture.md) (2026-09-02) — decision 3 prefix
+- **Amended by:** [ADR-0038](0038-bhs-binds-one-way-through-a-local-fixture.md) (2026-09-02) — decision 3 prefix; [#48](https://github.com/jnslmk/beamhouse/issues/48) (2026-09-02) — decision 2 slot table, off by one
 
 
 ## Context
@@ -26,8 +26,17 @@ Recorded nowhere in this repo before now, and the fact that decides the ticket:
 
 | pack | slots | loads |
 |---|---|---|
-| Dimmerpack 1ch (fixture 8) | 88 | **2** PAR38 front lights, ganged on the one channel |
-| Dimmerpack 4ch (fixture 7) | 84–87 | 2 E27 standing lamps (84, 85), 2 profilers (86, 87) |
+| Dimmerpack 1ch (fixture 8) | 89 | **2** PAR38 front lights, ganged on the one channel |
+| Dimmerpack 4ch (fixture 7) | 85–88 | 2 E27 standing lamps (85, 86), 2 profilers (87, 88) |
+
+**[corrected 2026-09-02 — #48]** This table and decision 2's originally read the packs at 88 and
+84–87. QLC+'s `<Address>` is **0-based** and was read as a DMX slot. Address 84 is DMX 85 — the
+same +1 `mizer-shows/README.md` already states for fixture ids and universes — and three
+independent checks agree: Impression 1 sits at `<Address>0` and Mizer patches it at `channel: 1`;
+the Fog Fury at `<Address>89` is Mizer `channel: 90`; and the Mizer YAML always carried the packs
+at 85 and 89. The **ordering** within the 4ch pack is unaffected and is confirmed by the cue
+stack — QLC+'s `RL1`/`RL2` scenes write fixture 6 relative channels 0 and 1, so the standing
+lamps really are on the pack's first two channels.
 
 Six loads behind two patched fixtures. All six are **tungsten** — the PAR38s and the standing lamps
 are plain incandescent, the profilers halogen — on a rig that is otherwise entirely LED.
@@ -81,14 +90,18 @@ rule 1's "placement supplies a rigid transform and nothing else". Both stay lite
 **2 · The reference rig repatches two fixtures into six.** Universe 1, sACN-numbered per
 [ADR-0007](0007-one-universe-space-sacn-numbered.md):
 
-| load | slot | definition | `BeamType` | CCT |
-|---|---|---|---|---|
-| PAR front L | **88** | `bhs:generic-par38` | `Wash` | 2700 K |
-| PAR front R | **88** | `bhs:generic-par38` | `Wash` | 2700 K |
-| Standing lamp 1 | 84 | `bhs:generic-e27-practical` | `Glow` | 2700 K |
-| Standing lamp 2 | 85 | `bhs:generic-e27-practical` | `Glow` | 2700 K |
-| Profiler 1 | 86 | `bhs:generic-profile` | `Spot` | 3200 K |
-| Profiler 2 | 87 | `bhs:generic-profile` | `Spot` | 3200 K |
+**[corrected 2026-09-02 — #48]** Slots corrected per the note above, and the prefix corrected
+per [ADR-0038](0038-bhs-binds-one-way-through-a-local-fixture.md) rule 5 — these are authored
+GDTF, not `bhs:`. Fixture ids are the ones #48 actually patched; ids 7 and 8 are retired.
+
+| load | id | slot | definition | `BeamType` | CCT |
+|---|---|---|---|---|---|
+| PAR front L | 18 | **89** | `Beamhouse@generic PAR38` | `Wash` | 2700 K |
+| PAR front R | 19 | **89** | `Beamhouse@generic PAR38` | `Wash` | 2700 K |
+| Standing lamp 1 | 14 | 85 | `Beamhouse@generic E27 practical` | `Glow` | 2700 K |
+| Standing lamp 2 | 15 | 86 | `Beamhouse@generic E27 practical` | `Glow` | 2700 K |
+| Profiler 1 | 16 | 87 | `Beamhouse@generic profile` | `Spot` | 3200 K |
+| Profiler 2 | 17 | 88 | `Beamhouse@generic profile` | `Spot` | 3200 K |
 
 **3 · Three definitions, not six — because a PAR38 is an E27 lamp behind a reflector.** The PARs and
 the standing lamps are the same bulb at the same colour temperature; only the reflector and the body
@@ -96,9 +109,14 @@ differ, so the dimming behaviour of decision 5 is authored once and shared by fo
 
 | definition | `BeamType` | angle | `BeamRadius` | body |
 |---|---|---|---|---|
-| `bhs:generic-par38` | `Wash` | 60° flood | 0.060 (121 mm face) | primitive |
-| `bhs:generic-e27-practical` | `Glow` | — | 0.030 (A60 bulb) | primitives — stand, shade |
-| `bhs:generic-profile` | `Spot` | `BeamAngle` == `FieldAngle` | — | primitive |
+| `Beamhouse@generic PAR38` | `Wash` | 60° flood | 0.060 (121 mm face) | primitive |
+| `Beamhouse@generic E27 practical` | `Glow` | — | 0.030 (A60 bulb) | primitives — stand, shade |
+| `Beamhouse@generic profile` | `Spot` | `BeamAngle` == `FieldAngle` | — | primitive |
+
+**[corrected 2026-09-02 — ADR-0038 rule 5]** These were minted as `bhs:generic-par38`,
+`bhs:generic-e27-practical` and `bhs:generic-profile`. `bhs:` declares pixels and geometry and
+never optics, so it can say none of `BeamType`, `BeamAngle`, `BeamRadius` or `ColorTemperature` —
+all four load-bearing here. They are authored GDTF in `definitions/authored/`, written by #48.
 
 `Glow` for the practicals is [ADR-0022](0022-beamtype-selects-the-path-stride-aggregates-within-it.md)
 rule 2's "absence of the cone" with the emissive body still on, which is what a bare bulb in a shade
@@ -150,10 +168,10 @@ white next to six LED movers that genuinely do not shift. The drift *is* the tun
 these are the only tungsten sources in the rig.
 
 **6 · The address → fixture map is not injective, and reverse lookups return a set.** The two PAR38s
-share slot 88, because one dimmer channel drives both. Nothing anywhere requires address uniqueness
+share slot **89** (corrected from 88, above), because one dimmer channel drives both. Nothing anywhere requires address uniqueness
 and [ADR-0011](0011-a-fixture-is-addressed-per-break.md) addresses per break without claiming
 exclusivity, so this is legal by construction — but it is the first time the reference rig exercises
-it. Any reverse mapping (a slot inspector, selection by address, "who owns slot 88") returns a
+it. Any reverse mapping (a slot inspector, selection by address, "who owns slot 89") returns a
 **set**. Free to specify now, a rewrite once something assumes a single answer.
 
 **7 · A per-fixture override supplies the value for a channel with no DMX offset.** The two

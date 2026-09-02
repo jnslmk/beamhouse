@@ -20,6 +20,14 @@ live app still can, and does.** The reference rig patches `ofl:generic:4-channel
 fixtures 7 and 8, and no such definition is on disk — two of thirteen fixtures, in the rig this
 project is built around, resolve to nothing today.
 
+**[the live instance expired 2026-09-02 — [#48](https://github.com/jnslmk/beamhouse/issues/48)]**
+Fixtures 7 and 8 are retired. [ADR-0037](0037-a-dimmer-pack-is-not-a-fixture-its-loads-are.md)
+ruled that a dimmer pack is not a fixture, and #48 repatched the six loads onto three authored
+GDTF definitions that resolve. **This decision is unaffected — it lost its example, not its
+argument**, and the case is not hypothetical in general: any rig naming a definition the machine
+does not have hits it. The reference rig now exercises it nowhere, which means nothing here is
+covered by the rig we test against.
+
 The failure mode is the one §5.1 already named from the other direction: *"a rig where half the
 fixtures are invisible is a confusing first bug."* §5.1 generates primitives to avoid it. Nothing
 was doing the equivalent one level up.

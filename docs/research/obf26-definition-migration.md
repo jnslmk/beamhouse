@@ -10,7 +10,10 @@ never QLC+ as a resolved runtime format.
 
 **Headline: the whole rig is migrated, and the WLED half was rebuilt from scratch afterwards.**
 The two dimmer packs and the fogger moved cleanly and channel-for-channel — dimmers to OFL,
-fogger to the pinned GDTF. The six GLP impression 90 RGB movers moved to the GDTF definition
+fogger to the pinned GDTF. **[the dimmer half was undone 2026-09-02 —
+[#48](https://github.com/jnslmk/beamhouse/issues/48)]** "Cleanly and channel-for-channel" was true
+and beside the point: a dimmer pack is not a fixture, so the clean mapping mapped the wrong thing.
+See §5, and the row for ids 7 and 8 below. The six GLP impression 90 RGB movers moved to the GDTF definition
 authored for this project in [#16](https://github.com/jnslmk/beamhouse/issues/16) — the one
 fixture with no profile anywhere, now with one built from GLP's own dimensioned CAD.
 
@@ -41,8 +44,11 @@ fixtures.
 | id | Name | Was | Mode | Now | Mode | Ch | Verdict |
 |----|------|-----|------|-----|------|----|---------|
 | 1–6 | Impression 1–6 | `qlc:GLP:impression 90 RGB` | `Normal` | `gdtf:9C7854E1-32D5-4DE9-BB8E-6D121F27CF48` | `Normal` | 14 | clean, 1:1 — **authored profile**, not from GDTF Share |
-| 7 | Dimmerpack 4ch | `qlc:Generic:Dimmer` | `4 Channel` | `ofl:generic:4-channel-dimmer-pack` | `4-channel` | 4 | clean, 1:1 |
-| 8 | Dimmerpack 1ch | `qlc:Generic:Dimmer` | `1 Channel` | `ofl:generic:4-channel-dimmer-pack` | `1-channel` | 1 | clean, 1:1 |
+| ~~7~~ | ~~Dimmerpack 4ch~~ | `qlc:Generic:Dimmer` | `4 Channel` | ~~`ofl:generic:4-channel-dimmer-pack`~~ | — | — | **retired** — a pack is not a fixture (#48, §5) |
+| ~~8~~ | ~~Dimmerpack 1ch~~ | `qlc:Generic:Dimmer` | `1 Channel` | ~~`ofl:generic:4-channel-dimmer-pack`~~ | — | — | **retired** — same |
+| 14, 15 | Standing lamp 1, 2 | *(4ch pack ch 1, 2)* | — | `gdtf:AD8F1059-…D1B3` | `Dimmer` | 1 | authored, #48 |
+| 16, 17 | Profiler 1, 2 | *(4ch pack ch 3, 4)* | — | `gdtf:1081DF90-…B78CD` | `Dimmer` | 1 | authored, #48 |
+| 18, 19 | PAR front L, R | *(1ch pack ch 1, ganged)* | — | `gdtf:FFC1C66D-…1B1A` | `Dimmer` | 1 | authored, #48 — **both on slot 89** |
 | 10 | Fog Fury Jett | `qlc:American DJ:Fog Fury Jett (HTP Fog)` | `7 Channel` | `gdtf:26D59406-1AE9-4D59-8E00-A9DAF08EA018` | `7 Channel Mode` | 7 | clean, 1:1 |
 | ~~9, 11, 12, 13~~ | ~~WLED Star / Highlight / Sparkle / Flash~~ | `qlc:WLED:WLED Segment Effect` | `18 Channel` | — | — | — | **retired**: these were WLED *segments*, not fixtures (#21) |
 | 101–110 | STAR-TENT Spoke 1–10 | *(part of the same four segments)* | — | `ofl:beamhouse:wled-star-tent-spoke-23px` | `23px RGB 69-channel` | 69 | clean — verified on the live node, §3 |
@@ -186,7 +192,19 @@ through offset 10 — both carry 16-bit Pan, Tilt, R, G and B — and breaks at 
 **The X4 (rid 46490, pinned) stays in the library as a geometry cross-check for the authored
 profile. It must never be patched as an impression 90.**
 
-### Generic Dimmer → OFL
+### Generic Dimmer → OFL — **superseded 2026-09-02 by [#48](https://github.com/jnslmk/beamhouse/issues/48)**
+
+**This whole subsection is historical.** The mapping below was clean on channel count and
+semantics and still wrong, because the thing being mapped is not a fixture:
+[ADR-0037](../adr/0037-a-dimmer-pack-is-not-a-fixture-its-loads-are.md) rules that **a dimmer pack
+emits no light and its loads are the fixtures**. The `matrix` this subsection praises is a
+*ganging* statement — `pixelGroups` named `Master`, `1/2`, `3/4` — with no `physical` block at
+all, so traced through ADR-0022 then ADR-0005 a pack renders as a four-texel strip of no declared
+extent. The two packs are now **six one-channel loads** on **three authored GDTF definitions**
+(`definitions/authored/`), and the definition named below was never on disk anyway.
+
+Kept rather than deleted: it records what the migration actually did, and the mode table is still
+the correct reading of the OFL file.
 
 `qlc:Generic:Dimmer` → `ofl:generic:4-channel-dimmer-pack` (Mizer's bundled OFL library).
 

@@ -163,7 +163,12 @@ a different and better ground: **which format can express what ADR-0022 requires
   disk** — there is no OFL fetch tooling (`tools/` holds `adr.sh` and `gdtf-share.sh` only). Two of
   thirteen fixtures therefore do not resolve locally today. That is a real gap and it is **not**
   this ticket's: it is filed separately, because ADR-0031 removed the sharing rationale that would
-  have made it part of this decision.
+  have made it part of this decision. **[closed 2026-09-02 —
+  [#48](https://github.com/jnslmk/beamhouse/issues/48)]** It closed by dissolving rather than by
+  fetching: [ADR-0037](0037-a-dimmer-pack-is-not-a-fixture-its-loads-are.md) ruled a dimmer pack is
+  not a fixture, so fixtures 7 and 8 are gone and their six loads are on authored GDTF. Rule 6 has
+  now fired on both sides — with #46 retiring the spoke, `definitions/ofl/` empties completely and
+  the reference rig ends with **zero OFL fixtures**.
 - **ADR-0022 rule 8's mesh argument is weakened but its conclusion holds.** The mesh ships; it is
   no longer load-bearing for correctness. Recorded here rather than by editing rule 8, so the
   measurement that changed the reading stays attached to the reading.

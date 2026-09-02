@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<GDTF DataVersion="1.2">
+  <FixtureType CanHaveChildren="No" Description="Generic E27 tungsten practical - a standing lamp on a dimmer channel, 1ch Dimmer. Authored for this project (ADR-0037, ADR-0038 rule 5). BeamType Glow: an emissive body with no cone, which is what a bare bulb in a shade is (ADR-0022 rule 2). DECLARED: 2700 K and CRI 100 are black-body physics for a tungsten filament. BeamRadius 0.030 is half the standard A60 bulb diameter. BeamAngle and FieldAngle are deliberately OMITTED rather than given a value - a Glow draws no cone, so any number here would be read as measured. PLACEHOLDER: the stand height 1.400 m and shade 0.240 m are nominal furniture dimensions, not measured off these two lamps." FixtureTypeID="AD8F1059-A90D-4477-85EB-FD93C185D1B3" LongName="Beamhouse generic E27 practical" Manufacturer="Beamhouse" Name="generic E27 practical" RefFT="" ShortName="E27PRAC" Thumbnail="">
+    <AttributeDefinitions>
+      <ActivationGroups/>
+      <FeatureGroups>
+        <FeatureGroup Name="Dimmer" Pretty="D"><Feature Name="Dimmer"/></FeatureGroup>
+      </FeatureGroups>
+      <Attributes>
+        <Attribute Feature="Dimmer.Dimmer" Name="Dimmer" PhysicalUnit="None" Pretty="Dim"/>
+      </Attributes>
+    </AttributeDefinitions>
+    <Wheels/>
+    <PhysicalDescriptions/>
+    <Models>
+      <Model File="" Height="1.400000" Length="0.040000" Name="Stand" PrimitiveType="Cylinder" Width="0.040000"/>
+      <Model File="" Height="0.240000" Length="0.300000" Name="Shade" PrimitiveType="Cylinder" Width="0.300000"/>
+      <Model File="" Height="0.060000" Length="0.060000" Name="Bulb" PrimitiveType="Sphere" Width="0.060000"/>
+    </Models>
+    <Geometries>
+      <Geometry Model="Stand" Name="Stand" Position="{1.000000,0.000000,0.000000,0.000000}{0.000000,1.000000,0.000000,0.000000}{0.000000,0.000000,1.000000,0.000000}{0,0,0,1}">
+        <Geometry Model="Shade" Name="Shade" Position="{1.000000,0.000000,0.000000,0.000000}{0.000000,1.000000,0.000000,0.000000}{0.000000,0.000000,1.000000,1.400000}{0,0,0,1}">
+          <Beam BeamRadius="0.030000" BeamType="Glow" ColorRenderingIndex="100" ColorTemperature="2700.000000" LampType="Tungsten" Model="Bulb" Name="Beam" Position="{1.000000,0.000000,0.000000,0.000000}{0.000000,1.000000,0.000000,0.000000}{0.000000,0.000000,1.000000,0.090000}{0,0,0,1}" RectangleRatio="1.000000" ThrowRatio="1.000000"/>
+        </Geometry>
+      </Geometry>
+    </Geometries>
+    <DMXModes>
+      <DMXMode Description="One dimmer channel, as driven by a pack slot" Geometry="Stand" Name="Dimmer">
+        <DMXChannels>
+          <DMXChannel DMXBreak="1" Geometry="Beam" Highlight="None" InitialFunction="Beam_Dimmer.Dimmer.Dimmer" Offset="1">
+            <LogicalChannel Attribute="Dimmer" DMXChangeTimeLimit="0.000000" Master="Grand" MibFade="0.000000" Snap="No">
+              <ChannelFunction Attribute="Dimmer" DMXFrom="0/1" Default="0/1" Max="1.000000" Min="0.000000" Name="Dimmer" OriginalAttribute="" PhysicalFrom="0.000000" PhysicalTo="1.000000"/>
+            </LogicalChannel>
+          </DMXChannel>
+        </DMXChannels>
+        <Relations/>
+        <FTMacros/>
+      </DMXMode>
+    </DMXModes>
+    <Revisions/>
+    <FTPresets/>
+    <Protocols/>
+  </FixtureType>
+</GDTF>
