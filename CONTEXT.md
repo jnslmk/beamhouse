@@ -276,6 +276,11 @@ Any geometry in a definition that gives off light — a beam origin or a single 
 colour is resolved for, which is why "every emitter is RGB in v1" covers movers and tape alike.
 **Every** emitter has an emissive body; only a cone-drawing **`BeamType`** adds a **beam class**
 cone on top ([ADR-0022](docs/adr/0022-beamtype-selects-the-path-stride-aggregates-within-it.md)).
+The body is sized from the declared `BeamRadius`, or in OFL — which has none — from
+`physical.dimensions`, or per **pixel** from `physical.matrixPixels.dimensions`; where a
+definition declares no size at all, nothing is invented and the fixture renders the fixed marker
+([ADR-0040](docs/adr/0040-ofl-sole-emitter-draws-the-cone.md),
+[ADR-0034](docs/adr/0034-an-unresolved-definition-is-a-marked-fixture-not-a-missing-one.md)).
 _Avoid_: light, lamp, LED
 
 **Pixel**:
@@ -291,21 +296,30 @@ Declaring a `Beam` geometry is *not* the test: `None` and `Glow` declare one and
 reading it that way rendered the 30-pixel strip as thirty cones. Not one of two exclusive paths —
 the cone is **added to** the emissive body every emitter already has, which is why a `Wash` mover
 is visible before any **atmosphere** exists to scatter in.
-_Avoid_: mover, moving head, spot (those are fixture kinds, not rendering classes), beam geometry
-(a `Beam` node is an emitter; its `BeamType` is what selects this class)
+**OFL has no `BeamType`**, so the class is selected there on the only per-emitter signal the
+format carries: an OFL fixture's **sole** emitter is beam class where `physical.lens.degreesMinMax`
+is declared, and a **pixel** never is
+([ADR-0040](docs/adr/0040-ofl-sole-emitter-draws-the-cone.md)). Same shape, same absence of a
+precedence clause — the **fixture model** carries the resolved class, so nothing downstream of the
+two adapters knows which format it came from.
+_Avoid_: mover, moving head, spot (those are fixture kinds, not rendering classes — which is why
+OFL's `categories` selects nothing: `["Dimmer"]` alone is a Cameo Q-Spot *and* a dimmer pack),
+beam geometry (a `Beam` node is an emitter; its `BeamType` is what selects this class)
 
 **Cone angle**:
 The **full** angle of a **beam class** fixture's volumetric cone — apex to apex, not apex to axis
 ([ADR-0013](docs/adr/0013-atmosphere-is-one-closed-form-scattering-term.md)). Sourced from
 **three** places, in precedence order: a **resolved** `Zoom` where the DMX mode has one, per
-tick; then a **per-fixture override**, per hang; then the definition's static `BeamAngle`
-([ADR-0037](docs/adr/0037-a-dimmer-pack-is-not-a-fixture-its-loads-are.md)). The middle one is a
+tick; then a **per-fixture override**, per hang; then the definition's static `BeamAngle` — or in
+OFL, `physical.lens.degreesMinMax`, taking its narrow end where the two differ
+([ADR-0037](docs/adr/0037-a-dimmer-pack-is-not-a-fixture-its-loads-are.md),
+[ADR-0040](docs/adr/0040-ofl-sole-emitter-draws-the-cone.md)). The middle one is a
 **manual** setting the console cannot see and DMX cannot express — a barrel-set zoom, a gel, a
 gobo — supplied as the value of a channel with no DMX offset, and stored beside the placement
 **override** rather than inside it, which is what keeps **placement** a rigid transform and
 nothing more. Distinct from `FieldAngle`, which shapes the **edge falloff** only where the two
 differ, degenerating to the `BeamType` soft/hard edge when they are equal — which is five of the
-six profiles on disk.
+six profiles on disk, and 271 of the 400 OFL fixtures that declare a lens angle.
 _Avoid_: half-angle (it is not one; this repo said so at six sites and every cone would have
 rendered twice too wide), beam angle (that is the static declaration, only one of the three
 sources), spread, zoom
