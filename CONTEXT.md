@@ -201,7 +201,10 @@ _Avoid_: tape, tube, bar, pixel bar (those are fixture kinds)
 **Matrix class**:
 The rendering class for a **two-dimensional** pixel grid — the same emissive surface carrying an
 `M × N` texture rather than an `N` one. Distinct from **strip class** to a human describing a rig,
-identical to the renderer: one shader, one draw call per fixture, interpolation across both axes.
+identical to the renderer: one material, one draw call per fixture, interpolation across both
+axes. Not *one shader* — neither class carries a hand-written shader; the texture is a `map` on a
+stock material, and the beam pair is the project's only GLSL
+([ADR-0017](docs/adr/0017-shaders-are-hand-written-glsl-webgpu-is-out-of-scope.md)).
 _Avoid_: panel, grid, pixel map, third rendering class (there is no third path)
 
 **Atmosphere**:

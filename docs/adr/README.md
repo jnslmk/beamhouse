@@ -20,6 +20,7 @@ Every accepted decision on this project, newest last. The **map** ([#1](https://
 | **0014** | [The agent surface is two surfaces, and only the look half is a feed](0014-the-agent-surface-is-two-surfaces.md) | 2026-09-02 | [#5](https://github.com/jnslmk/beamhouse/issues/5) |
 | **0015** | [Agent control is an MCP server over the bridge's control channel](0015-agent-control-is-mcp-over-the-bridge-control-channel.md) | 2026-09-02 | surfaced by [#5](https://github.com/jnslmk/beamhouse/issues/5) |
 | **0016** | [Every scene mutation is one undo-grained command](0016-every-scene-mutation-is-one-undo-grained-command.md) | 2026-09-02 | surfaced by [#5](https://github.com/jnslmk/beamhouse/issues/5) |
+| **0017** | [Shaders are hand-written GLSL, and WebGPU is out of scope](0017-shaders-are-hand-written-glsl-webgpu-is-out-of-scope.md) | 2026-09-02 | [#29](https://github.com/jnslmk/beamhouse/issues/29) · amends ADR-0013 |
 
 ## What each one actually says
 
@@ -39,6 +40,7 @@ Every accepted decision on this project, newest last. The **map** ([#1](https://
 - **[ADR-0014](0014-the-agent-surface-is-two-surfaces.md)** — "The agent surface" was two surfaces sharing a word. The **look** half is a feed and is `generated`, carrying DMX slot values so it exercises the real pipeline; it takes the slot ADR-0009 emptied by deleting `relay`, and is shared with §9.2's demo motion mode. The **scene** half is not a feed at all.
 - **[ADR-0015](0015-agent-control-is-mcp-over-the-bridge-control-channel.md)** — An agent arranges the rig through an **MCP server** speaking the bridge's control channel. The bridge forwards **opaque envelopes it never opens**, so ADR-0006's ignorance survives; exactly one client owns the scene, commands are loopback-only, and capture is a command.
 - **[ADR-0016](0016-every-scene-mutation-is-one-undo-grained-command.md)** — One command layer, with the UI and the agent as two front-ends. A command is **undo-grained** — one command, one undo entry, one thing a person would say out loud. Constrains #35.
+- **[ADR-0017](0017-shaders-are-hand-written-glsl-webgpu-is-out-of-scope.md)** — Hand-written GLSL on `WebGLRenderer`, and **one** shader pair: the strip is a texture `map`, not a shader. WebGPU is **out of scope**, because the ADR-0013 tier is fragment-shader raymarching that WebGL2 reaches; only a *simulated* atmosphere would reopen it. `postprocessing` leaves the dependency table and `three` pins exactly.
 
 ## Writing a new one
 

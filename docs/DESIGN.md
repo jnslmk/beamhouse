@@ -164,7 +164,7 @@ native                 browser                    browser
 Bridge                 Engine                     Renderer
 sACN multicast join    MVR + GDTF parse           three.js + WebGL2
 raw universes → WS     DMX → attributes           GLTFLoader from zip
-~150 LOC, static bin   scene + persistence        beam & strip shaders
+~150 LOC, static bin   scene + persistence        one beam shader pair
 ```
 
 ### Why this beats a fat Rust sidecar
@@ -219,7 +219,7 @@ beamhouse/
 │  ├─ edit/
 │  │  ├─ gizmo.ts       # TransformControls wrapper
 │  │  └─ arrays.ts      # parametric generators (radial, line, grid)
-│  └─ shaders/{beam.vert,beam.frag}.glsl
+│  └─ shaders/{beam.vert,beam.frag}.glsl   # the only hand-written shader (ADR-0017)
 └─ shows/               # *.mvr, *.bhs, recorded bundles
 ```
 
@@ -709,6 +709,13 @@ Its threshold is therefore a **tuned** parameter, and must be tuned *after* the 
 set ([ADR-0013](adr/0013-atmosphere-is-one-closed-form-scattering-term.md)); tuning it first means
 the first haze you add re-tunes every colour you already tuned.
 
+The chain is `RenderPass → UnrealBloomPass → OutputPass` from `three/addons`, and it needs no
+post-processing library ([ADR-0017](adr/0017-shaders-are-hand-written-glsl-webgpu-is-out-of-scope.md)).
+`OutputPass` carries tone mapping and the colour-space conversion, reading both off the renderer,
+so §8.2's `ACESFilmicToneMapping` is a renderer setting the chain honours rather than an effect to
+configure twice. `EffectComposer` allocates its default target as `{ type: HalfFloatType }` — the
+HDR target above, for free.
+
 ### 8.2 Beams — write them as a density function
 
 Cone geometry from each `Beam` node, additively blended, depth-write off, sorted back to front,
@@ -764,12 +771,21 @@ geometric terminus — v1 renders no venue geometry, so nothing catches a beam.
 heterogeneous or animated density and beam-on-beam absorption all fail it and all stay out, as one
 unit for one reason.
 
-- **#29 — raw GLSL or node material?** §03 lists hand-written `.glsl`, which is the right default
-  and also the thing that fixes the cost of ever leaving WebGL2: three.js's WebGPU path expects
-  node graphs, and `postprocessing` is a WebGL-era library. **WebGL2 stays locked** — the survey's
-  one WebGPU competitor (DMXpressions) spends it on raymarched volumetrics, i.e. precisely the
-  tier §01 deferred, and nothing v1 renders needs it. #29 records that as a decision rather than
-  a default, and closes the `three`/`postprocessing` versions in §12 with it.
+#### Shader authoring — resolved 2026-09-02, [ADR-0017](adr/0017-shaders-are-hand-written-glsl-webgpu-is-out-of-scope.md)
+
+**Hand-written GLSL in a `ShaderMaterial` on `WebGLRenderer`, and this pair is the only shader in
+the project** — §8.1's strip is a texture `map`, not a shader, so the run with a measured
+conformance oracle behind it ([#26](https://github.com/jnslmk/beamhouse/issues/26)) has nothing to
+rewrite. Vite's built-in `?raw` suffix loads the files; no glsl plugin.
+
+**WebGPU is out of scope, not deferred**, and the reason is *not* that the tier above is far off.
+It is that the tier does not need it: every item past the second sample of `density(p)` is
+fragment-shader raymarching, and heterogeneous density wants a 3D texture, which is core WebGL2.
+The one thing genuinely across the API boundary is a **simulated** medium — advected haze, the
+DMXpressions headline — and that is the single condition that would reopen it. Two facts closed
+the alternative rather than the deferral argument: `WebGPURenderer` **rejects `ShaderMaterial` in
+the NodeBuilder**, so its WebGL2 backend is no halfway house, and TSL's `glslFn` pins native code
+to one backend, so it cannot soften a later move.
 
 ### 8.3 Colour: RGB now, white channels later
 
@@ -985,8 +1001,13 @@ These are the wayfinder map's tickets. See the map issue for current state.
     paths are out of scope; the polyline form stays unbuilt but cheap.
 11. **Does v1 render atmosphere?** (#28) The whole field's headline feature against §01's
     deferred render tier. See §8.2.
-12. **Raw GLSL or node material?** (#29) WebGL2 stays locked; what is open is the shader
-    authoring model, which is what fixes the cost of ever leaving it. Closes half of §12.
+12. ~~**Raw GLSL or node material?**~~ **Answered: hand-written GLSL, and WebGPU is out of
+    scope** (#29, [ADR-0017](adr/0017-shaders-are-hand-written-glsl-webgpu-is-out-of-scope.md)).
+    Not decided on the deferral argument: `WebGPURenderer` **rejects `ShaderMaterial`** in the
+    NodeBuilder so its WebGL2 backend is no halfway house, `glslFn` is backend-pinned, the
+    hand-written surface is **one** pair rather than two — the strip is a texture `map` — and the
+    ADR-0013 tier is fragment-shader raymarching WebGL2 reaches. Closes §12 outright rather than
+    half of it: `postprocessing` leaves the table and `three` pins exactly.
 13. **Is MVR-xchange a ceiling we accept, and where is the seam?** (#30) Blocked by #33.
 14. **Which consoles does Beamhouse serve?** (#33) Whether the live repatch loop generalises past
     Mizer — and if it does, ADR-0003's integer id reopens, because the UUID it declined exists in
@@ -997,19 +1018,29 @@ These are the wayfinder map's tickets. See the map issue for current state.
 
 ## 12 · Dependencies
 
-The **browser** table below is still unsettled — versions and choices fall out of the open
-questions above, and **#29 is the one that closes it**: `three` and `postprocessing` cannot be
-pinned before the shader authoring model is chosen, since a node-material renderer replaces
-`postprocessing` rather than versioning it. The **bridge** table is settled
-([ADR-0006](adr/0006-bridge-is-typescript-on-bun.md)).
+The **browser** table is settled as of 2026-09-02, by
+[ADR-0017](adr/0017-shaders-are-hand-written-glsl-webgpu-is-out-of-scope.md) — which was what
+[#29](https://github.com/jnslmk/beamhouse/issues/29) was chartered to close. The **bridge** table
+is settled by [ADR-0006](adr/0006-bridge-is-typescript-on-bun.md).
 
-| Package                | Version | Role                                    | Licence |
-| ---------------------- | ------- | --------------------------------------- | ------- |
-| `three`                | ≥0.170  | renderer, GLTFLoader, TransformControls | MIT     |
-| `postprocessing`       | ≥6.36   | bloom, tone mapping                     | Zlib    |
-| `fflate`               | ≥0.8    | unzip GDTF and MVR in the browser       | MIT     |
-| `vite`                 | ≥6      | dev server, HMR, static build           | MIT     |
-| `vite-plugin-singlefile`| ≥2     | inline everything into one `.html`      | MIT     |
+| Package                | Version | Role                                             | Licence |
+| ---------------------- | ------- | ------------------------------------------------ | ------- |
+| `three`                | `0.185.1` | renderer, GLTFLoader, TransformControls, EffectComposer | MIT     |
+| `fflate`               | ≥0.8    | unzip GDTF and MVR in the browser                | MIT     |
+| `vite`                 | ≥6      | dev server, HMR, static build                    | MIT     |
+| `vite-plugin-singlefile`| ≥2     | inline everything into one `.html`               | MIT     |
+
+**`three` is pinned exactly, and that is not tidiness.** It ships breaking changes in every minor
+— r183 renamed `PostProcessing` to `RenderPipeline`, r185 renamed TSL functions and changed
+`WebGPURenderer`'s premultiplied alpha — so a floor-only pin lets an unrelated `npm install`
+change how the rig renders, with nothing to compare the result against. Bumping it is a deliberate
+commit, and the bump is where the renderer gets looked at.
+
+**`postprocessing` is deliberately absent.** §8.1's chain comes from `three/addons`, so the one
+dependency that would have been pulled in for a single bloom effect is gone — and with it its
+`three: ">= 0.168.0 < 0.186.0"` peer ceiling, which under the old `≥0.170` floor admitted
+resolutions the post chain forbids. There is no glsl plugin either: Vite's `?raw` loads the
+shaders.
 
 Two Vite settings are **not** free choices, per
 [ADR-0009](adr/0009-deployment-is-inferred-from-origin.md): `base` is relative (`'./'`), and
