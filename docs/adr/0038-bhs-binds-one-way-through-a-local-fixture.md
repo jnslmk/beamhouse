@@ -18,10 +18,11 @@ Its premises did not survive contact with the repo.
 
 **1 · The motivating case has no `bhs:` in it.** #41 cites *"ten `bhs:spoke23` fixtures at ids
 101–110"*. `mizer-shows/OBF26_Bunte-Stube_gdtf-ofl.yml` does patch ten spokes at ids 101–110 —
-universe 2 at slots 30, 99, 168, 237, 306, 375, 444 and universe 3 at 1, 70, 139 — but every one of
-them names **`ofl:beamhouse:wled-star-tent-spoke-23px`**, a real file in `definitions/ofl/`. Positive
-ids, console-patched, resolving definition. That is neither binding. [ADR-0033](0033-the-spoke-is-an-authored-gdtf-because-only-gdtf-can-say-it.md)
-then moved it further away, to an authored `gdtf:`.
+universe 2 at slots 30, 99, 168, 237, 306, 375, 444 and universe 3 at 1, 70, 139 — but at the time
+every one of them named **`ofl:beamhouse:wled-star-tent-spoke-23px`**, a real file in
+definitions/ofl/. Positive ids, console-patched, resolving definition. That is neither binding.
+[ADR-0033](0033-the-spoke-is-an-authored-gdtf-because-only-gdtf-can-say-it.md) then moved it
+further away, to an authored `gdtf:` — which #46 has since executed (rules 5 and 6).
 
 **2 · The "real case on disk" of a 60 px tube does not exist.** #41 cites it as *"§4.5's own
 example"*. §4.5 declares `"classes": { "diy_t8_35px": { "kind": "strip", "pixels": 35 } }`, and the

@@ -55,7 +55,7 @@ only `thumbnail.png` and `description.xml`, with no geometry. MIT-licensed `.3ds
   `High Resolution (Extended)`.
 - `modeMaster` is not used; the Normal mode needs no channel-dependent behaviour.
 
-### Sub-range divergences from the `.qxf` (from [#6](https://github.com/jnslmk/beamhouse/issues/6))
+#### Sub-range divergences from the `.qxf` (from [#6](https://github.com/jnslmk/beamhouse/issues/6))
 
 Every channel sits at the right offset; these are *within-channel* range differences.
 [ADR-0010](../../docs/adr/0010-resolution-is-total-the-renderer-selects-by-attribute.md) splits
@@ -166,7 +166,6 @@ but there is no upstream code to crib.
   no profile on this rig carries a trustworthy `LuminousFlux` anyway.
 - The `Wash` PAR38 declares `BeamAngle == FieldAngle == 60`, so its edge falloff comes from
   `BeamType` alone. A real PAR38 flood has a measurable field/beam split; nobody measured it.
-
 ## `Beamhouse@WLED STAR-TENT Spoke 23px`
 
 One radial spoke of the self-built STAR-TENT, instanced ten times by the reference rig
@@ -288,5 +287,15 @@ written against, read out of `docs/research/gdtf-resolution-reference.md` §3.
 
 ## Using it with Mizer
 
-Copy the `.gdtf` files into a directory on Mizer's GDTF library path (settings key `gdtf`, defaulting
-to `fixtures/gdtf` relative to Mizer). It then patches as a `gdtf:` id.
+Copy the `.gdtf` files into a directory on Mizer's GDTF library path (settings key `gdtf`,
+defaulting to `fixtures/gdtf` relative to Mizer). They then patch as `gdtf:` ids — Mizer keys a
+GDTF definition by its `FixtureTypeID`, not by manufacturer and model:
+
+| Definition | `FixtureTypeID` |
+| --- | --- |
+| `GLP@impression 90 RGB@v1.gdtf` | `9C7854E1-32D5-4DE9-BB8E-6D121F27CF48` |
+| `Beamhouse@WLED STAR-TENT Spoke 23px@v1.gdtf` | `1B9F1C2E-7A64-4C0D-9E33-5A2D8B47F016` |
+
+Each ships an extracted copy of its `description.xml` (and, for the spoke, its `models/gltf/`)
+next to the archive, so a diff of an edit is readable. The `.gdtf` is the artifact; the directory
+is the same bytes, unzipped.

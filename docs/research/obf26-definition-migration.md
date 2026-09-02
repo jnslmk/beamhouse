@@ -51,7 +51,7 @@ fixtures.
 | 18, 19 | PAR front L, R | *(1ch pack ch 1, ganged)* | — | `gdtf:FFC1C66D-…1B1A` | `Dimmer` | 1 | authored, #48 — **both on slot 89** |
 | 10 | Fog Fury Jett | `qlc:American DJ:Fog Fury Jett (HTP Fog)` | `7 Channel` | `gdtf:26D59406-1AE9-4D59-8E00-A9DAF08EA018` | `7 Channel Mode` | 7 | clean, 1:1 |
 | ~~9, 11, 12, 13~~ | ~~WLED Star / Highlight / Sparkle / Flash~~ | `qlc:WLED:WLED Segment Effect` | `18 Channel` | — | — | — | **retired**: these were WLED *segments*, not fixtures (#21) |
-| 101–110 | STAR-TENT Spoke 1–10 | *(part of the same four segments)* | — | `ofl:beamhouse:wled-star-tent-spoke-23px` | `23px RGB 69-channel` | 69 | clean — verified on the live node, §3 |
+| 101–110 | STAR-TENT Spoke 1–10 | *(part of the same four segments)* | — | `gdtf:1B9F1C2E-7A64-4C0D-9E33-5A2D8B47F016` | `23px RGB 69-channel` | 69 | clean — verified on the live node, §3; re-patched off OFL by [#46](https://github.com/jnslmk/beamhouse/issues/46) |
 
 Everything outside the `fixtures:` block was byte-identical to the original after #6. #23
 changed three things in it, all forced by the tent becoming ten fixtures: group 12 (`WLED` →
@@ -246,10 +246,18 @@ Channel-for-channel, the only fully clean GDTF migration in the rig:
 The GDTF profile offers only this one mode. Note OFL has `american-dj/fog-fury-jett-pro` — the
 **Pro**, a different fixture with 1/2/3/7/9-channel modes — not a substitute.
 
-### WLED segments → ten authored OFL spokes  *(rewritten by #23)*
+### WLED segments → ten authored spokes  *(rewritten by #23, re-pointed by #46)*
 
 `qlc:WLED:WLED Segment Effect` (`15 Channel` / `18 Channel`, both effect-parameter layouts)
-→ `ofl:beamhouse:wled-star-tent-spoke-23px`, mode `23px RGB 69-channel`, **ten of them**.
+→ `gdtf:1B9F1C2E-7A64-4C0D-9E33-5A2D8B47F016`, mode `23px RGB 69-channel`, **ten of them**.
+
+**#23 landed this as OFL; [#46](https://github.com/jnslmk/beamhouse/issues/46) moved it to an authored GDTF** on the grounds
+[ADR-0033](../adr/0033-the-spoke-is-an-authored-gdtf-because-only-gdtf-can-say-it.md) settles:
+OFL's `Matrix{pixelCount}` declares a count and a pitch with no tree, no parent, no `BeamType`
+and no model, so it cannot state what
+[ADR-0022](../adr/0022-beamtype-selects-the-path-stride-aggregates-within-it.md) rules 5 and 7
+require of the render. The mode name, the channel order and every address below are unchanged —
+only the definition the ten `fixture:` lines name.
 
 There is no mode-to-mode mapping here and there cannot be, for two independent reasons.
 
@@ -375,7 +383,14 @@ so this table is the record until the `.bhs` schema exists.
 
 ### The definition
 
-[`definitions/ofl/beamhouse.json`](../../definitions/ofl/beamhouse.json), an OFL AGLight-export
+> **Superseded by [#46](https://github.com/jnslmk/beamhouse/issues/46).** What follows is #23's record of the OFL definition, kept because the
+> measurements in it are the measurements the GDTF was authored from. The live definition is
+> [`definitions/authored/Beamhouse@WLED STAR-TENT Spoke 23px@v1.gdtf`](../../definitions/authored/),
+> `gdtf:1B9F1C2E-7A64-4C0D-9E33-5A2D8B47F016`, and `definitions/ofl/beamhouse.json` no longer exists — it held this one fixture
+> and nothing patches it (ADR-0033 rules 5 and 6). Everything below about *addressing* still
+> holds: none of it was ever a property of the definition.
+
+`definitions/ofl/beamhouse.json` (deleted by #46; see the note above), an OFL AGLight-export
 library file (`{version, fixtures:[…]}`), which is the shape Mizer's OFL provider reads. One
 fixture, **replacing** the 35px one rather than sitting beside it — nothing references the old
 id after this re-patch, git holds the history, and a wrong definition left in a bundled library
@@ -531,14 +546,14 @@ Nothing in v1 reads it yet.
 | Library | Repo | Machine (Mizer reads both this and its bundled library) |
 |---------|------|--------------------------------------------------------|
 | GDTF (from GDTF Share) | `definitions/gdtf/` — **gitignored**, rebuilt by `tools/gdtf-share.sh restore` from `definitions/gdtf-manifest.json` | `~/Documents/Mizer/Fixture Definitions/GDTF/` |
-| GDTF (authored) | `definitions/authored/GLP@impression 90 RGB@v1.gdtf` — **tracked** | same directory, `~/Documents/Mizer/Fixture Definitions/GDTF/` |
-| OFL (authored) | `definitions/ofl/beamhouse.json` — **tracked**; holds the 23px STAR-TENT spoke, which replaced the superseded 35px tube in #23 | `~/Documents/Mizer/Fixture Definitions/Open Fixture Library/beamhouse.json` |
+| GDTF (authored) | `definitions/authored/GLP@impression 90 RGB@v1.gdtf` and `definitions/authored/Beamhouse@WLED STAR-TENT Spoke 23px@v1.gdtf` — both **tracked** | same directory, `~/Documents/Mizer/Fixture Definitions/GDTF/` |
+| OFL (authored) | **gone.** `definitions/ofl/beamhouse.json` held the 23px spoke alone and was deleted by #46 when the spoke became an authored GDTF | — |
 | OFL (upstream) | not vendored | ships with Mizer, `fixtures/open-fixture-library/fixtures.json` |
 | QLC+ | **no longer used by this rig** | — |
 
-All four pinned `.gdtf` files, the authored impression 90 `.gdtf` and the authored OFL file were
-installed to those paths as part of this migration. The two authored definitions and the four
-fetched ones live side by side in Mizer's single GDTF directory — Mizer keys on `FixtureTypeID`,
+All four pinned `.gdtf` files and both authored `.gdtf` files were installed to those paths. The
+two authored definitions and the four fetched ones live side by side in Mizer's single GDTF
+directory — Mizer keys on `FixtureTypeID`,
 so provenance makes no difference at resolution time. In the repo they stay separate, because
 the licensing does: `definitions/gdtf/` is referenced-not-vendored, `definitions/authored/` is
 ours and committed.
@@ -549,8 +564,8 @@ The manifest is a lockfile of GDTF Share rids: `pin` refuses anything absent fro
 catalogue, and `restore` iterates `.definitions[].rid` and downloads each one. A rid-less entry
 would be unpinnable and would break `restore` outright. More to the point, the manifest exists
 because ADR-0001 cannot vendor GDTF Share content — and that constraint does not apply to a
-definition this project wrote. So the impression 90 is committed directly under
-`definitions/authored/`, which is exactly the split
+definition this project wrote. So the impression 90 and the STAR-TENT spoke are committed
+directly under `definitions/authored/`, which is exactly the split
 [`definitions/authored/README.md`](../../definitions/authored/README.md) already states. **The
 manifest is unchanged by this migration and correctly so.**
 

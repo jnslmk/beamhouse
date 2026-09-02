@@ -26,10 +26,11 @@ they cannot resolve."*
    STAR-TENT **spoke** definition" correctly; the ticket title does not.
 
 2. **Neither of the ticket's two routes is what ships today. A third does.**
-   `definitions/ofl/beamhouse.json` carries `WLED STAR-TENT Spoke 23px` —
+   definitions/ofl/beamhouse.json carried `WLED STAR-TENT Spoke 23px` —
    `matrix.pixelCount [23,1,1]`, `matrixPixels.dimensions` at 65.217 mm — authored 2026-09-02 by
-   #23, and the Mizer patch names it as **`ofl:beamhouse:wled-star-tent-spoke-23px`**, ten times.
-   The status quo is `ofl:`, not either option the ticket offered.
+   #23, and the Mizer patch named it as **`ofl:beamhouse:wled-star-tent-spoke-23px`**, ten times.
+   The status quo was `ofl:`, not either option the ticket offered. Rule 6 has since fired
+   ([#46](https://github.com/jnslmk/beamhouse/issues/46)); the consequences record the execution.
 
 3. **The repo says three different things about where the spoke lives.** §10: "the STAR-TENT is a
    `bhs:` definition rendered as proxy geometry". §8.1 and ADR-0022 rule 8: an authored GDTF
@@ -116,7 +117,7 @@ a different and better ground: **which format can express what ADR-0022 requires
    spoke 6 → 7 boundary — is a property of the *patch entry*, not of the definition it names. The
    re-patch is ten `fixture:` lines in one file.
 
-6. **The spoke's OFL entry is deleted.** `definitions/ofl/beamhouse.json` held exactly one fixture,
+6. **The spoke's OFL entry is deleted.** definitions/ofl/beamhouse.json held exactly one fixture,
    and after rule 5 nothing patches it. Keeping a second definition for one fixture is drift with
    no consumer, and ADR-0012 rule 5's disagreement machinery exists for definition-versus-patch,
    not definition-versus-definition. #23's authoring survives in git history.
@@ -158,7 +159,7 @@ a different and better ground: **which format can express what ADR-0022 requires
 
 ## Consequences
 
-- **`definitions/ofl/` will be empty of our own content once rule 6 fires.** The reference rig still patches
+- **definitions/ofl/ will be empty of our own content once rule 6 fires.** The reference rig still patches
   `ofl:generic:4-channel-dimmer-pack` for fixtures 7 and 8, and **that definition is nowhere on
   disk** — there is no OFL fetch tooling (`tools/` holds `adr.sh` and `gdtf-share.sh` only). Two of
   thirteen fixtures therefore do not resolve locally today. That is a real gap and it is **not**
@@ -167,8 +168,12 @@ a different and better ground: **which format can express what ADR-0022 requires
   [#48](https://github.com/jnslmk/beamhouse/issues/48)]** It closed by dissolving rather than by
   fetching: [ADR-0037](0037-a-dimmer-pack-is-not-a-fixture-its-loads-are.md) ruled a dimmer pack is
   not a fixture, so fixtures 7 and 8 are gone and their six loads are on authored GDTF. Rule 6 has
-  now fired on both sides — with #46 retiring the spoke, `definitions/ofl/` empties completely and
-  the reference rig ends with **zero OFL fixtures**.
+  now fired on both sides — with #46 retiring the spoke, definitions/ofl/ empties completely and
+  the reference rig ends with **zero OFL fixtures**. **[closed 2026-09-02 —
+  [#46](https://github.com/jnslmk/beamhouse/issues/46)]** Rules 5 and 6 are executed: the authored
+  spoke GDTF is committed, the ten spokes re-patch onto it
+  (`gdtf:1B9F1C2E-7A64-4C0D-9E33-5A2D8B47F016`), and the OFL entry is deleted — the directory is
+  gone with it.
 - **ADR-0022 rule 8's mesh argument is weakened but its conclusion holds.** The mesh ships; it is
   no longer load-bearing for correctness. Recorded here rather than by editing rule 8, so the
   measurement that changed the reading stays attached to the reading.

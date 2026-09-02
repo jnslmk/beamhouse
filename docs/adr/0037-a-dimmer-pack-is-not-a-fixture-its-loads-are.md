@@ -204,8 +204,9 @@ declared-versus-assumed; an unlabelled 42° would read as measured within a mont
 
 - **#47 dissolves rather than resolving.** There is nothing to vendor and no `tools/ofl.sh` to
   write, because after this no fixture names `ofl:generic:4-channel-dimmer-pack`. Its subsidiary
-  questions — separating vendored from authored files in `definitions/ofl/`, whether a lockfile is
-  warranted — go with it. The resolution gap does not vanish, it **moves**: three `bhs:` definitions
+  questions — separating vendored from authored files in definitions/ofl/ (a directory #46 later
+  emptied and deleted by executing ADR-0033 rule 6), whether a lockfile is warranted — go with it.
+  The resolution gap does not vanish, it **moves**: three `bhs:` definitions
   now need authoring, which is [#41](https://github.com/jnslmk/beamhouse/issues/41)'s surface and
   ADR-0012 rule 2's mechanism.
 

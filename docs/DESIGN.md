@@ -1498,6 +1498,11 @@ from the declared `PrimitiveType`, then drag-and-drop. Two measurements retired 
   *and* a `File`, so the snapshot's primitive is exact in both principal dimensions and the mesh
   buys only the corner fillets
   ([ADR-0033](adr/0033-the-spoke-is-an-authored-gdtf-because-only-gdtf-can-say-it.md) rule 3).
+  **[built 2026-09-02 — [#46](https://github.com/jnslmk/beamhouse/issues/46)]** The file exists, and the one cube is **two**: ADR-0022 rule 9
+  ships one GLB per `<Model>`, so `Body` is 1500 x 26.1 x **16.8** mm and `Diffuser`
+  1500 x 26.1 x **13.7**, stacked at the rim to make the 30.5. A single 30.5-tall cube per model
+  would have double-counted the height, and ADR-0031's snapshot carries that box. Width and
+  length are exact as claimed; the mesh still buys only the fillets.
 - **Resolving the definitions inline costs 211 characters** of the 4096 in §9.1 — 675 against 464
   — and moves the over-budget crossover from 188 fixtures to about 176. The definition half #30
   reported "unchanged" was never blocked; it was unpriced.
@@ -1666,9 +1671,11 @@ imprecise on the geometry.
 [ADR-0033](adr/0033-the-spoke-is-an-authored-gdtf-because-only-gdtf-can-say-it.md) makes the
 **spoke** an authored GDTF — a `bhs:` definition has no geometry tree, so it cannot say what
 [ADR-0022](adr/0022-beamtype-selects-the-path-stride-aggregates-within-it.md) requires. The
-conclusion survives: its `<Model>` declares `PrimitiveType="Cube"` at 26.1 x 30.5 x 1500 mm *and* a
-`File`, so the primitive is **exact in both principal dimensions** and the GLB buys only the corner
-fillets. M3b still needs nothing from M4. Putting the way the rig is most likely to actually get
+conclusion survives: its `<Model>` declares `PrimitiveType="Cube"` *and* a `File`, so the primitive
+is **exact in both principal dimensions** and the GLB buys only the corner fillets. **[built
+2026-09-02 — [#46](https://github.com/jnslmk/beamhouse/issues/46)]** "at 26.1 x 30.5 x 1500 mm" is the *tube's* section and the file declares two
+models, not one: `Body` at 16.8 mm and `Diffuser` at 13.7 stack to it. M3b still needs nothing
+from M4. Putting the way the rig is most likely to actually get
 configured behind a 3–5 day wall makes it the first casualty if the wall overruns.
 
 **M3 gains a constraint rather than a sibling.** The command layer

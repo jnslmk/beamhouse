@@ -174,7 +174,8 @@ space, which is the distinction ADR-0008 exists to keep.
 
 **7 · ADR-0005 rule 1's OFL clause is corrected: OFL states the layout outright for 17 of its 115
 matrix fixtures.** The clause is not deleted — when `matrixPixels` is present it is exactly as good
-as claimed, and it is what `definitions/ofl/beamhouse.json` was authored against. But it describes
+as claimed, and it is what definitions/ofl/beamhouse.json (deleted by #46's execution of
+ADR-0033 rule 6; git history holds it) was authored against. But it describes
 15% of the corpus, and the grouping rule that fires on the other 85% is the *stride* half of rule 1,
 with extent left undeclared. Recorded here because ADR-0022 rule 1 hands every non-cone emitter
 straight to ADR-0005, so this is the very next rule to fire on an OFL fixture and the answer above
