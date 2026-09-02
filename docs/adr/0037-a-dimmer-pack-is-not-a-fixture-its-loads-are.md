@@ -5,6 +5,8 @@
 - **Decides:** [#47](https://github.com/jnslmk/beamhouse/issues/47)
 - **Amends:** [ADR-0008](0008-colour-space-is-assumed-transfer-function-is-read.md) rule 5
 - **Confirms:** [ADR-0003](0003-fixture-id-is-the-only-identity.md), [ADR-0012](0012-beamhouse-may-define-pixels-placement-mints-nothing.md), [ADR-0035](0035-a-scene-object-is-a-fixture-with-an-empty-dmx-mode.md), [ADR-0036](0036-the-ground-plane-is-the-only-surface-light-reaches.md)
+- **Amended by:** [ADR-0038](0038-bhs-binds-one-way-through-a-local-fixture.md) (2026-09-02) — decision 3 prefix
+
 
 ## Context
 

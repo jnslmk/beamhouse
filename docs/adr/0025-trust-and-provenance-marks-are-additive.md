@@ -45,6 +45,13 @@ that says so.
   [ADR-0020](0020-the-live-loop-serves-patch-files-not-consoles.md)'s synthesised fixture ids, and
   orphaned overrides. Those three ADRs each require something to be *surfaced* and none of them
   said where.
+
+  **[amended 2026-09-02 — [ADR-0038](0038-bhs-binds-one-way-through-a-local-fixture.md)]** The
+  **extent mismatch retires**: it needed a patch and a `bhs:` definition disagreeing, and ADR-0038
+  removed the binding that put them in contact. Two of the three requirements remain, plus
+  [ADR-0034](0034-an-unresolved-definition-is-a-marked-fixture-not-a-missing-one.md)'s unresolved
+  definition. What replaces it is a **universe over-run** on a local fixture, which is caught when
+  the address is typed rather than at ingest and so is arguably not an Issues row at all.
 - **A missing definition is not proxy geometry.** §9.2, as corrected by #27, is explicit: a
   `PrimitiveType` is a field *of* the definition, so a fixture whose definition is absent has no
   primitive, no beam angle and no emitter count. It draws as a placeholder at its patched position

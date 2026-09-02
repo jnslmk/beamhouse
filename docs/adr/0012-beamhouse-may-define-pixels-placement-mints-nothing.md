@@ -4,6 +4,8 @@
 - **Date:** 2026-09-02
 - **Decides:** [#27](https://github.com/jnslmk/beamhouse/issues/27)
 - **Amended by:** [ADR-0034](0034-an-unresolved-definition-is-a-marked-fixture-not-a-missing-one.md)
+- **Amended by:** [ADR-0038](0038-bhs-binds-one-way-through-a-local-fixture.md) (2026-09-02) — rules 3 and 5
+
 
 ## Context
 

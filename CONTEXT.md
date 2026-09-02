@@ -57,7 +57,10 @@ resolves with no library present at all
 ([ADR-0030](docs/adr/0030-gdtfspec-resolves-inside-the-archive.md)) — which is what lets a dropped
 `.mvr` work in the M3a viewer. `bhs:` is Beamhouse's own
 ([ADR-0012](docs/adr/0012-beamhouse-may-define-pixels-placement-mints-nothing.md)): definitions
-carried inside a `.bhs` rather than resolved from a path. **A share link needs no library at
+carried inside a `.bhs` rather than resolved from a path, reachable **only through a Local
+fixture**, and declaring geometry and emitter layout but never optics — a definition that describes
+*light* is an authored GDTF
+([ADR-0038](docs/adr/0038-bhs-binds-one-way-through-a-local-fixture.md)). **A share link needs no library at
 all** — a **snapshot** resolves its definitions inline, so `bhs:` stopped being the only kind that
 survives a shared URL and became the shape every kind now takes there
 ([ADR-0031](docs/adr/0031-a-share-link-carries-resolved-definitions.md)).
@@ -118,11 +121,16 @@ resolved bounding-box centre, which would drift as a mover's head tilts
 _Avoid_: position (that is one component of a placement), layout, transform
 
 **Local fixture**:
-A fixture that exists only in Beamhouse — carrying its own `bhs:` definition *and* its own
-universe and address, with no entry in any console's patch. What describes pixels that reach the
-rig from a second source, such as gled2 streaming Art-Net alongside Mizer. Its **fixture id is
-negative**, which Mizer's `u32` cannot represent, so it can never collide with a console's
-([ADR-0012](docs/adr/0012-beamhouse-may-define-pixels-placement-mints-nothing.md)).
+A fixture that exists only in Beamhouse — carrying a definition *and* its own universe and
+address, with no entry in any console's patch. What describes pixels that reach the rig from a
+second source, such as gled2 streaming Art-Net alongside Mizer. Its **fixture id is negative**,
+which Mizer's `u32` cannot represent, so it can never collide with a console's
+([ADR-0012](docs/adr/0012-beamhouse-may-define-pixels-placement-mints-nothing.md)) — and it is
+**minted, never typed**, from one allocator shared with scene objects
+([ADR-0039](docs/adr/0039-definition-authoring-has-no-surface-of-its-own.md)). It is a **slot
+range, not a universe**, and may name any resolvable definition id, not only a `bhs:` one; it is
+also the **only** way a `bhs:` definition is ever reached
+([ADR-0038](docs/adr/0038-bhs-binds-one-way-through-a-local-fixture.md)).
 _Avoid_: virtual fixture, synthetic fixture, unpatched fixture
 
 **Scene object**:

@@ -338,11 +338,18 @@ Read it directly. No export step, and the bridge's file watcher can watch it alo
 there is exactly one bounded exception. gled2 streams Art-Net to the rig *alongside* Mizer
 ([ADR-0002](adr/0002-bridge-speaks-both-sacn-and-artnet.md)) and drives tubes per pixel (§01), so
 universes carrying pixels that Mizer never patched are a standing feature of this rig. A **local
-fixture** describes those: a `bhs:` definition plus its own universe and address, with no console
+fixture** describes those: a definition plus its own universe and address, with no console
 entry ([ADR-0012](adr/0012-beamhouse-may-define-pixels-placement-mints-nothing.md)). Its fixture id
 is **negative**, which Mizer's `u32` cannot represent, so it can never collide with one the console
 allocates. That is the whole of the exception — Beamhouse still authors no fixture a console
 *does* know about.
+
+**[sharpened 2026-09-02 — [#41](https://github.com/jnslmk/beamhouse/issues/41),
+[ADR-0038](adr/0038-bhs-binds-one-way-through-a-local-fixture.md)]** The exception is a **slot
+range, not a universe**: a local fixture carries an address as well as a universe, so it may sit on
+a universe the console is busy on — universe 1 of the reference rig carries six impression 90s and
+would be perfectly legal to place one on. And its definition need not be `bhs:`; it may name **any**
+resolvable id. The negative id is the constraint, and the prefix never was.
 
 **[corrected] The existing show is on QLC+, and is being left behind.**
 `mizer-shows/OBF26_Bunte-Stube.yml` is 13 fixtures over 2 universes, every one of them
@@ -527,7 +534,6 @@ carries `FixtureID` too, so the id is the one key both patch formats can supply.
     "kind": "radial",
     "center": [0, 3.2, 0], "radius": 2.4, "tilt": 90
   }],
-  "classes": { "diy_t8_35px": { "kind": "strip", "pixels": 35 } },
   "definitions": { "spoke23": { "kind": "strip", "pixels": 23, "pitch": 0.065 } },
   "fixtures": [
     { "id": -1, "definition": "bhs:spoke23", "universe": 4, "address": 1 }
@@ -535,15 +541,30 @@ carries `FixtureID` too, so the id is the one key both patch formats can supply.
 }
 ```
 
-**[added 2026-09-02 — #27]** The `definitions` block is Beamhouse's own fixture library, addressed
-by the `bhs:` prefix alongside `gdtf:`/`ofl:`/`qlc:`, and it **subsumes `classes`** — which was
-already a Beamhouse-side pixel count in all but name
-([ADR-0012](adr/0012-beamhouse-may-define-pixels-placement-mints-nothing.md)). It binds two ways: to
-a fixture the console already patched, keyed by the patch's definition id the way `classes` is
-today; or, as in the `fixtures` entry above, as a **local fixture** carrying its own address and a
-**negative id**. Where a `bhs:` definition and the patch disagree about extent, the definition wins
-for *rendering* and the patch for *addressing*, and the mismatch is **surfaced as an error rather
-than truncated** — a silently shortened strip is wrong in a way that looks right.
+**[added 2026-09-02 — #27; narrowed 2026-09-02 — [#41](https://github.com/jnslmk/beamhouse/issues/41)]**
+The `definitions` block is Beamhouse's own fixture library, addressed by the `bhs:` prefix alongside
+`gdtf:`/`ofl:`/`qlc:` ([ADR-0012](adr/0012-beamhouse-may-define-pixels-placement-mints-nothing.md)).
+
+**It binds exactly one way** ([ADR-0038](adr/0038-bhs-binds-one-way-through-a-local-fixture.md)): as
+a **local fixture**, the `fixtures` entry above, carrying its own universe and address and a
+**negative id**. A `bhs:` id never appears on a positive-id fixture. ADR-0012's second binding —
+attaching a definition to a fixture the console already patched — is **removed**, and the old
+`classes` block with it: `classes` *was* that binding, so it is gone outright rather than subsumed,
+which is what the previous wording said. Where the console patched a fixture whose definition is
+**missing**, [ADR-0034](adr/0034-an-unresolved-definition-is-a-marked-fixture-not-a-missing-one.md)
+renders a marker and you author a real file; where it is **wrong**, ADR-0012 rule 6 sends it to
+`gdtf-ts`'s quirks table. Neither is a `.bhs` concern. The **extent mismatch** this paragraph used to
+require be surfaced goes with the binding — there is no longer a patch to disagree with — and what
+replaces it is a **universe over-run**, caught when the address is typed rather than at ingest.
+
+**`bhs:` declares geometry and emitter layout, never optics.** Two `kind`s: `strip` — pixel count,
+pitch, channels-per-pixel, `PrimitiveType` — and `primitive`, a `PrimitiveType` with bounding
+dimensions, which is §14.4's human proxy. `BeamType`, `BeamAngle`, `BeamRadius` and
+`ColorTemperature` are GDTF's, so a definition that describes *light* is an authored GDTF
+([ADR-0033](adr/0033-the-spoke-is-an-authored-gdtf-because-only-gdtf-can-say-it.md)). A local
+fixture is a **slot range, not a universe** — it carries an address, so "universes the console never
+patched" was always the loose reading. It may name **any** resolvable definition id, not only a
+`bhs:` one; the negative id is the constraint, and the prefix never was.
 
 **[added 2026-09-02 — #33]** The optional `uuid` on an override is the **MVR re-import
 reconciliation hint** ([ADR-0020](adr/0020-the-live-loop-serves-patch-files-not-consoles.md)). MVR's
@@ -774,7 +795,9 @@ recognises that run as a strip rather than 35 separate lamps.
 [ADR-0005](adr/0005-emitter-grouping-is-by-dmx-stride.md): grouping is by **constant DMX offset
 stride**, never by spatial evenness, because the one real strip on disk is 70 % off even. And the
 "`.bhs` `classes` block as an explicit override" was **subsumed into the `definitions` block** by
-[ADR-0012](adr/0012-beamhouse-may-define-pixels-placement-mints-nothing.md) (§4.5). No render-class
+[ADR-0012](adr/0012-beamhouse-may-define-pixels-placement-mints-nothing.md) (§4.5) — and then
+removed outright by [ADR-0038](adr/0038-bhs-binds-one-way-through-a-local-fixture.md), since
+`classes` *was* the binding that ADR cut. No render-class
 override was reinstated in its place
 ([ADR-0022](adr/0022-beamtype-selects-the-path-stride-aggregates-within-it.md) rule 6): a wrong
 third-party profile is corrected in `gdtf-ts`'s quirks table, and a missing one is supplied as a
@@ -810,7 +833,7 @@ stream to Beamhouse simultaneously, sACN-only is impossible and Art-Net support 
 | ------------- | ------------------------------------------- | -------------------------- |
 | gled2         | only — binds 6454 exclusively on its input   | **none**                   |
 | Mizer         | output from an ephemeral port                | yes, `sacn` crate          |
-| CueCore2      | yes                                          | yes, in and out            |
+| ~~CueCore2~~  | ~~yes~~                                      | ~~yes, in and out~~        |
 | WLED          | yes                                          | yes, E1.31                 |
 
 **[corrected 2026-09-02 — [#38](https://github.com/jnslmk/beamhouse/issues/38)] That table is
@@ -836,6 +859,24 @@ hands each output the whole buffer), so the two Art-Net entries collapse to one 
 per-connection universe mapping this document implied was never configurable; and the sentence
 above is invisible **above the bridge only** — WLED holds one universe number and compares it raw
 against both protocols, so every receiver's universe must be **incremented by one** at the cutover.
+That last one is **measured**, not inferred: on the live tent, Art-Net Port-Address 1 and sACN
+universe 1 drive the same 161 pixels, and `e131Universe = 2` puts Beamhouse universe 2 back where
+Art-Net leaves it (`prototypes/wled-universe-semantics/`). A naive cutover would light the tent
+from the CueCore2's universe and drop Beamhouse universe 3. The same reading adds a constraint on
+*how* the cutover runs: WLED's `e131Port` is a **single** port for both protocols, so the node
+cannot receive Art-Net and sACN at once and there is no staged cutover to fall back on.
+
+**[corrected 2026-09-02 — [#44](https://github.com/jnslmk/beamhouse/issues/44)] The CueCore2 is
+retired, and with it Beamhouse universe 1 has no receiver.** It was an Art-Net→DMX gateway; a
+replacement will be chosen later. Its row above is struck rather than deleted because
+[ADR-0002](adr/0002-bridge-speaks-both-sacn-and-artnet.md)'s context cites it as one of two
+protocol-agnostic field devices — **that decision is unaffected**, since Art-Net is mandatory there
+on gled2's account and not on the CueCore2's, but the sentence is now historical. Two live
+consequences: universe 1's nine wired fixtures (6 × impression 90, 2 × dimmer pack, Fog Fury) are
+undrivable until a gateway exists, so #44's on-the-wire confirmation can reach the bridge but not a
+fixture on that universe; and **the replacement must speak sACN**, or universe 1 returns to Art-Net
+and ADR-0029 decision 9's cross-transport collision comes back on exactly the universe it left.
+The tent is network-native and unaffected.
 
 **The real port conflict, and it is narrow.** gled2 binds `("0.0.0.0", 6454)` *without* reuse
 options — its source comments that the input "actually needs to own 6454" — and falls back to an
@@ -1564,7 +1605,7 @@ These are the wayfinder map's tickets. See the map issue for current state.
     Surfaced #44.
 
 18. ~~**What is the agent's tool vocabulary, and who owns the scene?**~~ **Answered: four request
-    classes, fourteen commands, and ownership is implicit** (#37,
+    classes, thirteen commands, and ownership is implicit** (#37,
     [ADR-0026](adr/0026-the-control-channel-carries-requests-only-one-class-is-a-command.md),
     [ADR-0027](adr/0027-ownership-is-implicit-and-a-non-owner-stops-saving.md),
     [ADR-0028](adr/0028-a-capture-is-a-handle-fetched-over-http.md)). The ticket's premise —
@@ -1916,13 +1957,13 @@ marker. These keep their **MVR-supplied ids, positive** — an object authored e
 that tool's next export, so it goes through ADR-0020's ingest ladder like any other MVR fixture. The
 negative keyspace stays *what Beamhouse minted*, not *this is an object*.
 
-### 14.5 Still owed
+### 14.5 Nothing is still owed
 
-Both of §13.6's items had tickets rather than silence. **[#40 is now closed — see §14.6.]**
-[#41](https://github.com/jnslmk/beamhouse/issues/41) remains: `bhs:` definition authoring, the
-screen for [ADR-0012](adr/0012-beamhouse-may-define-pixels-placement-mints-nothing.md)'s third
-definition source, which **no surveyed product has**, because none of them has a definition source
-of its own.
+Both of §13.6's items had tickets rather than silence, and both are closed: the degradation ladder
+(#40) was **retired** rather than designed (§14.6), and `bhs:` definition authoring
+([#41](https://github.com/jnslmk/beamhouse/issues/41)) is §14.7 — where the screen turns out not to
+exist either. §14 is complete. The one UI-adjacent ticket left on the map is
+[#45](https://github.com/jnslmk/beamhouse/issues/45), a transport rather than a screen.
 
 Added by #40: [#45](https://github.com/jnslmk/beamhouse/issues/45), the recording transport
 (§9.3) on the same link — the only part of the viewer with prior art to copy, and a second
@@ -1993,6 +2034,46 @@ answer badly.
 Not settled here: the recording transport (§9.3) is
 [#45](https://github.com/jnslmk/beamhouse/issues/45), and `Objects` on the viewer is #43's.
 
+### 14.7 Authoring a `bhs:` definition
+
+**[added 2026-09-02 — [#41](https://github.com/jnslmk/beamhouse/issues/41),
+[ADR-0039](adr/0039-definition-authoring-has-no-surface-of-its-own.md)]** #35 observed that **no
+surveyed product has this screen**, because none of grandMA3, Capture 2026, BlenderDMX,
+DMXpressions or Showcase has a fixture-definition source of its own. The answer is that Beamhouse
+does not have it either — the surface is small enough to be hosted by gestures that already exist.
+
+**There is no `Definitions` tab; the overlay keeps its five.** A tab would be a library browser for
+a library holding one or two entries, and it would put *authoring a definition* and *placing a
+fixture* side by side as peers — the confusion ADR-0012 rule 1's "placement mints nothing" exists to
+prevent.
+
+**One gesture — `add local fixture`, on the Fixtures tab — creates the definition inline.**
+[ADR-0038](adr/0038-bhs-binds-one-way-through-a-local-fixture.md) leaves no way to have a `bhs:`
+definition without a local fixture, so the two are made in one act. The gesture offers existing
+`bhs:` ids alongside **new**; reuse is the second-instance case, one definition serving ten spokes.
+A definition is then **edited from any fixture that names it**, and the edit announces its reach —
+editing `bhs:spoke23` from spoke 3 says it changes ten, which is §14.2's multi-row edit arriving
+from the definition side.
+
+**The editor is four fields per `kind`** (§4.5), mono per §14.2, pitch in millimetres because that
+is what a tape measure reads:
+
+| `kind` | Fields |
+| --- | --- |
+| `strip` | pixel count · pitch · channels-per-pixel · `PrimitiveType` |
+| `primitive` | `PrimitiveType` · width · depth · height |
+
+No mesh import and no beam fields — ADR-0038 keeps geometry trees and optics in GDTF.
+
+**The negative id is allocated, never typed.** Next free negative, displayed and selectable but not
+an input: the sign *means* "no console knows about this"
+([ADR-0012](adr/0012-beamhouse-may-define-pixels-placement-mints-nothing.md) rule 4), and a text
+field only buys the chance to type a positive one and claim an id the console may allocate later.
+**One allocator covers the whole negative space**, shared with §14.4's scene objects — ADR-0035 puts
+it the same way from its side, *the negative keyspace is what Beamhouse minted*. The **tab split
+stays the DMX mode**, not the sign: addressed to `Fixtures`, empty to `Objects`, so a gled2 tube and
+a human proxy never share a table.
+
 ## 15 · The agent scene surface: the request vocabulary
 
 **[added 2026-09-02 — [#37](https://github.com/jnslmk/beamhouse/issues/37)]** §4.7 says an agent is
@@ -2021,9 +2102,9 @@ shipping `capture` without `look` would ship half a tool.
 
 ### 15.2 The commands
 
-Fourteen, and they are the whole editing surface: **the UI draws no affordance that is not one of
+Thirteen, and they are the whole editing surface: **the UI draws no affordance that is not one of
 these, and the agent can do nothing else.** Sources are §4.4's four affordances, the History rows
-of #35's canvas, and ADR-0012's two bindings.
+of #35's canvas, and ADR-0012's local fixture.
 
 | Command | Writes |
 | ------- | ------ |
@@ -2036,7 +2117,6 @@ of #35's canvas, and ADR-0012's two bindings.
 | `array.set(arrayId, params)` | arrays |
 | `array.dissolve(arrayId)` | arrays |
 | `define(defId, kind, params)` | definitions |
-| `map(patchDefId, bhsDefId)` | definitions |
 | `fixture.add(defId, universe, address)` / `.remove(id)` | fixtures |
 | `object.place(kind, params)` / `.remove(id)` | objects |
 | `camera.saveView(name)` | views |
@@ -2064,6 +2144,17 @@ Three of the rows are load-bearing beyond their own behaviour:
   it **lowers onto `define` + `fixture.add`**, the way `rotate`'s `pivot` lowers onto ADR-0012's
   stored transform. It writes `definitions` and `fixtures`, not an `objects` block — there is none.
   `object.remove(id)` is `fixture.remove(id)` on a negative id.
+- **`define` is a command with no affordance of its own**, and the second such row after
+  `object.place`'s lowering. It fires as part of `fixture.add` with a new definition and as part of
+  `object.place` ([ADR-0039](adr/0039-definition-authoring-has-no-surface-of-its-own.md)); §14's
+  rule runs one way only, so a command the UI never draws directly is legal.
+
+  **[removed 2026-09-02 — [#41](https://github.com/jnslmk/beamhouse/issues/41),
+  [ADR-0038](adr/0038-bhs-binds-one-way-through-a-local-fixture.md)]** A fourteenth row,
+  `map(patchDefId, bhsDefId)`, stood here. It was ADR-0012's binding (a) verbatim — the source note
+  above says *"ADR-0012's two bindings"* — and there is now one binding, so nothing keys a `bhs:`
+  definition to a patched fixture's definition id. ADR-0026's four request classes and its "nothing
+  writes `patch`" rule are untouched; one row lost its cause.
 - **`camera.saveView` is a command and the camera *pose* is not.** A named view is stored in the
   `.bhs` and survives a reload; anything that writes the `.bhs` and is not `patch` is a command.
 
@@ -2073,8 +2164,9 @@ Three of the rows are load-bearing beyond their own behaviour:
 `measure` · `camera.set` · `hold` · `undo` · `redo`.
 
 **Every query returns the marks** — [ADR-0025](adr/0025-trust-and-provenance-marks-are-additive.md)'s
-stale, overridden and patch-overlap badges, ADR-0012's extent mismatch, ADR-0020's synthesised ids,
-§9.2's missing-definition placeholder. A read path that drops them re-opens the hole ADR-0025
+stale, overridden and patch-overlap badges, ADR-0020's synthesised ids, and
+[ADR-0034](adr/0034-an-unresolved-definition-is-a-marked-fixture-not-a-missing-one.md)'s
+unresolved-definition marker. A read path that drops them re-opens the hole ADR-0025
 closed: an agent given bare geometry will confidently place a fixture that is drawing as a
 placeholder because its definition is absent, and report success.
 
