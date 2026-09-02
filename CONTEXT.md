@@ -81,8 +81,12 @@ One byte within a universe, identified by its 1-based position. What travels on 
 _Avoid_: channel, address, DMX value
 
 **Address**:
-The first slot a fixture occupies in a universe. What an operator sets on the fixture itself.
-_Avoid_: start channel, DMX address
+The first slot a **break** occupies in a universe. What an operator sets on the fixture itself. A
+fixture has one per break, so a fixture with more than one break has more than one address and may
+sit in more than one universe ([ADR-0009](docs/adr/0009-a-fixture-is-addressed-per-break.md)). A
+single-break fixture — the common case, and the only one a Mizer patch can express — has exactly
+one.
+_Avoid_: start channel, DMX address, "the fixture's universe" (a fixture need not have just one)
 
 **Channel**:
 A definition-level control: one attribute, bound to one or more slot offsets and given meaning
@@ -91,8 +95,11 @@ one channel across two slots.
 _Avoid_: slot, parameter
 
 **Break**:
-A sub-range of a fixture's channels that is addressed independently of the fixture's own
-address. What makes a pixel fixture's repeats addressable.
+A sub-range of a fixture's channels carrying its own **universe** and **address**, independent of
+every other break of the same fixture. What makes a pixel fixture's repeats addressable, and the
+only reason a fixture can span universes. GDTF declares breaks and MVR addresses them; a Mizer
+patch has exactly one per fixture.
+_Avoid_: offset, sub-fixture (that is Mizer's control grouping, which shares one universe)
 
 **Attribute**:
 What a channel controls, named from GDTF's taxonomy — `Dimmer`, `Pan`, `ColorAdd_R`, `Zoom`.
