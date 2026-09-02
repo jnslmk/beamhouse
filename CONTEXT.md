@@ -270,7 +270,9 @@ Whether a channel value is proportional to radiance or perceptually encoded. Ind
 _Avoid_: gamma, colour curve, linearity
 
 **White point**:
-The chromaticity a definition declares for its own light, as `Beam` `ColorTemperature` in kelvin.
+The chromaticity a definition declares for its own light, as `Beam` `ColorTemperature` in kelvin,
+or an OFL definition's `physical.bulb.colorTemperature`
+([ADR-0043](docs/adr/0043-ofl-sole-emitter-draws-the-cone.md) decision 6).
 The same word the **colour space** entry uses for the W of a colour space — and deliberately so:
 this *is* that white point, declared per definition where the primaries are only assumed
 ([ADR-0008](docs/adr/0008-colour-space-is-assumed-transfer-function-is-read.md) rule 5 admits it and
@@ -282,6 +284,12 @@ with level** — `T / T0 = (radiance fraction) ^ 0.1235`, because a filament coo
 ([ADR-0045](docs/adr/0045-the-tungsten-curve-is-derived-from-a-declared-lamptype.md)). The drift is
 **derived from** a declared field, never read from one: GDTF can declare a spectrum per drive level,
 but no reader anywhere honours it, so the curve is Beamhouse's and the lamp type is the file's.
+Only GDTF has the lamp-type field: OFL's `physical.bulb.type` is free text, **parsed and never
+consulted** ([#57](https://github.com/jnslmk/beamhouse/issues/57)), so an OFL fixture's lamp type
+stays **absent** — never defaulted to GDTF's schema-level `Discharge`, a statement GDTF makes about
+GDTF files — and its white point never drifts. It renders at the declared kelvin figure at every
+level, and the measured population that costs is ~1 clean tungsten fixture of 629 (the rest of the
+warm-CCT corpus is LED or mislabelled discharge).
 _Avoid_: colour temperature (that is the declared kelvin figure; the white point is what it resolves
 to), warm dim, tungsten curve as a definition field
 
