@@ -725,6 +725,17 @@ stream to Beamhouse simultaneously, sACN-only is impossible and Art-Net support 
 | CueCore2      | yes                                          | yes, in and out            |
 | WLED          | yes                                          | yes, E1.31                 |
 
+**[corrected 2026-09-02 — [#38](https://github.com/jnslmk/beamhouse/issues/38)] That table is
+capabilities, and this rig runs none of the sACN in it.** `mizer-shows/OBF26_Bunte-Stube.yml`'s
+`connections:` are two entries, **both `type: artnet`** — a broadcast to `192.168.8.255` and a
+unicast to `192.168.8.243`. So "Mizer streaming sACN" above is what Mizer *can* do, not what it
+does here, and priority and `Preview_Data` are `null` on **every** universe today. Every claim in
+this document about those fields being "free on exactly the universes Mizer sends" inherited that
+conflation. Moving Mizer to sACN is [#44](https://github.com/jnslmk/beamhouse/issues/44), and it
+changes no Beamhouse universe number — Art-Net Port-Address 0 → universe 1 and sACN universe 1 →
+universe 1 are the same number
+([ADR-0029](adr/0029-the-bridge-detects-contention-and-never-arbitrates.md)).
+
 **The real port conflict, and it is narrow.** gled2 binds `("0.0.0.0", 6454)` *without* reuse
 options — its source comments that the input "actually needs to own 6454" — and falls back to an
 ephemeral port if that fails. So the conflict exists **only when gled2's Art-Net input is in
@@ -746,6 +757,19 @@ start-order ritual, and group join/leave maps directly onto the `subscribe` mess
 1. Accept a WebSocket; read a `subscribe` message listing universes.
 2. Join those multicast groups; forward each universe's 512 bytes.
 3. Drop out-of-order packets by sequence number rather than flickering.
+
+   **[corrected 2026-09-02 — #38] The rule is per source and per transport, and the bridge owns
+   it.** `sacn` npm detects out-of-order packets and **throws before emitting**, handing back a
+   bare `Error` whose universe and source name exist only inside its message string — so a
+   per-source `drops` off that path would be a regex on English prose. The bridge tracks sequence
+   itself. On sACN, E1.31's own rule: discard when the signed difference (new − last) falls in
+   **−20..0 inclusive**, which tolerates wrap while admitting a genuine restart, and is tighter
+   than the library's `Math.abs(last − seq) > 20`. On Art-Net, ArtDmx sequence is 1–255 with **0
+   meaning sequencing is disabled**, so the path branches on 0 — applying a numeric rule to a 0
+   discards every frame from a node that opted out, which is job 4's failure with a new cause.
+   This does not reopen ADR-0006: the package keeps the packet parsing and the multicast group
+   management ([ADR-0029](adr/0029-the-bridge-detects-contention-and-never-arbitrates.md)).
+
 4. Mark a universe stale after silence and say so. Silent frozen output is the worst
    failure mode, because you debug the console instead of the network.
 
@@ -758,6 +782,16 @@ start-order ritual, and group join/leave maps directly onto the `subscribe` mess
    the one indicator that matters. **~6 s for Art-Net**, the spec interval plus margin
    ([ADR-0018](adr/0018-signal-health-is-one-per-universe-snapshot.md)).
 
+   **[refined 2026-09-02 — #38] The threshold is per *source*, and a universe is stale only when
+   *every* source is stale.** A universe fed by both transports has two thresholds and needed a
+   rule; each source ages on its own transport's clock. The rollup is **all**, not any — a
+   contended universe where one console falls silent still has live data arriving, and marking it
+   stale would say *do not believe this* about a picture that is currently correct. This is the
+   **opposite** rollup from §13.3's fixture rule, and the asymmetry is the point: breaks are
+   disjoint slices of one fixture, so a silent break is *missing data*; sources are redundant
+   claims on the same slots, so a silent source is *one fewer claim*
+   ([ADR-0029](adr/0029-the-bridge-detects-contention-and-never-arbitrates.md)).
+
 5. Pass through the priority and `Preview_Data` flags. **[corrected 2026-09-02 — #31] Not "a free
    blind-mode indicator" — free on sACN and unavailable on Art-Net.** E1.31 carries a priority
    octet and a `Preview_Data` options bit; ArtDmx carries neither. The table above records that
@@ -766,13 +800,42 @@ start-order ritual, and group join/leave maps directly onto the `subscribe` mess
    tell you* — which the UI must not render as *not blind*
    ([ADR-0018](adr/0018-signal-health-is-one-per-universe-snapshot.md)).
 
-   **Priority is reported, not enforced.** Job 2 forwards; nothing here merges or arbitrates, so
-   two sACN sources on one universe is last-writer-wins flicker with a priority number beside it.
-   Whether the bridge should arbitrate is [#38](https://github.com/jnslmk/beamhouse/issues/38);
-   until it lands, §13's read-out labels priority as claimed and flags the universe as contended.
+   **[settled 2026-09-02 — #38] Priority is reported, never enforced — permanently.** Job 2
+   forwards; nothing merges or arbitrates, and nothing ever will
+   ([ADR-0029](adr/0029-the-bridge-detects-contention-and-never-arbitrates.md)). Beamhouse never
+   sends DMX; its claim is *this is what the network is doing*, and a bridge that silently
+   resolves contention hides the exact fault job 4 exists to surface. A visualiser that picks a
+   winner also **disagrees with the stage**, since real fixtures each run their own merge. And it
+   is the only behaviour that generalises: ArtDmx carries no priority field at all. `sacn` npm's
+   own `MergingReceiver` was the free-looking option and is the broken one — deprecated,
+   self-described as untested, and silently wrong for every universe ≥ 10.
+
+   **The bridge decodes the options byte itself.** `sacn` npm exposes `options` raw with a TODO
+   and decodes neither flag. `Preview_Data` is bit 7 (`options & 0x80`). **Bit 6,
+   `Stream_Terminated`, is now consumed too** — it is the difference between *a source left* and
+   *a source died*, and without it a console releasing a universe is indistinguishable from a
+   network failure for a full 2.5 s, keeping a contended universe flagged for the whole timeout
+   after the second source has gone.
+
+   **What replaces arbitration is detection.** The bridge keeps one entry per **source** per
+   universe — identified by CID on sACN and by source IP on Art-Net, the only identity ArtDmx
+   supplies — and a universe with more than one is **contended**. Detection keys on the *merged*
+   universe number, so it spans transports: per ADR-0007 an Art-Net Port-Address 0 and an sACN
+   universe 1 are the same universe 1, and that is the collision this rig sits one config change
+   away from. **One packet is enough; there is no debounce** — a stray packet on a patched
+   universe is precisely the fault worth naming, and §13.2's *Arriving* column carries the
+   discrimination between a source at 0.03 Hz and one at 44 Hz.
 6. **Merge both transports into one universe space**, sACN-numbered: an Art-Net Port-Address *p*
    is forwarded as universe *p* + 1 ([ADR-0007](adr/0007-one-universe-space-sacn-numbered.md)).
    This is the only place that mapping may live, and it is worth a test.
+
+   **[corrected 2026-09-02 — #38] The merged space is *shared*, not collision-free.** ADR-0007
+   claimed the mapping was "collision-free by construction" and conceded in the same sentence that
+   the two sources are merely "expected to use distinct numbers". Port-Address *p* + 1 lands
+   inside sACN's own 1–63999, so the two ranges **fully overlap**: the mapping is total and
+   injective *within* Art-Net and guarantees nothing across transports. Collisions are **detected,
+   not prevented** — job 5's contention bookkeeping doing the work the construction was assumed to
+   do ([ADR-0029](adr/0029-the-bridge-detects-contention-and-never-arbitrates.md)).
 7. Serve the static app and watch `shows/` and Mizer's project YAML for changes. **Not optional**
    — serving over `http://localhost` is what sidesteps §9.4's mixed-content trap rather than
    merely documenting it.
@@ -790,10 +853,16 @@ Thin, because the browser does the thinking. Text frames for control, binary for
 
 // bridge → browser, control
 { "op": "universes", "universes": [
-    { "universe": 1, "transport": "sacn",   "stale": false, "drops": 3,
-      "priority": 100, "preview": false },
-    { "universe": 2, "transport": "artnet", "stale": true,  "drops": 0,
-      "priority": null, "preview": null }
+    { "universe": 1, "stale": false, "sources": [
+        { "id": "…cid…",        "name": "Mizer", "transport": "sacn",
+          "priority": 100,  "preview": false, "drops": 3 },
+        { "id": "192.168.8.31", "name": null,    "transport": "artnet",
+          "priority": null, "preview": null,  "drops": 0 }
+    ]},
+    { "universe": 2, "stale": true, "sources": [
+        { "id": "192.168.8.31", "name": null, "transport": "artnet",
+          "priority": null, "preview": null, "drops": 0 }
+    ]}
 ]}
 { "op": "reload", "path": "shows/warehouse.mvr" }
 ```
@@ -814,6 +883,24 @@ the direction where everything looks fine. `drops` is job 3's out-of-order count
 computed and discarded. `null` for `priority`/`preview` means the transport cannot supply them,
 which is not the same as `false`. `sacn_source` is gone by name as well as by shape: it was named
 for the only transport it could describe.
+
+**[revised again 2026-09-02 — [#38](https://github.com/jnslmk/beamhouse/issues/38)] The record is
+now source-shaped**, with `transport`, `priority`, `preview` and `drops` moved from the universe
+onto a `sources[]` array
+([ADR-0029](adr/0029-the-bridge-detects-contention-and-never-arbitrates.md)). The flat record was
+coherent only while every universe had exactly one source; a **contended** universe has two
+priorities, and a cross-transport one has two transports, neither of which a scalar can state.
+This is the second revision of a message introduced the same day, and both had the same cause —
+a scalar standing in for something plural.
+
+- **`contended` is derived** (`sources.length > 1`), never carried. ADR-0018 chose a snapshot
+  precisely so the client reconstructs nothing; a carried boolean is a second chance to disagree
+  with the array beside it.
+- **`id` is the sACN CID, or the source IP on Art-Net**, which is the only identity ArtDmx
+  supplies. `name` is E1.31's `sourceName` and is `null` on Art-Net for the same reason.
+- **`null` keeps ADR-0018's meaning** — *this transport cannot tell you* — and is now `null` per
+  **source**, which is what makes a mixed-transport universe describable at all.
+- **`stale` stays on the universe** and is the **all**-rollup of its sources (§06 job 4).
 
 ```
 // bridge → browser, data. one frame per tick, all universes.
@@ -1273,10 +1360,19 @@ These are the wayfinder map's tickets. See the map issue for current state.
     resolves `Dimmer` to a photometric quantity, so "false colour" is a name for something v1
     cannot compute. Amends ADR-0007's *reach* — the transport returns on the control channel, never
     in the frame. Surfaced #38.
-17. **Does the bridge arbitrate sACN priority, or forward every source?** (#38) Two sources on one
-    universe is last-writer-wins flicker today, and §13 now displays a priority number beside it.
-    The reference rig has one source per universe, so this is a correctness question the rig cannot
-    exhibit.
+17. ~~**Does the bridge arbitrate sACN priority, or forward every source?**~~ **Answered: it
+    detects and never arbitrates, and three more premises were false** (#38,
+    [ADR-0029](adr/0029-the-bridge-detects-contention-and-never-arbitrates.md)). The rig has **no
+    sACN in it at all** — Mizer's two connections are both `type: artnet`, so priority and blind
+    are `null` on every universe today and the sACN case the ticket asked about cannot arise here
+    (#44 moves it). ADR-0007's "collision-free by construction" is **false** — the mapped Art-Net
+    range sits inside sACN's own, so the real case is **cross-transport** contention, which the
+    ticket never raised. ADR-0018 promised a `contended` flag with **no field on the wire to carry
+    it**. And `sacn` npm already ships an arbitrator that is deprecated, self-described as
+    untested, and silently wrong for every universe ≥ 10. The record becomes **source-shaped**,
+    the stale threshold becomes per source with an **all**-rollup, `Stream_Terminated` is consumed,
+    and the bridge takes over sequence tracking. Per-slot HTP/LTP merging is **out of scope**.
+    Surfaced #44.
 
 18. ~~**What is the agent's tool vocabulary, and who owns the scene?**~~ **Answered: four request
     classes, fourteen commands, and ownership is implicit** (#37,
@@ -1368,25 +1464,38 @@ ADR-0014 put on the `generated` feed exists to make a shared link look *alive*.
 One row per subscribed universe, rendered straight from §07's `universes` snapshot. This is the
 panel you look at when the rig looks wrong.
 
-| Column | Source | Notes |
-| ------ | ------ | ----- |
-| Universe | `universe` | sACN-numbered, always — ADR-0007. An Art-Net Port-Address is never shown |
-| Transport | `transport` | control channel only; never in the frame |
-| Arriving | derived | frames seen, and at what rate |
-| Stale | `stale` | 2.5 s sACN, ~6 s Art-Net — the thresholds differ and the row says which applies |
-| Priority | `priority` | **observed, not enforced** — see below |
-| Blind | `preview` | `Preview_Data`. sACN only |
-| Drops | `drops` | job 3's out-of-order count |
+**[revised 2026-09-02 — [#38](https://github.com/jnslmk/beamhouse/issues/38)] The row is a
+universe; the columns after the first two belong to a *source*.** A universe with one source reads
+as a single row, which is every universe on this rig today; a **contended** one expands to one
+sub-row per source. Six of the eight columns move with it, because a universe with two sources has
+two priorities ([ADR-0029](adr/0029-the-bridge-detects-contention-and-never-arbitrates.md)).
+
+| Column | Source | Scope | Notes |
+| ------ | ------ | ----- | ----- |
+| Universe | `universe` | universe | sACN-numbered, always — ADR-0007. An Art-Net Port-Address is never shown |
+| Stale | `stale` | universe | the **all**-rollup of its sources; the sub-row says which threshold applied |
+| Source | `id` / `name` | source | sACN CID and `sourceName`; on Art-Net the source IP, and `name` is `null` |
+| Transport | `transport` | source | control channel only; never in the frame |
+| Arriving | derived | source | frames seen, and at what rate. This is what separates a stray packet from a live console |
+| Priority | `priority` | source | **observed, never enforced** — see below |
+| Blind | `preview` | source | `Preview_Data`. sACN only |
+| Drops | `drops` | source | job 3's out-of-order count, tracked by the bridge |
 
 **`null` is a third state and must render as one.** Priority and blind are `null` on every Art-Net
 universe, permanently. *Unknown* and *not blind* are different claims, and the operator would act
 on the second. Render `null` as "—" or an equivalent, never as an unlit indicator.
 
-**Priority is what a source claims, not what the bridge enforces.** Nothing merges or arbitrates
-(§06 job 2 forwards), so two sACN sources on one universe is last-writer-wins flicker. Such a
-universe is flagged **contended**. Whether the bridge should arbitrate is
-[#38](https://github.com/jnslmk/beamhouse/issues/38); if it is adopted, this column's label
-changes with it.
+**Priority is what a source claims, not what the bridge enforces — and that is now permanent.**
+ADR-0018 wrote "if arbitration is adopted, this column's label changes with it". It has not been
+adopted and will not be: Beamhouse detects contention and never resolves it
+([ADR-0029](adr/0029-the-bridge-detects-contention-and-never-arbitrates.md)). **Observed, not
+enforced** is the final wording.
+
+**A universe with more than one source is `contended`, across transports.** Not just two sACN
+sources: per ADR-0007 an Art-Net Port-Address 0 and an sACN universe 1 are both universe 1, and
+that is the collision this rig is one config change away from. **One packet is enough** — there is
+no debounce, because a stray packet on a patched universe is exactly the fault worth naming, and
+the *Arriving* column is what tells a 0.03 Hz stray from a 44 Hz console.
 
 ### 13.3 Staleness on a fixture
 
@@ -1401,6 +1510,30 @@ across Beamhouse universes 2 and 3.
 Staleness is a **trust** signal, so it must read as "do not believe this", not as "this fixture is
 off". A fixture at zero and a fixture whose data stopped look identical at full brightness zero,
 and only one of them is a problem.
+
+### 13.3a Contention on a fixture
+
+**[added 2026-09-02 — #38]** Every fixture on a **contended** universe is marked the same way, in
+[ADR-0025](adr/0025-trust-and-provenance-marks-are-additive.md)'s additive vocabulary rather than
+a second notation ([ADR-0029](adr/0029-the-bridge-detects-contention-and-never-arbitrates.md)).
+
+The universe is **still drawn**, flicker and all: the frame is last-writer-wins, which is true of
+the wire and true of no single console. Freezing or blanking it would discard real data and
+re-create §06 job 4's silent-frozen-output failure by hand. But flicker alone is **not
+diagnostic** — a strobe chase, a three-source conflict and a failing switch look identical at the
+fixture.
+
+The two marks must read differently, because they are different claims:
+
+| Mark | Claim | What the operator does |
+| ---- | ----- | ---------------------- |
+| **stale** | *this is old* | look at the network, or at the console that went quiet |
+| **contended** | *this is disputed* | look at the read-out and find out **who else** is sending |
+
+Note the rollups run opposite ways and both are right. A fixture is stale if **any** break is
+stale (§13.3), because breaks are disjoint slices and a silent one is missing data. A universe is
+stale only if **every** source is stale (§06 job 4), because sources are redundant claims on the
+same slots and a silent one is one fewer claim.
 
 ### 13.4 Blind indication
 

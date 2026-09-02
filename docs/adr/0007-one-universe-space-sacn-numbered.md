@@ -9,6 +9,10 @@
 - **Amended by:** [ADR-0018](0018-signal-health-is-one-per-universe-snapshot.md) — in **reach**,
   not in principle. The transport stays out of the binary frame, so nothing in the render path can
   branch on it; it returns on the **control** channel, for diagnostics only.
+- **Amended by:** [ADR-0029](0029-the-bridge-detects-contention-and-never-arbitrates.md) —
+  "collision-free by construction" below is **withdrawn**. The mapping is total and injective
+  *within* Art-Net and guarantees nothing across transports; the merged space is **shared**, and
+  collisions are detected rather than prevented. The `+1` itself stands untouched.
 
 ## Context
 
@@ -57,6 +61,14 @@ An Art-Net Port-Address *p* is presented on the wire and in the UI as universe *
 - Art-Net Port-Address 32767 maps to universe 32768, inside sACN's 1–63999 range, so the mapping
   is total and collision-free by construction — the two sources are expected to use distinct
   numbers, exactly as they must on a single console today.
+
+  **[withdrawn 2026-09-02 — [#38](https://github.com/jnslmk/beamhouse/issues/38)]** This bullet
+  refutes itself in its own second clause: "expected to use distinct numbers" is an assumption,
+  not a construction. Because *p* + 1 lands **inside** sACN's own 1–63999, the mapped Art-Net
+  range and the native sACN range fully overlap — Mizer's Art-Net Port-Address 0 is Beamhouse
+  universe 1, and so is sACN universe 1. Cross-transport contention is therefore the *likely* case
+  on this rig, not an exotic one, and it is now **detected** rather than assumed away
+  ([ADR-0029](0029-the-bridge-detects-contention-and-never-arbitrates.md)).
 - The `+1` is the kind of off-by-one that ships silently. The bridge must apply it in exactly one
   place, and that place is worth a test.
 - **Universe** and **Port-Address** are pinned in `CONTEXT.md` so the ambiguity cannot re-enter

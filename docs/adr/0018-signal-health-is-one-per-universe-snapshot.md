@@ -4,6 +4,11 @@
 - **Date:** 2026-09-02
 - **Decides:** [#31](https://github.com/jnslmk/beamhouse/issues/31)
 - **Amends:** [ADR-0007](0007-one-universe-space-sacn-numbered.md)
+- **Amended by:** [ADR-0029](0029-the-bridge-detects-contention-and-never-arbitrates.md) — the
+  `universes` record becomes **source-shaped** (`transport`, `priority`, `preview` and `drops`
+  move onto a `sources[]` array), the stale threshold becomes **per source** with an **all**
+  rollup, and decision 5's "until the bridge decides whether it arbitrates" is closed: it never
+  does.
 
 ## Context
 
@@ -83,6 +88,14 @@ component that may *act* on it.
 arbitrates, the read-out labels priority as what a source *claims*, and a universe with two
 sACN sources is shown as **contended**. Deciding the arbitration itself is
 [#38](https://github.com/jnslmk/beamhouse/issues/38), not this ADR.
+
+**[settled 2026-09-02 — #38]** It does not arbitrate, ever
+([ADR-0029](0029-the-bridge-detects-contention-and-never-arbitrates.md)), so "observed, not
+enforced" is final rather than provisional. Two corrections to this decision fall out of it. The
+contention it promised had **no field on the wire to carry it** — the record above has no source
+count and no CID — which is why that record is now source-shaped. And "two sACN sources" was the
+wrong scope: contention is a property of the **merged** universe number and spans transports,
+which is the case this rig can actually reach.
 
 **6 · Signal health is a property of the feed, and is unreachable off a live one.** Not merely
 false — absent. `live` has the universe table; `recorded` has a timeline position and no

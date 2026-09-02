@@ -127,6 +127,22 @@ meant, because it is off by one from the **universe** it maps to — Port-Addres
 *p* + 1. Only the **bridge** ever sees one.
 _Avoid_: universe (that is the merged, sACN-numbered one), art-net address
 
+**Source**:
+One sender of one **universe**, identified within that universe by its sACN CID or, on Art-Net
+where no CID exists, by its source IP ([ADR-0029](docs/adr/0029-the-bridge-detects-contention-and-never-arbitrates.md)).
+Priority, `Preview_Data`, the stale threshold and the out-of-order count are all properties of a
+**source**, never of the universe it sends to. A source sending several universes appears once in
+each. Only the **bridge** ever sees one.
+_Avoid_: sender, node, console (a console is one kind of source; gled2 is another)
+
+**Contended**:
+A **universe** with more than one **source**. The frame is last-writer-wins, so what is rendered
+is true of the wire and true of no single console. Beamhouse **detects** contention and never
+resolves it ([ADR-0029](docs/adr/0029-the-bridge-detects-contention-and-never-arbitrates.md)) —
+the fixtures on the universe are marked *disputed*, which is a different claim from **stale**'s
+*old*. Derived from the source list, never carried as its own flag.
+_Avoid_: merged, conflicted, HTP/LTP (Beamhouse performs no merge, so it has no merge mode)
+
 **Slot**:
 One byte within a universe, identified by its 1-based position. What travels on the wire.
 _Avoid_: channel, address, DMX value
