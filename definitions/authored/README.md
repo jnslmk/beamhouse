@@ -55,6 +55,29 @@ only `thumbnail.png` and `description.xml`, with no geometry. MIT-licensed `.3ds
   `High Resolution (Extended)`.
 - `modeMaster` is not used; the Normal mode needs no channel-dependent behaviour.
 
+### Sub-range divergences from the `.qxf` (from [#6](https://github.com/jnslmk/beamhouse/issues/6))
+
+Every channel sits at the right offset; these are *within-channel* range differences.
+[ADR-0010](../../docs/adr/0010-resolution-is-total-the-renderer-selects-by-attribute.md) splits
+them by whether v1 actually consumes the attribute:
+
+- **`Shutter1` breakpoints — v1-visible, fix first.** Authored as Closed 0–31 / Strobe 32–223 /
+  Open 224–255; the `.qxf` has Closed 0–15 / pulse-random 16–143 / strobe 144–239 / Open 240–255.
+  So **16–31 resolves Closed while the fixture is pulsing, and 224–239 resolves Open while it is
+  strobing**. `Shutter1` is one of v1's eight consumed attributes and drives the render gate, so
+  both errors are visible on screen.
+- **`Shutter1Strobe` Hz range** is wider than the fixture's — **not v1-visible**, the attribute
+  resolves but has no consumer.
+- **`CTC`** authored as 2700–8000 K across 0–255; the `.qxf` has a 0–6 dead zone and 7–255 =
+  3200–7200 K, so there is no dead zone here and both endpoints overshoot — **not v1-visible**,
+  same reason.
+- **Channels 5, 12, 13, 14** carry one generic `0…1` `ChannelFunction` each where the `.qxf`
+  enumerates capability tables (128 movement macros, 6 maintenance ranges). **Not v1-visible.**
+
+Fixing these is a **definition** change, not a resolver change — no resolution fidelity closes
+them, per ADR-0010 and the precedent in
+[ADR-0005](../../docs/adr/0005-emitter-grouping-is-by-dmx-stride.md).
+
 ## Using it with Mizer
 
 Copy the `.gdtf` into a directory on Mizer's GDTF library path (settings key `gdtf`, defaulting
