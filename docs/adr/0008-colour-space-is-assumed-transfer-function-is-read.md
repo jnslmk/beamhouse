@@ -3,6 +3,7 @@
 - **Status:** Accepted
 - **Date:** 2026-09-01
 - **Decides:** [#9](https://github.com/jnslmk/beamhouse/issues/9)
+- **Amended by:** [ADR-0010](0010-resolution-is-total-the-renderer-selects-by-attribute.md) (2026-09-02)
 
 ## Context
 
@@ -35,11 +36,17 @@ The transfer function is a different story. Measured against our own authored pr
 | --- | --- | --- |
 | `Dimmer` | `LuminousIntensity` | 0.0 → 1.0 |
 | `ColorAdd_R/G/B` | `ColorComponent` | 0.0 → 1.0 |
-| `Pan` | `AngleDeg` | -330.0 → 330.0 |
-| `Tilt` | `AngleDeg` | -150.0 → 150.0 |
+| `Pan` | `Angle` | -330.0 → 330.0 |
+| `Tilt` | `Angle` | -150.0 → 150.0 |
 
 `Dimmer` carries a **photometric** unit, so `0 → 1` in luminous intensity states outright that the
-dimmer is linear in radiance. That is declared, not assumed. `ColorAdd_*` carries
+dimmer is linear in radiance. That is declared, not assumed.
+
+> **[Amended 2026-09-02 by ADR-0010]** This generalised from one file — the one we authored. All
+> five third-party profiles on the rig declare `PhysicalUnit="None"` for `Dimmer`; only
+> `GLP@impression 90 RGB` declares `LuminousIntensity`. For real-world fixtures the transfer
+> function of the dimmer is **not** declared, so "declared, not assumed" does not hold for
+> `Dimmer`. The assumption in decision 3 below widens accordingly. `ColorAdd_*` carries
 `ColorComponent`, which is **dimensionless and photometrically undefined** — `0.5` could be half
 radiance or half perceptual brightness, and the format does not say.
 
@@ -77,9 +84,15 @@ answer, and only a `ProPhoto`, `ANSI` or `Custom` declaration would contradict t
    Assuming linearity where it is *declared* is not conservative, it is a discarded fact — and the
    same code path drives `Pan` at `-330..330`, where ignoring the declared mapping does not dim a
    fixture slightly, it points it at the wrong place. The general form of this is
-   [#25](https://github.com/jnslmk/beamhouse/issues/25).
+   [#25](https://github.com/jnslmk/beamhouse/issues/25), settled by
+   [ADR-0010](0010-resolution-is-total-the-renderer-selects-by-attribute.md): resolution is total,
+   and the renderer selects by attribute name rather than by unit.
 3. **The one assumption v1 makes is: `ColorComponent` 0..1 is proportional to radiance.** One
    sentence, one site, the only place GDTF is genuinely silent.
+   **[Amended 2026-09-02 by ADR-0010]** Widened to: *intensity-like quantities* — `ColorAdd_*` and
+   `Dimmer` — are proportional to radiance. Still one sentence and one site; `Dimmer` joins because
+   the wild declares it `None`. A `LuminousIntensity` declaration merely agrees with the
+   assumption rather than replacing it.
 4. **The seam is a type, not a comment convention.** `resolveColor()` is the sole minter of a
    branded `LinearRGB`, and every colour consumer takes that type. A future non-linear path cannot
    silently skip conversion, and enumerating the assumption sites becomes a compiler output rather

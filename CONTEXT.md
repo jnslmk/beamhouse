@@ -108,10 +108,22 @@ The vocabulary in which resolved values are expressed.
 ### Resolution and rendering
 
 **Resolve**:
-To turn raw slot values into physical attribute values — degrees of pan, hertz of strobe — by
-applying a fixture's channel bindings. Always this word; never "decode" or "parse", which are
-about bytes and XML respectively.
+To turn raw slot values into attribute values — degrees of pan, hertz of strobe — by applying a
+fixture's channel bindings. Always this word; never "decode" or "parse", which are about bytes and
+XML respectively. Resolution is **total**: every channel function resolves, to a value carrying the
+unit that gives it meaning, and that unit may be dimensionless
+([ADR-0010](docs/adr/0010-resolution-is-total-the-renderer-selects-by-attribute.md)). So a resolved
+value is not always a *physical* one — a shutter's open/closed carries no quantity and still
+resolves.
 _Avoid_: decode, interpret, apply
+
+**Consumed attribute**:
+One of the eight attributes the renderer actually reads — `Pan`, `Tilt`, `Zoom`, `ColorAdd_R/G/B`,
+`Dimmer`, `Shutter1`. Every *other* attribute still **resolves**; it simply has no consumer. The
+pair of words is the point: "unresolved" describes nothing in Beamhouse, and saying it hides that
+the value exists and is correct.
+_Avoid_: supported attribute, known attribute, handled attribute (all imply the others fail)
+
 
 **Colour space**:
 Which real-world colours a definition's `R`, `G`, `B` name — primaries plus white point. GDTF
@@ -150,6 +162,13 @@ The rendering class for a fixture whose definition declares a `Beam` geometry: r
 volumetric cone from that emitter's origin. One of the two *rendering paths* v1 handles; the
 other is the emissive surface shared by **strip class** and **matrix class**.
 _Avoid_: mover, moving head, spot (those are fixture kinds, not rendering classes)
+
+**Cone angle**:
+The half-angle of a **beam class** fixture's volumetric cone. Sourced from the definition's static
+`BeamAngle`, overridden per tick by a **resolved** `Zoom` where the DMX mode has one — the only
+renderer input fed by both a static declaration and a live channel. Distinct from `FieldAngle`,
+which the fixture model carries but v1 does not consume.
+_Avoid_: beam angle (that is the static declaration, only one of the two sources), spread, zoom
 
 **Strip class**:
 The rendering class for a **one-dimensional** pixel run: rendered as one continuous emissive
