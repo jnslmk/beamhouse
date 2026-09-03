@@ -255,6 +255,9 @@ h1 {
   border-radius: 8px;
   background: #1c1a18;
 }
+.source[data-stale="true"] {
+  border-color: #9d6f3f;
+}
 .source-title b {
   font-size: 12px;
   overflow: hidden;
@@ -287,6 +290,21 @@ dd {
   overflow: hidden;
   color: #bdb7af;
   text-overflow: ellipsis;
+}
+.terminations p {
+  margin: 10px 0 0;
+  padding: 9px 10px;
+  border-left: 2px solid #d48360;
+  background: #221b18;
+  color: #aaa29a;
+  font-size: 11px;
+}
+.terminations span {
+  color: #e09b79;
+  text-transform: uppercase;
+  font:
+    9px ui-monospace,
+    monospace;
 }
 @media (max-width: 760px) {
   .workspace {

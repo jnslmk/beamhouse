@@ -44,6 +44,7 @@ root.innerHTML = `
       <section class="universe-health" id="universe-health" aria-live="polite">
         <div class="empty-state">Waiting for an sACN or Art-Net source…</div>
       </section>
+      <section class="terminations" id="terminations"></section>
     </aside>
   </section>
 `;
@@ -97,6 +98,16 @@ function renderHealth(message: UniversesMessage): void {
     health.innerHTML = universeMarkup(universe);
     setFixtureTrust(universe.stale, contended);
   }
+
+  const terminations = required("#terminations");
+  terminations.innerHTML = message.terminations
+    .map(
+      ({ universe: number, source }) => `
+        <p data-termination="${escapeHtml(source.id)}">
+          <span>terminated</span> ${escapeHtml(source.name ?? source.id)} released universe ${number}
+        </p>`,
+    )
+    .join("");
 }
 
 function universeMarkup(universe: UniverseHealth): string {
@@ -109,11 +120,12 @@ function universeMarkup(universe: UniverseHealth): string {
       ${universe.sources
         .map(
           (source) => `
-            <article class="source" data-source="${escapeHtml(source.transport)}:${escapeHtml(source.id)}">
+            <article class="source" data-source="${escapeHtml(source.transport)}:${escapeHtml(source.id)}" data-stale="${source.stale}">
               <div class="source-title"><b>${escapeHtml(source.name ?? source.id)}</b><span>${source.transport === "sacn" ? "sACN" : "Art-Net"}</span></div>
               <dl>
                 <div><dt>Identity</dt><dd>${escapeHtml(source.id)}</dd></div>
                 <div><dt>Sequence</dt><dd>${source.drops === 0 ? "healthy" : `${source.drops} dropped`}</dd></div>
+                <div><dt>State</dt><dd>${source.stale ? "stale" : "live"}</dd></div>
                 <div><dt>Priority</dt><dd>${source.priority ?? "— unavailable"}</dd></div>
                 <div><dt>Blind</dt><dd>${source.preview === null ? "— unavailable" : source.preview ? "preview" : "program"}</dd></div>
               </dl>

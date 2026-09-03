@@ -32,5 +32,9 @@ describe("the browser frame codec", () => {
     expect(() => encodeFrame(0, [{ universe: 64_000, slots: new Uint8Array(512) }])).toThrow(
       "invalid universe",
     );
+
+    const encoded = encodeFrame(0, [{ universe: 1, slots: new Uint8Array(512) }]);
+    new DataView(encoded.buffer).setUint16(10, 64_000);
+    expect(() => decodeFrame(encoded)).toThrow("invalid universe");
   });
 });

@@ -1048,15 +1048,15 @@ Thin, because the browser does the thinking. Text frames for control, binary for
 { "op": "universes", "universes": [
     { "universe": 1, "stale": false, "sources": [
         { "id": "…cid…",        "name": "Mizer", "transport": "sacn",
-          "priority": 100,  "preview": false, "drops": 3 },
+          "priority": 100,  "preview": false, "drops": 3, "stale": false },
         { "id": "192.168.8.31", "name": null,    "transport": "artnet",
-          "priority": null, "preview": null,  "drops": 0 }
+          "priority": null, "preview": null,  "drops": 0, "stale": false }
     ]},
     { "universe": 2, "stale": true, "sources": [
         { "id": "192.168.8.31", "name": null, "transport": "artnet",
-          "priority": null, "preview": null, "drops": 0 }
+          "priority": null, "preview": null, "drops": 0, "stale": true }
     ]}
-]}
+], "terminations": []}
 { "op": "reload", "path": "shows/warehouse.mvr" }
 ```
 
@@ -1094,6 +1094,11 @@ a scalar standing in for something plural.
 - **`null` keeps ADR-0018's meaning** — *this transport cannot tell you* — and is now `null` per
   **source**, which is what makes a mixed-transport universe describable at all.
 - **`stale` stays on the universe** and is the **all**-rollup of its sources (§06 job 4).
+
+**[implemented 2026-09-03 — #59]** Each source also carries its own `stale` value so a dead source
+cannot hide behind the universe's live `all` rollup. `terminations[]` retains graceful
+`Stream_Terminated` releases briefly after removing them from `sources[]`; this makes termination
+observable without keeping a departed source in contention.
 
 ```
 // bridge → browser, data. one frame per tick, all universes.

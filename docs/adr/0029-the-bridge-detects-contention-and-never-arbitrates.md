@@ -84,10 +84,10 @@ record was coherent only while every universe had exactly one source:
 ```jsonc
 { "op": "universes", "universes": [
   { "universe": 1, "stale": false, "sources": [
-      { "id": "…cid…",        "name": "Mizer", "transport": "sacn",   "priority": 100,  "preview": false, "drops": 3 },
-      { "id": "192.168.8.31", "name": null,    "transport": "artnet", "priority": null, "preview": null,  "drops": 0 }
+      { "id": "…cid…",        "name": "Mizer", "transport": "sacn",   "priority": 100,  "preview": false, "drops": 3, "stale": false },
+      { "id": "192.168.8.31", "name": null,    "transport": "artnet", "priority": null, "preview": null,  "drops": 0, "stale": false }
   ]}
-]}
+], "terminations": []}
 ```
 
 - `contended` stays **derived** (`sources.length > 1`), never carried. ADR-0018 chose a snapshot
@@ -98,6 +98,9 @@ record was coherent only while every universe had exactly one source:
   appearing in several universe records.
 - `null` keeps ADR-0018's meaning — *this transport cannot tell you* — and is now `null` per
   source rather than per universe, which is what makes a mixed-transport universe describable.
+- **[implemented 2026-09-03 — #59]** `stale` is also exposed per source. The universe value
+  remains the `all` rollup, while the source value makes the transport-specific threshold that
+  fired observable instead of hiding one dead source behind another live one.
 
 **4 · The stale threshold is per source; a universe is stale only when every source is stale.**
 Each source ages on its own transport's clock — 2.5 s sACN, ~6 s Art-Net — which is what
@@ -115,6 +118,11 @@ source left* and *a source died*. Without it, a console releasing a universe is 
 from a network failure for a full 2.5 s, and a source departing a contended universe keeps that
 universe flagged for the whole timeout after it is gone. It costs one mask on a byte the bridge
 must already decode for `Preview_Data` (fact 6).
+
+**[implemented 2026-09-03 — #59]** The source is removed immediately, and the snapshot retains a
+short-lived `terminations[]` observation with its identity and termination time. This keeps
+contention derived solely from the active `sources[]` while making a graceful release observable
+rather than indistinguishable from a source that was never present.
 
 **6 · A contended universe renders as a trust mark, not as a fault or a freeze.** The flicker is
 drawn — it is true data — and **every fixture on that universe is marked untrusted**, reusing

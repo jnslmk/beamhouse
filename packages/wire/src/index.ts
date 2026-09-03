@@ -23,6 +23,7 @@ export interface SourceHealth {
   priority: number | null;
   preview: boolean | null;
   drops: number;
+  stale: boolean;
 }
 
 export interface UniverseHealth {
@@ -31,9 +32,16 @@ export interface UniverseHealth {
   sources: SourceHealth[];
 }
 
+export interface SourceTermination {
+  universe: number;
+  source: Omit<SourceHealth, "stale">;
+  terminatedAt: number;
+}
+
 export interface UniversesMessage {
   op: "universes";
   universes: UniverseHealth[];
+  terminations: SourceTermination[];
 }
 
 export function encodeFrame(tMs: number, universes: readonly UniverseFrame[]): Uint8Array {
@@ -79,8 +87,12 @@ export function decodeFrame(input: ArrayBuffer | ArrayBufferView): BrowserFrame 
   const universes: UniverseFrame[] = [];
   let offset = HEADER_BYTES;
   for (let index = 0; index < universeCount; index += 1) {
+    const universe = view.getUint16(offset);
+    if (universe < 1 || universe > 63_999) {
+      throw new Error(`invalid universe ${universe}`);
+    }
     universes.push({
-      universe: view.getUint16(offset),
+      universe,
       slots: bytes.slice(offset + 2, offset + UNIVERSE_BYTES),
     });
     offset += UNIVERSE_BYTES;

@@ -37,10 +37,16 @@ describe("running Beamhouse", () => {
 
   test("renders the reference patch within two seconds", async () => {
     rmSync(resolve(repository, "app/dist"), { recursive: true, force: true });
+    const build = Bun.spawnSync(["bun", "run", "build"], {
+      cwd: repository,
+      stdout: "ignore",
+      stderr: "pipe",
+    });
+    if (!build.success) throw new Error(build.stderr.toString());
     httpPort = await freeTcpPort();
     sacnPort = await freeUdpPort();
     artnetPort = await freeUdpPort();
-    const processStartedAt = performance.now();
+    const startedAt = performance.now();
     bridge = Bun.spawn(["bun", "run", "start"], {
       cwd: repository,
       env: {
@@ -58,14 +64,12 @@ describe("running Beamhouse", () => {
       stderr: "pipe",
     });
     await waitUntilReachable(`http://127.0.0.1:${httpPort}`);
-    expect(performance.now() - processStartedAt).toBeLessThan(5_000);
-    const renderStartedAt = performance.now();
     await page.goto(`http://127.0.0.1:${httpPort}`, {
       waitUntil: "domcontentloaded",
     });
     await page.locator('html[data-ready="true"]').waitFor({ timeout: 2_000 });
 
-    expect(performance.now() - renderStartedAt).toBeLessThan(2_000);
+    expect(performance.now() - startedAt).toBeLessThan(2_000);
     await expectCount(page.locator("#viewport canvas"), 1);
     await expectCount(page.locator("[data-fixture]"), 3);
     await page.locator('[data-status="live"]').waitFor();
@@ -97,8 +101,10 @@ describe("running Beamhouse", () => {
     await page.locator('.universe-health[data-stale="true"]').waitFor({ timeout: 2_000 });
     await page.locator(".health-heading", { hasText: "all stale" }).waitFor({ timeout: 2_000 });
     await expectCount(page.locator('.fixture-mark[data-visible="true"]'), 3);
+    expect(await page.locator('[data-fixture-mark="1"]').textContent()).toBe("disputed · old");
 
     await sendUdp(sacn(11, [0, 0, 0], 0x40), sacnPort);
+    await page.locator("[data-termination]", { hasText: "Mizer" }).waitFor();
     await expectCount(page.locator("[data-source]"), 1);
     await expectCount(page.locator('[data-source^="sacn:"]'), 0);
     await expectCount(page.locator('[data-source^="artnet:"]'), 1);
