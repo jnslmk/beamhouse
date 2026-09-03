@@ -23,7 +23,6 @@ export interface SourceHealth {
   priority: number | null;
   preview: boolean | null;
   drops: number;
-  stale: boolean;
 }
 
 export interface UniverseHealth {
@@ -32,16 +31,9 @@ export interface UniverseHealth {
   sources: SourceHealth[];
 }
 
-export interface SourceTermination {
-  universe: number;
-  source: Omit<SourceHealth, "stale">;
-  terminatedAt: number;
-}
-
 export interface UniversesMessage {
   op: "universes";
   universes: UniverseHealth[];
-  terminations: SourceTermination[];
 }
 
 export function encodeFrame(tMs: number, universes: readonly UniverseFrame[]): Uint8Array {
@@ -53,7 +45,7 @@ export function encodeFrame(tMs: number, universes: readonly UniverseFrame[]): U
 
   let offset = HEADER_BYTES;
   for (const { universe, slots } of universes) {
-    if (!Number.isInteger(universe) || universe < 1 || universe > 0xffff) {
+    if (!Number.isInteger(universe) || universe < 1 || universe > 63_999) {
       throw new RangeError(`invalid universe ${universe}`);
     }
     if (slots.length !== UNIVERSE_SLOTS) {

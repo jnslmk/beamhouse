@@ -3,11 +3,15 @@ import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 
 export interface CubeFixture {
   address: number;
-  mesh: THREE.Mesh<THREE.BoxGeometry, THREE.MeshStandardMaterial>;
   setLevel(level: number): void;
 }
 
-export function createViewport(host: HTMLElement): CubeFixture[] {
+interface RenderedCube extends CubeFixture {
+  mesh: THREE.Mesh<THREE.BoxGeometry, THREE.MeshStandardMaterial>;
+  marker: HTMLElement;
+}
+
+export function createViewport(host: HTMLElement, markers: HTMLElement[]): CubeFixture[] {
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0x11100f);
   scene.fog = new THREE.FogExp2(0x11100f, 0.025);
@@ -46,7 +50,7 @@ export function createViewport(host: HTMLElement): CubeFixture[] {
   scene.add(grid);
 
   const colors = [0xffa52f, 0x49a4ff, 0xf05baa];
-  const fixtures = colors.map((color, index): CubeFixture => {
+  const fixtures = colors.map((color, index): RenderedCube => {
     const material = new THREE.MeshStandardMaterial({
       color: new THREE.Color(color).multiplyScalar(0.17),
       emissive: color,
@@ -62,6 +66,7 @@ export function createViewport(host: HTMLElement): CubeFixture[] {
     return {
       address: index + 1,
       mesh,
+      marker: markers[index] ?? document.createElement("span"),
       setLevel(level: number) {
         const normalized = level / 255;
         material.emissiveIntensity = normalized * 2.8;
@@ -82,6 +87,11 @@ export function createViewport(host: HTMLElement): CubeFixture[] {
 
   renderer.setAnimationLoop(() => {
     controls.update();
+    for (const fixture of fixtures) {
+      const position = fixture.mesh.position.clone().project(camera);
+      fixture.marker.style.left = `${(position.x * 0.5 + 0.5) * host.clientWidth}px`;
+      fixture.marker.style.top = `${(-position.y * 0.5 + 0.5) * host.clientHeight}px`;
+    }
     renderer.render(scene, camera);
   });
   return fixtures;

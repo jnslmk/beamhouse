@@ -1,10 +1,4 @@
-import type {
-  SourceHealth,
-  SourceTermination,
-  Transport,
-  UniverseFrame,
-  UniversesMessage,
-} from "@beamhouse/wire";
+import type { SourceHealth, Transport, UniverseFrame, UniversesMessage } from "@beamhouse/wire";
 
 export interface IncomingUniversePacket {
   transport: Transport;
@@ -19,7 +13,7 @@ export interface IncomingUniversePacket {
   terminated: boolean;
 }
 
-interface TrackedSource extends Omit<SourceHealth, "stale"> {
+interface TrackedSource extends SourceHealth {
   lastSequence: number | null;
   lastSeen: number;
 }
@@ -32,20 +26,16 @@ interface TrackedUniverse {
 interface UniverseStoreOptions {
   sacnStaleMs?: number;
   artnetStaleMs?: number;
-  terminationVisibleMs?: number;
 }
 
 export class UniverseStore {
   readonly #universes = new Map<number, TrackedUniverse>();
-  readonly #terminations: SourceTermination[] = [];
   readonly #sacnStaleMs: number;
   readonly #artnetStaleMs: number;
-  readonly #terminationVisibleMs: number;
 
   constructor(options: UniverseStoreOptions = {}) {
     this.#sacnStaleMs = options.sacnStaleMs ?? 2_500;
     this.#artnetStaleMs = options.artnetStaleMs ?? 6_000;
-    this.#terminationVisibleMs = options.terminationVisibleMs ?? 10_000;
   }
 
   ingest(packet: IncomingUniversePacket): boolean {
@@ -75,11 +65,6 @@ export class UniverseStore {
 
     if (packet.terminated) {
       universe.sources.delete(key);
-      this.#terminations.push({
-        universe: packet.universe,
-        source: publicSource(source),
-        terminatedAt: packet.receivedAt,
-      });
       return true;
     }
 
@@ -100,28 +85,19 @@ export class UniverseStore {
   }
 
   health(subscribedUniverses: readonly number[], now: number): UniversesMessage {
-    this.#pruneTerminations(now);
     const universes = sortedUnique(subscribedUniverses).map((universeNumber) => {
-      const sources = [...(this.#universes.get(universeNumber)?.sources.values() ?? [])].map(
-        (source): SourceHealth => ({
-          ...publicSource(source),
-          stale: now - source.lastSeen > this.#staleMs(source.transport),
-        }),
-      );
+      const trackedSources = [...(this.#universes.get(universeNumber)?.sources.values() ?? [])];
+      const sources = trackedSources.map(publicSource);
       return {
         universe: universeNumber,
-        stale: sources.every((source) => source.stale),
+        stale: trackedSources.every(
+          (source) => now - source.lastSeen > this.#staleMs(source.transport),
+        ),
         sources,
       };
     });
 
-    return {
-      op: "universes",
-      universes,
-      terminations: this.#terminations.filter(({ universe }) =>
-        subscribedUniverses.includes(universe),
-      ),
-    };
+    return { op: "universes", universes };
   }
 
   #universe(universe: number): TrackedUniverse {
@@ -135,18 +111,9 @@ export class UniverseStore {
   #staleMs(transport: Transport): number {
     return transport === "sacn" ? this.#sacnStaleMs : this.#artnetStaleMs;
   }
-
-  #pruneTerminations(now: number): void {
-    while (
-      this.#terminations[0] &&
-      now - this.#terminations[0].terminatedAt > this.#terminationVisibleMs
-    ) {
-      this.#terminations.shift();
-    }
-  }
 }
 
-function publicSource(source: TrackedSource): Omit<SourceHealth, "stale"> {
+function publicSource(source: TrackedSource): SourceHealth {
   return {
     id: source.id,
     name: source.name,

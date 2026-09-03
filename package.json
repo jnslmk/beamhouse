@@ -20,7 +20,7 @@
     "format:check": "prettier --check app bridge packages tests .github README.md package.json tsconfig.json tsconfig.tests.json eslint.config.mjs .prettierrc .lintstagedrc",
     "lint": "eslint .",
     "start": "bun run build && bun run --cwd bridge start",
-    "test": "bun run build && bun test --timeout 20000",
+    "test": "bun test --timeout 20000",
     "typecheck": "bun run --cwd packages/wire typecheck && bun run --cwd bridge typecheck && bun run --cwd app typecheck && tsc -p tsconfig.tests.json",
     "prepare": "husky"
   },

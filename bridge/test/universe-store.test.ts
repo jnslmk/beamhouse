@@ -49,7 +49,6 @@ describe("the bridge's normalized universe stream", () => {
             priority: null,
             preview: null,
             drops: 0,
-            stale: false,
           },
           {
             id: "00112233445566778899aabbccddeeff",
@@ -58,7 +57,6 @@ describe("the bridge's normalized universe stream", () => {
             priority: 120,
             preview: true,
             drops: 0,
-            stale: false,
           },
         ],
       },
@@ -113,11 +111,10 @@ describe("the bridge's normalized universe stream", () => {
 
     const partlyStale = store.health([1], 150).universes[0];
     expect(partlyStale?.stale).toBe(false);
-    expect(partlyStale?.sources.map((source) => source.stale)).toEqual([true, false]);
     expect(store.health([1], 201).universes[0]?.stale).toBe(true);
   });
 
-  test("removes a terminated source immediately and exposes its termination", () => {
+  test("makes termination observable by removing the source immediately", () => {
     const store = new UniverseStore();
     const source = {
       transport: "sacn" as const,
@@ -135,19 +132,5 @@ describe("the bridge's normalized universe stream", () => {
 
     const health = store.health([1], 21);
     expect(health.universes[0]?.sources).toEqual([]);
-    expect(health.terminations).toEqual([
-      {
-        universe: 1,
-        source: {
-          id: "cid",
-          name: "Desk",
-          transport: "sacn",
-          priority: 100,
-          preview: false,
-          drops: 0,
-        },
-        terminatedAt: 20,
-      },
-    ]);
   });
 });

@@ -4,7 +4,7 @@ import { parseArtDmx, parseSacn } from "../src/protocols.ts";
 
 describe("UDP protocol boundaries", () => {
   test("maps an Art-Net Port-Address once into the normalized universe space", () => {
-    const packet = artDmx({ net: 1, subUni: 0x23, sequence: 9, values: [7, 8, 9] });
+    const packet = artDmx({ net: 1, subUni: 0x23, sequence: 9, values: [7, 8, 9, 10] });
 
     const parsed = parseArtDmx(packet, "192.0.2.10", 100);
 
@@ -17,7 +17,7 @@ describe("UDP protocol boundaries", () => {
       preview: null,
       receivedAt: 100,
     });
-    expect(parsed?.slots.slice(0, 4)).toEqual(new Uint8Array([7, 8, 9, 0]));
+    expect(parsed?.slots.slice(0, 5)).toEqual(new Uint8Array([7, 8, 9, 10, 0]));
   });
 
   test("ignores non-DMX and malformed Art-Net datagrams", () => {
@@ -27,6 +27,7 @@ describe("UDP protocol boundaries", () => {
 
     expect(parseArtDmx(poll, "127.0.0.1", 0)).toBeNull();
     expect(parseArtDmx(new Uint8Array([1, 2, 3]), "127.0.0.1", 0)).toBeNull();
+    expect(parseArtDmx(artDmx({ values: [1, 2, 3] }), "127.0.0.1", 0)).toBeNull();
   });
 
   test("preserves sACN identity, priority, preview, and termination", () => {

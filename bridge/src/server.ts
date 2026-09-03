@@ -1,6 +1,7 @@
-import { resolve, sep } from "node:path";
-import { createSocket, type Socket } from "node:dgram";
+import { watch } from "node:fs";
+import type { Socket } from "node:dgram";
 import { once } from "node:events";
+import { basename, resolve, sep } from "node:path";
 import { Receiver, type Packet } from "sacn";
 import { encodeFrame } from "@beamhouse/wire";
 import { parseArtDmx, parseSacn } from "./protocols.ts";
@@ -17,6 +18,7 @@ export interface BridgeConfig {
   sacnPort: number;
   artnetPort: number;
   appDirectory: string;
+  watchDirectory: string;
   sacnStaleMs: number;
   artnetStaleMs: number;
 }
@@ -52,13 +54,19 @@ export async function startBridge(config: BridgeConfig): Promise<RunningBridge> 
   sacn.on("error", (error) => console.warn("sACN listener error", error));
   await once(libraryReceiver.socket, "listening");
 
-  const artnet = createSocket({ type: "udp4", reuseAddr: true });
-  artnet.on("message", (bytes, sender) => {
-    const parsed = parseArtDmx(bytes, sender.address, Date.now());
-    if (parsed && store.ingest(parsed)) broadcastHealth();
+  const artnet = await Bun.udpSocket({
+    hostname: config.hostname,
+    port: config.artnetPort,
+    socket: {
+      data(_socket, bytes, _port, address) {
+        const parsed = parseArtDmx(bytes, address, Date.now());
+        if (parsed && store.ingest(parsed)) broadcastHealth();
+      },
+      error(_socket, error) {
+        console.warn("Art-Net listener error", error);
+      },
+    },
   });
-  artnet.on("error", (error) => console.warn("Art-Net listener error", error));
-  await new Promise<void>((done) => artnet.bind(config.artnetPort, config.hostname, done));
 
   const server = Bun.serve<ClientData>({
     hostname: config.hostname,
@@ -101,6 +109,12 @@ export async function startBridge(config: BridgeConfig): Promise<RunningBridge> 
     }
   }, 1000 / 30);
   const healthTimer = setInterval(() => broadcastHealth(true), 1_000);
+  const patchWatcher = watch(config.watchDirectory, { recursive: true }, (_event, filename) => {
+    if (!filename || !/\.(?:bhs|mvr|ya?ml)$/i.test(filename)) return;
+    const path = `${basename(config.watchDirectory)}/${filename}`;
+    const message = JSON.stringify({ op: "reload", path });
+    for (const client of clients) client.send(message);
+  });
 
   function broadcastHealth(force = false): void {
     for (const client of clients) sendHealth(client, force);
@@ -140,10 +154,9 @@ export async function startBridge(config: BridgeConfig): Promise<RunningBridge> 
       clearInterval(healthTimer);
       for (const client of clients) client.close(1001, "bridge stopping");
       await server.stop(true);
-      await Promise.all([
-        new Promise<void>((done) => artnet.close(done)),
-        new Promise<void>((done) => sacn.close(done)),
-      ]);
+      patchWatcher.close();
+      artnet.close();
+      await new Promise<void>((done) => sacn.close(done));
     },
   };
 }

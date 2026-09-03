@@ -19,26 +19,6 @@ let artnetPort: number;
 describe("running Beamhouse", () => {
   beforeAll(async () => {
     rmSync(auditPath, { force: true });
-    httpPort = await freeTcpPort();
-    sacnPort = await freeUdpPort();
-    artnetPort = await freeUdpPort();
-    bridge = Bun.spawn(["bun", "--preload", "./tests/udp-send-audit.ts", "bridge/src/main.ts"], {
-      cwd: repository,
-      env: {
-        ...process.env,
-        BEAMHOUSE_HOST: "127.0.0.1",
-        BEAMHOUSE_PORT: String(httpPort),
-        BEAMHOUSE_SACN_PORT: String(sacnPort),
-        BEAMHOUSE_ARTNET_PORT: String(artnetPort),
-        BEAMHOUSE_SACN_STALE_MS: "250",
-        BEAMHOUSE_ARTNET_STALE_MS: "400",
-        BEAMHOUSE_UDP_AUDIT: auditPath,
-      },
-      stdout: "pipe",
-      stderr: "pipe",
-    });
-    const url = `http://127.0.0.1:${httpPort}`;
-    await waitUntilReachable(url);
     browser = await chromium.launch({
       executablePath:
         process.env.CHROMIUM_PATH ??
@@ -56,20 +36,43 @@ describe("running Beamhouse", () => {
   });
 
   test("renders the reference patch within two seconds", async () => {
-    const startedAt = performance.now();
+    rmSync(resolve(repository, "app/dist"), { recursive: true, force: true });
+    httpPort = await freeTcpPort();
+    sacnPort = await freeUdpPort();
+    artnetPort = await freeUdpPort();
+    const processStartedAt = performance.now();
+    bridge = Bun.spawn(["bun", "run", "start"], {
+      cwd: repository,
+      env: {
+        ...process.env,
+        BUN_OPTIONS: `--preload=${resolve(repository, "tests/udp-send-audit.ts")}`,
+        BEAMHOUSE_HOST: "127.0.0.1",
+        BEAMHOUSE_PORT: String(httpPort),
+        BEAMHOUSE_SACN_PORT: String(sacnPort),
+        BEAMHOUSE_ARTNET_PORT: String(artnetPort),
+        BEAMHOUSE_SACN_STALE_MS: "250",
+        BEAMHOUSE_ARTNET_STALE_MS: "400",
+        BEAMHOUSE_UDP_AUDIT: auditPath,
+      },
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    await waitUntilReachable(`http://127.0.0.1:${httpPort}`);
+    expect(performance.now() - processStartedAt).toBeLessThan(5_000);
+    const renderStartedAt = performance.now();
     await page.goto(`http://127.0.0.1:${httpPort}`, {
       waitUntil: "domcontentloaded",
     });
     await page.locator('html[data-ready="true"]').waitFor({ timeout: 2_000 });
 
-    expect(performance.now() - startedAt).toBeLessThan(2_000);
+    expect(performance.now() - renderStartedAt).toBeLessThan(2_000);
     await expectCount(page.locator("#viewport canvas"), 1);
     await expectCount(page.locator("[data-fixture]"), 3);
     await page.locator('[data-status="live"]').waitFor();
   });
 
   test("delivers concurrent real protocols without arbitration or DMX output", async () => {
-    await sendUdp(artDmx(1, [20, 40, 60]), artnetPort);
+    await sendUdp(artDmx(1, [20, 40, 60, 0]), artnetPort);
     await levelsBecome([20, 40, 60]);
 
     await sendUdp(sacn(10, [201, 202, 203], 0x80), sacnPort);
@@ -88,15 +91,17 @@ describe("running Beamhouse", () => {
     expect(await currentLevels()).toEqual([201, 202, 203]);
 
     // Art-Net wins only because it arrived last, despite the observed sACN priority.
-    await sendUdp(artDmx(2, [31, 32, 33]), artnetPort);
+    await sendUdp(artDmx(2, [31, 32, 33, 0]), artnetPort);
     await levelsBecome([31, 32, 33]);
 
-    await page.locator('[data-source][data-stale="true"]').first().waitFor({ timeout: 2_000 });
+    await page.locator('.universe-health[data-stale="true"]').waitFor({ timeout: 2_000 });
     await page.locator(".health-heading", { hasText: "all stale" }).waitFor({ timeout: 2_000 });
+    await expectCount(page.locator('.fixture-mark[data-visible="true"]'), 3);
 
     await sendUdp(sacn(11, [0, 0, 0], 0x40), sacnPort);
-    await page.locator("[data-termination]", { hasText: "Mizer" }).waitFor();
     await expectCount(page.locator("[data-source]"), 1);
+    await expectCount(page.locator('[data-source^="sacn:"]'), 0);
+    await expectCount(page.locator('[data-source^="artnet:"]'), 1);
     expect(await page.locator("#universe-status").getAttribute("data-contention")).toBe("false");
 
     expect(existsSync(auditPath) ? readFileSync(auditPath, "utf8") : "").toBe("");
@@ -121,7 +126,7 @@ async function currentLevels(): Promise<number[]> {
 }
 
 async function expectCount(locator: ReturnType<Page["locator"]>, count: number): Promise<void> {
-  await locator.first().waitFor();
+  await locator.first().waitFor({ state: count > 0 ? "visible" : "detached" });
   expect(await locator.count()).toBe(count);
 }
 

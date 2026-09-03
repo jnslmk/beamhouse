@@ -14,7 +14,12 @@ export function parseArtDmx(
   if (view.getUint16(8, true) !== ARTDMX_OPCODE || view.getUint16(10) < 14) return null;
 
   const payloadLength = view.getUint16(16);
-  if (payloadLength < 2 || payloadLength > 512 || bytes.length < 18 + payloadLength) {
+  if (
+    payloadLength < 2 ||
+    payloadLength > 512 ||
+    payloadLength % 2 !== 0 ||
+    bytes.length < 18 + payloadLength
+  ) {
     return null;
   }
 

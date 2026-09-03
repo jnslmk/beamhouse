@@ -16,7 +16,13 @@ root.innerHTML = `
     </div>
   </header>
   <section class="workspace">
-    <div id="viewport" aria-label="Live three-cube reference patch"></div>
+    <div id="viewport" aria-label="Live three-cube reference patch">
+      <div class="viewport-marks" aria-live="polite">
+        <span class="fixture-mark" data-fixture-mark="1"></span>
+        <span class="fixture-mark" data-fixture-mark="2"></span>
+        <span class="fixture-mark" data-fixture-mark="3"></span>
+      </div>
+    </div>
     <aside class="panel">
       <div class="panel-heading">
         <div><span class="eyebrow">Reference patch</span><h1>Live cubes</h1></div>
@@ -38,13 +44,13 @@ root.innerHTML = `
       <section class="universe-health" id="universe-health" aria-live="polite">
         <div class="empty-state">Waiting for an sACN or Art-Net source…</div>
       </section>
-      <section class="terminations" id="terminations"></section>
     </aside>
   </section>
 `;
 
 const viewport = required("#viewport");
-const cubes = createViewport(viewport);
+const fixtureMarks = [...document.querySelectorAll<HTMLElement>("[data-fixture-mark]")];
+const cubes = createViewport(viewport, fixtureMarks);
 const fixtureRows = [...document.querySelectorAll<HTMLElement>("[data-fixture]")];
 
 new LiveFeed([1], {
@@ -81,22 +87,16 @@ function renderHealth(message: UniversesMessage): void {
     status.textContent = "1 · waiting";
     status.dataset.contention = "false";
     health.innerHTML = '<div class="empty-state">Waiting for an sACN or Art-Net source…</div>';
+    health.dataset.stale = "false";
+    setFixtureTrust(false, false);
   } else {
     const contended = universe.sources.length > 1;
     status.textContent = `1 · ${contended ? "contended" : universe.stale ? "stale" : "live"}`;
     status.dataset.contention = String(contended);
+    health.dataset.stale = String(universe.stale);
     health.innerHTML = universeMarkup(universe);
+    setFixtureTrust(universe.stale, contended);
   }
-
-  const terminations = required("#terminations");
-  terminations.innerHTML = message.terminations
-    .map(
-      ({ universe: number, source }) => `
-        <p data-termination="${escapeHtml(source.id)}">
-          <span>terminated</span> ${escapeHtml(source.name ?? source.id)} released universe ${number}
-        </p>`,
-    )
-    .join("");
 }
 
 function universeMarkup(universe: UniverseHealth): string {
@@ -109,12 +109,11 @@ function universeMarkup(universe: UniverseHealth): string {
       ${universe.sources
         .map(
           (source) => `
-            <article class="source" data-source="${escapeHtml(source.transport)}:${escapeHtml(source.id)}" data-stale="${source.stale}">
+            <article class="source" data-source="${escapeHtml(source.transport)}:${escapeHtml(source.id)}">
               <div class="source-title"><b>${escapeHtml(source.name ?? source.id)}</b><span>${source.transport === "sacn" ? "sACN" : "Art-Net"}</span></div>
               <dl>
                 <div><dt>Identity</dt><dd>${escapeHtml(source.id)}</dd></div>
                 <div><dt>Sequence</dt><dd>${source.drops === 0 ? "healthy" : `${source.drops} dropped`}</dd></div>
-                <div><dt>State</dt><dd>${source.stale ? "stale" : "live"}</dd></div>
                 <div><dt>Priority</dt><dd>${source.priority ?? "— unavailable"}</dd></div>
                 <div><dt>Blind</dt><dd>${source.preview === null ? "— unavailable" : source.preview ? "preview" : "program"}</dd></div>
               </dl>
@@ -122,6 +121,14 @@ function universeMarkup(universe: UniverseHealth): string {
         )
         .join("")}
     </div>`;
+}
+
+function setFixtureTrust(stale: boolean, contended: boolean): void {
+  const label = [contended ? "disputed" : "", stale ? "old" : ""].filter(Boolean).join(" · ");
+  for (const marker of fixtureMarks) {
+    marker.textContent = label;
+    marker.dataset.visible = String(label.length > 0);
+  }
 }
 
 function required(selector: string): HTMLElement {

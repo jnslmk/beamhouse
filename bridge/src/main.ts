@@ -8,6 +8,7 @@ export function configFromEnvironment(environment: NodeJS.ProcessEnv): BridgeCon
     sacnPort: numberFrom(environment.BEAMHOUSE_SACN_PORT, 5568),
     artnetPort: numberFrom(environment.BEAMHOUSE_ARTNET_PORT, 6454),
     appDirectory: environment.BEAMHOUSE_APP_DIR ?? resolve(import.meta.dir, "../../app/dist"),
+    watchDirectory: environment.BEAMHOUSE_WATCH_DIR ?? resolve(import.meta.dir, "../../shows"),
     sacnStaleMs: numberFrom(environment.BEAMHOUSE_SACN_STALE_MS, 2_500),
     artnetStaleMs: numberFrom(environment.BEAMHOUSE_ARTNET_STALE_MS, 6_000),
   };
