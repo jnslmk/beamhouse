@@ -1,6 +1,12 @@
 import type { UniverseHealth, UniversesMessage } from "@beamhouse/wire";
 import { LiveFeed } from "./live-feed.ts";
-import { createViewport } from "./viewport.ts";
+import {
+  referenceStrips,
+  resolveColor,
+  textureBytesForStrip,
+  universesForStrips,
+} from "./reference-rig.ts";
+import { createViewport, type StripProbeMarkers } from "./viewport.ts";
 import "./style.css";
 
 const root = document.querySelector<HTMLElement>("#app");
@@ -16,11 +22,13 @@ root.innerHTML = `
     </div>
   </header>
   <section class="workspace">
-    <div id="viewport" aria-label="Live three-cube reference patch">
+    <div id="viewport" aria-label="Live cube and STAR-TENT strip reference patch">
       <div class="viewport-marks" aria-live="polite">
         <span class="fixture-mark" data-fixture-mark="1"></span>
         <span class="fixture-mark" data-fixture-mark="2"></span>
         <span class="fixture-mark" data-fixture-mark="3"></span>
+        ${referenceStrips.map((strip) => `<span class="strip-mark" data-strip-mark="${strip.id}"></span>`).join("")}
+        ${referenceStrips.map((strip) => `<span data-strip-probe="${strip.id}-start"></span><span data-strip-probe="${strip.id}-end"></span>`).join("")}
       </div>
     </div>
     <aside class="panel">
@@ -41,6 +49,13 @@ root.innerHTML = `
           )
           .join("")}
       </ol>
+      <section class="strip-status" aria-live="polite">
+        <div class="health-heading"><b>STAR-TENT strips</b><span>texture-backed</span></div>
+        <ol class="strip-list">
+          ${referenceStrips.map((strip) => `<li data-texture-strip="${strip.id}">Spoke ${strip.id} · 23 px</li>`).join("")}
+        </ol>
+        <output class="strip-readback" data-strip-readback="">Waiting for universes 2 · 3</output>
+      </section>
       <section class="universe-health" id="universe-health" aria-live="polite">
         <div class="empty-state">Waiting for an sACN or Art-Net source…</div>
       </section>
@@ -51,14 +66,45 @@ root.innerHTML = `
 
 const viewport = required("#viewport");
 const fixtureMarks = [...document.querySelectorAll<HTMLElement>("[data-fixture-mark]")];
-const cubes = createViewport(viewport, fixtureMarks);
+const stripMarkers = [...document.querySelectorAll<HTMLElement>("[data-strip-mark]")];
+const stripProbeMarkers: StripProbeMarkers[] = referenceStrips.map((strip) => ({
+  start: required(`[data-strip-probe="${strip.id}-start"]`),
+  end: required(`[data-strip-probe="${strip.id}-end"]`),
+}));
+const { cubes, strips } = createViewport(
+  viewport,
+  fixtureMarks,
+  referenceStrips,
+  stripMarkers,
+  stripProbeMarkers,
+);
 const fixtureRows = [...document.querySelectorAll<HTMLElement>("[data-fixture]")];
 const receivedUniverses = new Set<number>();
+const latestFrames = new Map<number, Uint8Array>();
 let latestHealth: UniversesMessage | null = null;
 
-new LiveFeed([1], {
+new LiveFeed([1, ...universesForStrips(referenceStrips)], {
   frame(universes) {
-    for (const universe of universes) receivedUniverses.add(universe.universe);
+    for (const universe of universes) {
+      receivedUniverses.add(universe.universe);
+      latestFrames.set(universe.universe, universe.slots);
+    }
+    for (const [index, strip] of strips.entries()) {
+      const definition = referenceStrips[index];
+      if (definition) strip.setPixels(resolveColor(textureBytesForStrip(definition, latestFrames)));
+    }
+    const first = referenceStrips[0]
+      ? textureBytesForStrip(referenceStrips[0], latestFrames)
+      : null;
+    const last = referenceStrips.at(-1)
+      ? textureBytesForStrip(referenceStrips.at(-1)!, latestFrames)
+      : null;
+    if (first && last) {
+      const readback = required("[data-strip-readback]");
+      const value = `${first.slice(0, 3).join(",")}|${last.slice(-3).join(",")}`;
+      readback.dataset.stripReadback = value;
+      readback.textContent = `Pixel gradient · ${value.replace("|", " → ")}`;
+    }
     const universe = universes.find((candidate) => candidate.universe === 1);
     if (!universe) return;
     cubes.forEach((cube, index) => {
@@ -86,6 +132,7 @@ new LiveFeed([1], {
 document.documentElement.dataset.ready = "true";
 
 function renderHealth(message: UniversesMessage): void {
+  renderStripTrust(message);
   const universe = message.universes.find((candidate) => candidate.universe === 1);
   const status = required("#universe-status");
   const health = required("#universe-health");
@@ -116,6 +163,24 @@ function renderHealth(message: UniversesMessage): void {
     .join("");
 }
 
+function renderStripTrust(message: UniversesMessage): void {
+  for (const strip of referenceStrips) {
+    const universes = strip.addresses.map(({ universe }) =>
+      message.universes.find((candidate) => candidate.universe === universe),
+    );
+    const stale = universes.some((universe) => universe?.stale ?? true);
+    const contended = universes.some((universe) => (universe?.sources.length ?? 0) > 1);
+    const label = trustLabel(stale, contended);
+    const item = document.querySelector<HTMLElement>(`[data-texture-strip="${strip.id}"]`);
+    if (!item) continue;
+    item.dataset.stale = String(stale);
+    item.dataset.contended = String(contended);
+    item.textContent = `Spoke ${strip.id} · 23 px${label ? ` · ${label}` : ""}`;
+    const renderedStrip = strips.find((candidate) => candidate.id === strip.id);
+    renderedStrip?.setTrust(stale, contended);
+  }
+}
+
 function universeMarkup(universe: UniverseHealth): string {
   return `
     <div class="health-heading">
@@ -143,11 +208,15 @@ function universeMarkup(universe: UniverseHealth): string {
 }
 
 function setFixtureTrust(stale: boolean, contended: boolean): void {
-  const label = [contended ? "disputed" : "", stale ? "old" : ""].filter(Boolean).join(" · ");
+  const label = trustLabel(stale, contended);
   for (const marker of fixtureMarks) {
     marker.textContent = label;
     marker.dataset.visible = String(label.length > 0);
   }
+}
+
+function trustLabel(stale: boolean, contended: boolean): string {
+  return [contended ? "disputed" : "", stale ? "old" : ""].filter(Boolean).join(" · ");
 }
 
 function required(selector: string): HTMLElement {

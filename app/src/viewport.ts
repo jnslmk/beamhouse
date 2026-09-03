@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import type { LinearRGB, StripFixture } from "./reference-rig.ts";
 
 export interface CubeFixture {
   address: number;
@@ -11,14 +12,36 @@ interface RenderedCube extends CubeFixture {
   marker: HTMLElement;
 }
 
-export function createViewport(host: HTMLElement, markers: HTMLElement[]): CubeFixture[] {
+export interface TextureStrip {
+  id: number;
+  setPixels(pixels: LinearRGB): void;
+  setTrust(stale: boolean, contended: boolean): void;
+}
+
+export interface StripProbeMarkers {
+  start: HTMLElement;
+  end: HTMLElement;
+}
+
+export interface Viewport {
+  cubes: CubeFixture[];
+  strips: TextureStrip[];
+}
+
+export function createViewport(
+  host: HTMLElement,
+  markers: HTMLElement[],
+  stripFixtures: readonly StripFixture[],
+  stripMarkers: HTMLElement[] = [],
+  stripProbeMarkers: readonly StripProbeMarkers[] = [],
+): Viewport {
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0x11100f);
   scene.fog = new THREE.FogExp2(0x11100f, 0.025);
 
   const camera = new THREE.PerspectiveCamera(38, 1, 0.1, 100);
-  camera.position.set(6.8, 5.2, 8.5);
-  camera.lookAt(0, 0.8, 0);
+  camera.position.set(7.8, 7.4, 8.5);
+  camera.lookAt(0, 0.35, 0);
 
   const renderer = new THREE.WebGLRenderer({ antialias: true });
   renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
@@ -29,7 +52,7 @@ export function createViewport(host: HTMLElement, markers: HTMLElement[]): CubeF
 
   const controls = new OrbitControls(camera, renderer.domElement);
   controls.enableDamping = true;
-  controls.target.set(0, 0.8, 0);
+  controls.target.set(0, 0.35, 0);
   controls.minDistance = 4;
   controls.maxDistance = 18;
 
@@ -75,6 +98,61 @@ export function createViewport(host: HTMLElement, markers: HTMLElement[]): CubeF
     };
   });
 
+  const stripMeshes: THREE.Mesh[] = [];
+  const strips = stripFixtures.map((fixture, index): TextureStrip => {
+    const pixels = new Float32Array(fixture.pixels * 4);
+    const texture = new THREE.DataTexture(
+      pixels,
+      fixture.pixels,
+      1,
+      THREE.RGBAFormat,
+      THREE.FloatType,
+    );
+    texture.colorSpace = THREE.LinearSRGBColorSpace;
+    texture.magFilter = THREE.LinearFilter;
+    texture.minFilter = THREE.LinearFilter;
+    texture.generateMipmaps = false;
+
+    const material = new THREE.MeshStandardMaterial({
+      map: texture,
+      emissiveMap: texture,
+      emissive: 0xffffff,
+      side: THREE.DoubleSide,
+      roughness: 0.35,
+    });
+    const mesh = new THREE.Mesh(
+      new THREE.BoxGeometry(
+        fixture.definition.length,
+        fixture.definition.height,
+        fixture.definition.width,
+      ),
+      material,
+    );
+    mesh.position.fromArray(fixture.placement.position);
+    const heading = fixture.placement.radialAngle + (fixture.placement.reversed ? Math.PI : 0);
+    mesh.quaternion.setFromAxisAngle(new THREE.Vector3(0, 1, 0), -heading);
+    scene.add(mesh);
+    stripMeshes.push(mesh);
+
+    return {
+      id: fixture.id,
+      setPixels(nextPixels) {
+        for (let index = 0; index < fixture.pixels; index += 1) {
+          pixels.set(nextPixels.subarray(index * 3, index * 3 + 3), index * 4);
+          pixels[index * 4 + 3] = 1;
+        }
+        texture.needsUpdate = true;
+      },
+      setTrust(stale, contended) {
+        const marker = stripMarkers[index];
+        if (!marker) return;
+        const label = [contended ? "disputed" : "", stale ? "old" : ""].filter(Boolean).join(" · ");
+        marker.textContent = label;
+        marker.dataset.visible = String(label.length > 0);
+      },
+    };
+  });
+
   const resize = () => {
     const width = host.clientWidth;
     const height = host.clientHeight;
@@ -92,7 +170,31 @@ export function createViewport(host: HTMLElement, markers: HTMLElement[]): CubeF
       fixture.marker.style.left = `${(position.x * 0.5 + 0.5) * host.clientWidth}px`;
       fixture.marker.style.top = `${(-position.y * 0.5 + 0.5) * host.clientHeight}px`;
     }
+    for (const [index] of strips.entries()) {
+      const marker = stripMarkers[index];
+      if (!marker) continue;
+      const definition = stripFixtures[index];
+      if (!definition) continue;
+      const position = new THREE.Vector3(...definition.placement.position).project(camera);
+      marker.style.left = `${(position.x * 0.5 + 0.5) * host.clientWidth}px`;
+      marker.style.top = `${(-position.y * 0.5 + 0.5) * host.clientHeight}px`;
+      const mesh = stripMeshes[index];
+      if (!mesh) continue;
+      const probe = stripProbeMarkers[index];
+      if (!probe) continue;
+      for (const [element, x] of [
+        [probe.start, -definition.definition.length / 2],
+        [probe.end, definition.definition.length / 2],
+      ] as const) {
+        const endpoint = new THREE.Vector3(x, 0, 0)
+          .applyQuaternion(mesh.quaternion)
+          .add(mesh.position)
+          .project(camera);
+        element.style.left = `${(endpoint.x * 0.5 + 0.5) * host.clientWidth}px`;
+        element.style.top = `${(-endpoint.y * 0.5 + 0.5) * host.clientHeight}px`;
+      }
+    }
     renderer.render(scene, camera);
   });
-  return fixtures;
+  return { cubes: fixtures, strips };
 }
