@@ -1,5 +1,5 @@
 import { watch } from "node:fs";
-import type { Socket } from "node:dgram";
+import { createSocket, type Socket } from "node:dgram";
 import { once } from "node:events";
 import { basename, resolve, sep } from "node:path";
 import { Receiver, type Packet } from "sacn";
@@ -54,19 +54,14 @@ export async function startBridge(config: BridgeConfig): Promise<RunningBridge> 
   sacn.on("error", (error) => console.warn("sACN listener error", error));
   await once(libraryReceiver.socket, "listening");
 
-  const artnet = await Bun.udpSocket({
-    hostname: config.hostname,
-    port: config.artnetPort,
-    socket: {
-      data(_socket, bytes, _port, address) {
-        const parsed = parseArtDmx(bytes, address, Date.now());
-        if (parsed && store.ingest(parsed)) broadcastHealth();
-      },
-      error(_socket, error) {
-        console.warn("Art-Net listener error", error);
-      },
-    },
+  const artnet = createSocket({ type: "udp4", reuseAddr: true });
+  artnet.on("message", (bytes, remote) => {
+    const parsed = parseArtDmx(bytes, remote.address, Date.now());
+    if (parsed && store.ingest(parsed)) broadcastHealth();
   });
+  artnet.on("error", (error) => console.warn("Art-Net listener error", error));
+  artnet.bind(config.artnetPort, config.hostname);
+  await once(artnet, "listening");
 
   const server = Bun.serve<ClientData>({
     hostname: config.hostname,
@@ -155,7 +150,7 @@ export async function startBridge(config: BridgeConfig): Promise<RunningBridge> 
       for (const client of clients) client.close(1001, "bridge stopping");
       await server.stop(true);
       patchWatcher.close();
-      artnet.close();
+      await new Promise<void>((done) => artnet.close(done));
       await new Promise<void>((done) => sacn.close(done));
     },
   };

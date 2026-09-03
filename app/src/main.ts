@@ -53,9 +53,12 @@ const viewport = required("#viewport");
 const fixtureMarks = [...document.querySelectorAll<HTMLElement>("[data-fixture-mark]")];
 const cubes = createViewport(viewport, fixtureMarks);
 const fixtureRows = [...document.querySelectorAll<HTMLElement>("[data-fixture]")];
+const receivedUniverses = new Set<number>();
+let latestHealth: UniversesMessage | null = null;
 
 new LiveFeed([1], {
   frame(universes) {
+    for (const universe of universes) receivedUniverses.add(universe.universe);
     const universe = universes.find((candidate) => candidate.universe === 1);
     if (!universe) return;
     cubes.forEach((cube, index) => {
@@ -67,8 +70,10 @@ new LiveFeed([1], {
       const output = row.querySelector("output");
       if (output) output.textContent = String(level);
     });
+    if (latestHealth) renderHealth(latestHealth);
   },
   health(message) {
+    latestHealth = message;
     renderHealth(message);
   },
   status(status) {
@@ -85,11 +90,12 @@ function renderHealth(message: UniversesMessage): void {
   const status = required("#universe-status");
   const health = required("#universe-health");
   if (!universe || universe.sources.length === 0) {
-    status.textContent = "1 · waiting";
+    const retainedFrame = receivedUniverses.has(1);
+    status.textContent = retainedFrame ? "1 · stale" : "1 · waiting";
     status.dataset.contention = "false";
-    health.innerHTML = '<div class="empty-state">Waiting for an sACN or Art-Net source…</div>';
-    health.dataset.stale = "false";
-    setFixtureTrust(false, false);
+    health.innerHTML = `<div class="empty-state">${retainedFrame ? "No active source · last frame retained" : "Waiting for an sACN or Art-Net source…"}</div>`;
+    health.dataset.stale = String(retainedFrame);
+    setFixtureTrust(retainedFrame, false);
   } else {
     const contended = universe.sources.length > 1;
     status.textContent = `1 · ${contended ? "contended" : universe.stale ? "stale" : "live"}`;
@@ -124,6 +130,7 @@ function universeMarkup(universe: UniverseHealth): string {
               <div class="source-title"><b>${escapeHtml(source.name ?? source.id)}</b><span>${source.transport === "sacn" ? "sACN" : "Art-Net"}</span></div>
               <dl>
                 <div><dt>Identity</dt><dd>${escapeHtml(source.id)}</dd></div>
+                <div><dt>Arriving</dt><dd>${source.frames} frames · ${source.rateHz} Hz</dd></div>
                 <div><dt>Sequence</dt><dd>${source.drops === 0 ? "healthy" : `${source.drops} dropped`}</dd></div>
                 <div><dt>State</dt><dd>${source.stale ? "stale" : "live"}</dd></div>
                 <div><dt>Priority</dt><dd>${source.priority ?? "— unavailable"}</dd></div>

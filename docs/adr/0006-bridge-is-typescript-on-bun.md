@@ -35,7 +35,7 @@ All of the following was measured on Linux against the real packages, not recall
 | Node/Bun Art-Net **receive** libraries | none usable. `dmxnet` 0.9.0 is 3½ years stale and calls `ArtPollReply()` on every `newReceiver()`, announcing the host as an Art-Net node with input/output ports. `artnet-protocol` npm is 0.2.1 (2021); `artnet` npm is send-only (2018) |
 | Bun UDP | native `addMembership`/`dropMembership`/`addSourceSpecificMembership`; `node:dgram` compat works, so `sacn` npm runs unmodified |
 | 20 s soak, 4 universes at 30 Hz, sACN multicast | Bun 1.3.11: 554 frames/universe, **0** sequence gaps, 0 corrupt. Node 22.22.2: 557, **0**, 0. Indistinguishable |
-| Hand-rolled ArtDmx on native `Bun.udpSocket` | parser *and* builder in **25 non-comment lines**; 295/295 frames, 0 rejects, 0 gaps, `reuseAddr` on 6454 |
+| Hand-rolled ArtDmx on Bun's `node:dgram` compatibility layer | 295/295 frames, 0 rejects, 0 gaps; `reuseAddr` preserves shared broadcast-port behaviour on 6454 |
 | `bun build --compile` | single binary, 95 MB (against Rust's 426 KB) |
 
 Two framing errors in the ticket are worth recording. **Art-Net has no multicast** — it is
@@ -50,11 +50,14 @@ anyway.
 **The bridge is TypeScript running on Bun**, as a workspace package alongside `packages/gdtf-ts/`.
 
 - **sACN intake** uses `sacn` npm 4.6.2.
-- **Art-Net intake** is hand-rolled ArtDmx receive on `Bun.udpSocket`. This is deliberate, not a
-  concession: it is 25 lines, and it gives a **passive listener that never announces itself**,
-  which is what §01's "never sends DMX" requires and what `dmxnet` gets wrong.
+- **Art-Net intake** is hand-rolled ArtDmx receive on Bun's `node:dgram` compatibility layer.
+  This is deliberate: the pinned native `Bun.udpSocket` exposes no reuse option, while
+  `createSocket({ reuseAddr: true })` preserves ADR-0002's shared broadcast port. It remains a
+  **passive listener that never announces itself**, which is what §01's "never sends DMX"
+  requires and what `dmxnet` gets wrong.
 - **WebSocket, static serving and file watching** use `Bun.serve` and `fs.watch`, no dependencies.
-- **No Node-portability constraint.** Bun-native APIs are used freely.
+- **No Node-portability constraint.** Bun-native APIs are used freely where they preserve the
+  required socket semantics; the bridge still runs only on Bun.
 
 ### Why not Rust
 

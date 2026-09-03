@@ -23,6 +23,8 @@ export interface SourceHealth {
   priority: number | null;
   preview: boolean | null;
   drops: number;
+  frames: number;
+  rateHz: number;
   stale: boolean;
 }
 

@@ -84,8 +84,8 @@ record was coherent only while every universe had exactly one source:
 ```jsonc
 { "op": "universes", "universes": [
   { "universe": 1, "stale": false, "sources": [
-      { "id": "…cid…",        "name": "Mizer", "transport": "sacn",   "priority": 100,  "preview": false, "drops": 3, "stale": false },
-      { "id": "192.168.8.31", "name": null,    "transport": "artnet", "priority": null, "preview": null,  "drops": 0, "stale": false }
+      { "id": "…cid…",        "name": "Mizer", "transport": "sacn",   "priority": 100,  "preview": false, "drops": 3, "frames": 1280, "rateHz": 44.0, "stale": false },
+      { "id": "192.168.8.31", "name": null,    "transport": "artnet", "priority": null, "preview": null,  "drops": 0, "frames": 900, "rateHz": 30.0, "stale": false }
   ]}
 ], "terminations": []}
 ```
@@ -98,6 +98,9 @@ record was coherent only while every universe had exactly one source:
   appearing in several universe records.
 - `null` keeps ADR-0018's meaning — *this transport cannot tell you* — and is now `null` per
   source rather than per universe, which is what makes a mixed-transport universe describable.
+- `frames` counts every packet seen, including rejected reordered packets; `rateHz` is the rate
+  over arrivals retained from the preceding second. Those fields supply decision 7's immediate
+  contention discriminator.
 - **[implemented 2026-09-03 — #59]** `stale` is also exposed per source. The universe value
   remains the `all` rollup, while the source value makes the transport-specific threshold that
   fired observable instead of hiding one dead source behind another live one.

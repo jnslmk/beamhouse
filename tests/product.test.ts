@@ -76,6 +76,14 @@ describe("running Beamhouse", () => {
   });
 
   test("delivers concurrent real protocols without arbitration or DMX output", async () => {
+    // A graceful release keeps the last rendered frame visibly marked as old.
+    await sendUdp(sacn(1, [9, 8, 7]), sacnPort);
+    await levelsBecome([9, 8, 7]);
+    await sendUdp(sacn(2, [9, 8, 7], 0x40), sacnPort);
+    await expectCount(page.locator("[data-source]"), 0);
+    await page.locator("[data-termination]", { hasText: "Mizer" }).last().waitFor();
+    expect(await page.locator('[data-fixture-mark="1"]').textContent()).toBe("old");
+
     await sendUdp(artDmx(1, [20, 40, 60, 0]), artnetPort);
     await levelsBecome([20, 40, 60]);
 
@@ -87,6 +95,7 @@ describe("running Beamhouse", () => {
     expect(await page.locator('[data-source^="sacn:"]').innerText()).toContain("Mizer");
     expect(await page.locator('[data-source^="sacn:"]').innerText()).toContain("123");
     expect(await page.locator('[data-source^="sacn:"]').innerText()).toContain("preview");
+    expect(await page.locator('[data-source^="sacn:"]').innerText()).toContain("Hz");
     expect(await page.locator('[data-source^="artnet:"]').innerText()).toContain("— unavailable");
 
     // A reordered packet is diagnosed and never becomes the browser's latest complete frame.
@@ -104,10 +113,11 @@ describe("running Beamhouse", () => {
     expect(await page.locator('[data-fixture-mark="1"]').textContent()).toBe("disputed · old");
 
     await sendUdp(sacn(11, [0, 0, 0], 0x40), sacnPort);
-    await page.locator("[data-termination]", { hasText: "Mizer" }).waitFor();
+    await page.locator("[data-termination]", { hasText: "Mizer" }).last().waitFor();
     await expectCount(page.locator("[data-source]"), 1);
     await expectCount(page.locator('[data-source^="sacn:"]'), 0);
     await expectCount(page.locator('[data-source^="artnet:"]'), 1);
+
     expect(await page.locator("#universe-status").getAttribute("data-contention")).toBe("false");
 
     expect(existsSync(auditPath) ? readFileSync(auditPath, "utf8") : "").toBe("");

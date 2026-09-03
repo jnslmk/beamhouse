@@ -22,6 +22,7 @@ export interface IncomingUniversePacket {
 interface TrackedSource extends Omit<SourceHealth, "stale"> {
   lastSequence: number | null;
   lastSeen: number;
+  arrivals: number[];
 }
 
 interface TrackedUniverse {
@@ -56,6 +57,11 @@ export class UniverseStore {
     const universe = this.#universe(packet.universe);
     const key = `${packet.transport}:${packet.id}`;
     const previous = universe.sources.get(key);
+    if (previous) {
+      previous.frames += 1;
+      previous.arrivals.push(packet.receivedAt);
+      pruneArrivals(previous, packet.receivedAt);
+    }
     if (previous && !sequenceIsNewer(packet.transport, previous.lastSequence, packet.sequence)) {
       previous.drops += 1;
       previous.lastSeen = packet.receivedAt;
@@ -69,15 +75,18 @@ export class UniverseStore {
       priority: packet.priority,
       preview: packet.preview,
       drops: previous?.drops ?? 0,
+      frames: previous?.frames ?? 1,
+      rateHz: 0,
       lastSequence: packet.sequence === 0 ? null : packet.sequence,
       lastSeen: packet.receivedAt,
+      arrivals: previous?.arrivals ?? [packet.receivedAt],
     };
 
     if (packet.terminated) {
       universe.sources.delete(key);
       this.#terminations.push({
         universe: packet.universe,
-        source: publicSource(source),
+        source: publicSource(source, packet.receivedAt),
         terminatedAt: packet.receivedAt,
       });
       return true;
@@ -104,7 +113,7 @@ export class UniverseStore {
     const universes = sortedUnique(subscribedUniverses).map((universeNumber) => {
       const sources = [...(this.#universes.get(universeNumber)?.sources.values() ?? [])].map(
         (source): SourceHealth => ({
-          ...publicSource(source),
+          ...publicSource(source, now),
           stale: now - source.lastSeen > this.#staleMs(source.transport),
         }),
       );
@@ -146,7 +155,14 @@ export class UniverseStore {
   }
 }
 
-function publicSource(source: TrackedSource): Omit<SourceHealth, "stale"> {
+function publicSource(source: TrackedSource, now: number): Omit<SourceHealth, "stale"> {
+  pruneArrivals(source, now);
+  const first = source.arrivals[0];
+  const last = source.arrivals.at(-1);
+  const rateHz =
+    first === undefined || last === undefined || first === last
+      ? 0
+      : Math.round((((source.arrivals.length - 1) * 1_000) / (last - first)) * 10) / 10;
   return {
     id: source.id,
     name: source.name,
@@ -154,7 +170,15 @@ function publicSource(source: TrackedSource): Omit<SourceHealth, "stale"> {
     priority: source.priority,
     preview: source.preview,
     drops: source.drops,
+    frames: source.frames,
+    rateHz,
   };
+}
+
+function pruneArrivals(source: TrackedSource, now: number): void {
+  while (source.arrivals[0] !== undefined && source.arrivals[0] < now - 1_000) {
+    source.arrivals.shift();
+  }
 }
 
 function sequenceIsNewer(transport: Transport, previous: number | null, next: number): boolean {

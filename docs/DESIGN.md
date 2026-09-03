@@ -826,10 +826,15 @@ beam fixtures move rarely, strips change constantly.
 [ADR-0002](adr/0002-bridge-speaks-both-sacn-and-artnet.md).
 
 **It is TypeScript on Bun**, settled in [ADR-0006](adr/0006-bridge-is-typescript-on-bun.md) —
-`sacn` npm 4.6.2 for E1.31, a hand-rolled 25-line ArtDmx receiver on `Bun.udpSocket` (a passive
-listener that never announces itself, which `dmxnet` gets wrong), and `Bun.serve` plus `fs.watch`
+`sacn` npm 4.6.2 for E1.31, a hand-rolled ArtDmx receiver on Bun's `node:dgram` compatibility
+layer (a passive listener that never announces itself, which `dmxnet` gets wrong), and
+`Bun.serve` plus `fs.watch`
 with no dependencies for the rest. **[corrected] It is not ~150 lines and not "the only native
 code".** Both of those framings predate ADR-0002 and the job list below.
+
+**[corrected 2026-09-03 — #59]** Native `Bun.udpSocket` in the pinned runtime has no reuse
+option. Art-Net therefore uses `node:dgram` with `reuseAddr: true`, preserving ADR-0002's measured
+shared broadcast-port behaviour while the process and toolchain remain Bun.
 
 **[corrected] The original argument for sACN-only was false.** The draft claimed Art-Net is
 UDP 6454 and "only one process per host can bind it". On Linux that is not true for broadcast
@@ -1048,13 +1053,13 @@ Thin, because the browser does the thinking. Text frames for control, binary for
 { "op": "universes", "universes": [
     { "universe": 1, "stale": false, "sources": [
         { "id": "…cid…",        "name": "Mizer", "transport": "sacn",
-          "priority": 100,  "preview": false, "drops": 3, "stale": false },
+          "priority": 100,  "preview": false, "drops": 3, "frames": 1280, "rateHz": 44.0, "stale": false },
         { "id": "192.168.8.31", "name": null,    "transport": "artnet",
-          "priority": null, "preview": null,  "drops": 0, "stale": false }
+          "priority": null, "preview": null,  "drops": 0, "frames": 900, "rateHz": 30.0, "stale": false }
     ]},
     { "universe": 2, "stale": true, "sources": [
         { "id": "192.168.8.31", "name": null, "transport": "artnet",
-          "priority": null, "preview": null, "drops": 0, "stale": true }
+          "priority": null, "preview": null, "drops": 0, "frames": 200, "rateHz": 0, "stale": true }
     ]}
 ], "terminations": []}
 { "op": "reload", "path": "shows/warehouse.mvr" }
@@ -1093,6 +1098,9 @@ a scalar standing in for something plural.
   supplies. `name` is E1.31's `sourceName` and is `null` on Art-Net for the same reason.
 - **`null` keeps ADR-0018's meaning** — *this transport cannot tell you* — and is now `null` per
   **source**, which is what makes a mixed-transport universe describable at all.
+- **`frames` and `rateHz` expose how much data is arriving**, including rejected reordered
+  packets in the count, so immediate contention does not make a stray packet look like a second
+  live stream.
 - **`stale` stays on the universe** and is the **all**-rollup of its sources (§06 job 4).
 
 **[implemented 2026-09-03 — #59]** Each source also carries its own `stale` value so a dead source

@@ -49,6 +49,8 @@ describe("the bridge's normalized universe stream", () => {
             priority: null,
             preview: null,
             drops: 0,
+            frames: 1,
+            rateHz: 0,
             stale: false,
           },
           {
@@ -58,6 +60,8 @@ describe("the bridge's normalized universe stream", () => {
             priority: 120,
             preview: true,
             drops: 0,
+            frames: 1,
+            rateHz: 0,
             stale: false,
           },
         ],
@@ -79,9 +83,12 @@ describe("the bridge's normalized universe stream", () => {
     };
 
     expect(store.ingest({ ...source, sequence: 100, slots: slots(100) })).toBe(true);
-    expect(store.ingest({ ...source, sequence: 99, slots: slots(99) })).toBe(false);
+    expect(store.ingest({ ...source, sequence: 99, slots: slots(99), receivedAt: 11 })).toBe(false);
     expect(store.frames([1])[0]?.slots[0]).toBe(100);
-    expect(store.health([1], 11).universes[0]?.sources[0]?.drops).toBe(1);
+    const health = store.health([1], 11).universes[0]?.sources[0];
+    expect(health?.drops).toBe(1);
+    expect(health?.frames).toBe(2);
+    expect(health?.rateHz).toBe(1_000);
   });
 
   test("ages each transport separately and rolls universe stale state up with all", () => {
@@ -145,6 +152,8 @@ describe("the bridge's normalized universe stream", () => {
           priority: 100,
           preview: false,
           drops: 0,
+          frames: 2,
+          rateHz: 100,
         },
         terminatedAt: 20,
       },
