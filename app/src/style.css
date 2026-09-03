@@ -127,6 +127,30 @@ body {
 .fixture-mark[data-visible="true"] {
   display: block;
 }
+.strip-mark {
+  position: absolute;
+  display: none;
+  translate: -50% -220%;
+  padding: 3px 5px;
+  border: 1px solid #e3a15b;
+  border-radius: 4px;
+  background: #17120ee8;
+  color: #f0b779;
+  font:
+    8px ui-monospace,
+    monospace;
+  pointer-events: none;
+  white-space: nowrap;
+}
+.strip-mark[data-visible="true"] {
+  display: block;
+}
+[data-strip-probe] {
+  position: absolute;
+  width: 2px;
+  height: 2px;
+  pointer-events: none;
+}
 .panel {
   overflow: auto;
   border-left: 1px solid #302d2a;
@@ -220,6 +244,44 @@ h1 {
 }
 .universe-health {
   margin-top: 20px;
+}
+.strip-status {
+  margin-top: 20px;
+}
+.strip-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1px;
+  margin: 0;
+  padding: 1px;
+  list-style: none;
+  border: 1px solid #35322e;
+  border-radius: 8px;
+  background: #35322e;
+  overflow: hidden;
+}
+.strip-list li {
+  padding: 7px 8px;
+  background: #1c1a18;
+  color: #aaa49c;
+  font:
+    9px ui-monospace,
+    monospace;
+}
+.strip-list li[data-stale="true"] {
+  color: #f0b779;
+}
+.strip-list li[data-contended="true"] {
+  box-shadow: inset 2px 0 #f0aa5e;
+}
+.strip-readback {
+  display: block;
+  width: 100%;
+  margin-top: 8px;
+  color: #bdb7af;
+  font:
+    10px ui-monospace,
+    monospace;
 }
 .empty-state {
   border: 1px dashed #393632;

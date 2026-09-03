@@ -123,7 +123,100 @@ describe("running Beamhouse", () => {
     expect(existsSync(auditPath) ? readFileSync(auditPath, "utf8") : "").toBe("");
     expect(await page.locator(".chip.passive").innerText()).toContain("none · passive");
   });
+
+  test("renders the reference STAR-TENT pixel ramp from normal UDP universe frames", async () => {
+    const universeTwo = new Uint8Array(512);
+    const universeThree = new Uint8Array(512);
+    for (let pixel = 0; pixel < 230; pixel += 1) {
+      const slots = pixel < 161 ? universeTwo : universeThree;
+      const slot = pixel < 161 ? 29 + pixel * 3 : (pixel - 161) * 3;
+      slots.set([pixel, 255 - pixel, (pixel % 23) * 11], slot);
+    }
+
+    for (let sequence = 12; sequence < 42; sequence += 1) {
+      await sendUdp(sacn(sequence, [...universeTwo], 0, 2), sacnPort);
+      await sendUdp(sacn(sequence, [...universeThree], 0, 3), sacnPort);
+      await Bun.sleep(1_000 / 30);
+    }
+
+    const readback = page.locator("[data-strip-readback]");
+    await readback.waitFor();
+    await expectCount(page.locator("[data-texture-strip]"), 10);
+    await page.locator('[data-strip-readback="0,255,0|229,26,242"]').waitFor();
+    const start = await page.locator('[data-strip-probe="101-start"]').boundingBox();
+    const end = await page.locator('[data-strip-probe="101-end"]').boundingBox();
+    const canvas = await page.locator("#viewport canvas").boundingBox();
+    if (!start || !end || !canvas) throw new Error("missing rendered strip probes");
+    const visual = await canvasColorSamples(
+      page,
+      { x: start.x - canvas.x, y: start.y - canvas.y },
+      { x: end.x - canvas.x, y: end.y - canvas.y },
+    );
+    expect(visual.coloredPixels).toBeGreaterThan(500);
+    expect(visual.inner.bestGreen).toBeGreaterThan(20);
+    expect(visual.outer.bestBlue).toBeGreaterThan(20);
+  });
 });
+
+async function canvasColorSamples(
+  page: Page,
+  start: { x: number; y: number },
+  end: { x: number; y: number },
+) {
+  const screenshot = await page.locator("#viewport canvas").screenshot();
+  return page.evaluate(
+    async ({ encoded, start, end }) => {
+      const image = new Image();
+      image.src = `data:image/png;base64,${encoded}`;
+      await new Promise<void>((done, reject) => {
+        image.addEventListener("load", () => done(), { once: true });
+        image.addEventListener(
+          "error",
+          () => reject(new Error("could not decode viewport screenshot")),
+          {
+            once: true,
+          },
+        );
+      });
+      const copy = document.createElement("canvas");
+      copy.width = image.width;
+      copy.height = image.height;
+      const context = copy.getContext("2d", { willReadFrequently: true });
+      if (!context) throw new Error("could not read viewport canvas");
+      context.drawImage(image, 0, 0);
+      const pixels = context.getImageData(0, 0, copy.width, copy.height).data;
+      const sampleRegion = (centerX: number, centerY: number) => {
+        let bestGreen = 0;
+        let bestBlue = 0;
+        const xCenter = Math.round(centerX);
+        const yCenter = Math.round(centerY);
+        for (let y = yCenter - 12; y <= yCenter + 12; y += 1) {
+          for (let x = xCenter - 12; x <= xCenter + 12; x += 1) {
+            const offset = (y * copy.width + x) * 4;
+            const red = pixels[offset] ?? 0;
+            const green = pixels[offset + 1] ?? 0;
+            const blue = pixels[offset + 2] ?? 0;
+            bestGreen = Math.max(bestGreen, green - red);
+            bestBlue = Math.max(bestBlue, blue - red);
+          }
+        }
+        return { bestGreen, bestBlue };
+      };
+      let coloredPixels = 0;
+      for (let offset = 0; offset < pixels.length; offset += 4) {
+        if (Math.max(pixels[offset]!, pixels[offset + 1]!, pixels[offset + 2]!) > 45) {
+          coloredPixels += 1;
+        }
+      }
+      return {
+        coloredPixels,
+        inner: sampleRegion(start.x, start.y),
+        outer: sampleRegion(end.x, end.y),
+      };
+    },
+    { encoded: screenshot.toString("base64"), start, end },
+  );
+}
 
 async function levelsBecome(expected: number[]): Promise<void> {
   await page.waitForFunction(
@@ -146,10 +239,10 @@ async function expectCount(locator: ReturnType<Page["locator"]>, count: number):
   expect(await locator.count()).toBe(count);
 }
 
-function sacn(sequence: number, values: number[], options = 0): Uint8Array {
+function sacn(sequence: number, values: number[], options = 0, universe = 1): Uint8Array {
   const payload = Object.fromEntries(values.map((value, index) => [index + 1, value]));
   const packet = new Packet({
-    universe: 1,
+    universe,
     sequence,
     sourceName: "Mizer",
     priority: 123,

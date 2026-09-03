@@ -8,3 +8,5 @@ __pycache__/
 .codex-tmp/
 node_modules/
 app/dist/
+
+.worktrees/
