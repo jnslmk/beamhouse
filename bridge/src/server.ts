@@ -10,6 +10,17 @@ import { UniverseStore } from "./universe-store.ts";
 interface ClientData {
   subscriptions: Set<number>;
   lastHealth: string;
+  controlId: number | null;
+  lastLiveness: number;
+}
+
+type ControlSocket = Bun.ServerWebSocket<ClientData>;
+
+interface PendingTakeover {
+  requestId: number;
+  requestedAt: number;
+  owner: ControlSocket;
+  candidate: ControlSocket;
 }
 
 export interface BridgeConfig {
@@ -33,8 +44,12 @@ export async function startBridge(config: BridgeConfig): Promise<RunningBridge> 
     sacnStaleMs: config.sacnStaleMs,
     artnetStaleMs: config.artnetStaleMs,
   });
-  const clients = new Set<Bun.ServerWebSocket<ClientData>>();
+  const clients = new Set<ControlSocket>();
   const joinedUniverses = new Set<number>();
+  let nextControlId = 1;
+  let nextTakeoverRequestId = 1;
+  let owner: ControlSocket | null = null;
+  let pendingTakeover: PendingTakeover | null = null;
 
   const sacn = new Receiver({ universes: [], port: config.sacnPort, reuseAddr: true });
   // Receiver's built-in ordering rejects before emitting and cannot report the source.
@@ -70,7 +85,7 @@ export async function startBridge(config: BridgeConfig): Promise<RunningBridge> 
       const url = new URL(request.url);
       if (url.pathname === "/ws") {
         return serverInstance.upgrade(request, {
-          data: { subscriptions: new Set(), lastHealth: "" },
+          data: { subscriptions: new Set(), lastHealth: "", controlId: null, lastLiveness: 0 },
         })
           ? undefined
           : new Response("WebSocket upgrade failed", { status: 400 });
@@ -83,6 +98,7 @@ export async function startBridge(config: BridgeConfig): Promise<RunningBridge> 
       },
       message(socket, message) {
         if (typeof message !== "string") return;
+        if (handleControl(socket, message)) return;
         const subscriptions = parseSubscription(message);
         if (!subscriptions) return;
         socket.data.subscriptions = subscriptions;
@@ -91,6 +107,8 @@ export async function startBridge(config: BridgeConfig): Promise<RunningBridge> 
       },
       close(socket) {
         clients.delete(socket);
+        if (socket === owner) releaseOwner();
+        else if (socket === pendingTakeover?.candidate) cancelTakeover();
         reconcileMemberships();
       },
     },
@@ -104,6 +122,11 @@ export async function startBridge(config: BridgeConfig): Promise<RunningBridge> 
     }
   }, 1000 / 30);
   const healthTimer = setInterval(() => broadcastHealth(true), 1_000);
+  const ownershipTimer = setInterval(() => {
+    const now = Date.now();
+    if (owner && now - owner.data.lastLiveness > 15_000) releaseOwner();
+    else if (pendingTakeover && now - pendingTakeover.requestedAt > 15_000) cancelTakeover();
+  }, 1_000);
   const patchWatcher = watch(config.watchDirectory, { recursive: true }, (_event, filename) => {
     if (!filename || !/\.(?:bhs|mvr|ya?ml)$/i.test(filename)) return;
     const path = `${basename(config.watchDirectory)}/${filename}`;
@@ -115,7 +138,7 @@ export async function startBridge(config: BridgeConfig): Promise<RunningBridge> 
     for (const client of clients) sendHealth(client, force);
   }
 
-  function sendHealth(client: Bun.ServerWebSocket<ClientData>, force: boolean): void {
+  function sendHealth(client: ControlSocket, force: boolean): void {
     const serialized = JSON.stringify(store.health([...client.data.subscriptions], Date.now()));
     if (force || serialized !== client.data.lastHealth) {
       client.data.lastHealth = serialized;
@@ -142,11 +165,123 @@ export async function startBridge(config: BridgeConfig): Promise<RunningBridge> 
     }
   }
 
+  function handleControl(socket: ControlSocket, message: string): boolean {
+    let value: { op?: unknown; requestId?: unknown; scene?: unknown };
+    try {
+      const parsed: unknown = JSON.parse(message);
+      if (!parsed || typeof parsed !== "object") return false;
+      value = parsed;
+    } catch {
+      return false;
+    }
+    if (value.op === "control.join") {
+      if (socket.data.controlId === null) socket.data.controlId = nextControlId++;
+      socket.data.lastLiveness = Date.now();
+      if (!owner) owner = socket;
+      broadcastOwnership();
+      owner?.send(JSON.stringify({ op: "control.snapshot.request" }));
+      return true;
+    }
+    if (value.op === "control.liveness") {
+      if (socket === owner) socket.data.lastLiveness = Date.now();
+      return true;
+    }
+    if (value.op === "control.takeover") {
+      if (socket.data.controlId === null) return true;
+      if (socket === owner || pendingTakeover) return true;
+      if (!owner) {
+        owner = socket;
+        socket.data.lastLiveness = Date.now();
+        broadcastOwnership();
+        return true;
+      }
+      pendingTakeover = {
+        requestId: nextTakeoverRequestId++,
+        requestedAt: Date.now(),
+        owner,
+        candidate: socket,
+      };
+      owner.send(
+        JSON.stringify({
+          op: "control.snapshot.request",
+          requestId: pendingTakeover.requestId,
+          relinquish: true,
+        }),
+      );
+      return true;
+    }
+    if (
+      value.op === "control.snapshot.ack" &&
+      pendingTakeover &&
+      socket === pendingTakeover.candidate &&
+      value.requestId === pendingTakeover.requestId
+    ) {
+      owner = socket;
+      socket.data.lastLiveness = Date.now();
+      pendingTakeover = null;
+      broadcastOwnership();
+      return true;
+    }
+    if (
+      value.op === "control.snapshot" &&
+      pendingTakeover &&
+      socket === pendingTakeover.owner &&
+      value.requestId === pendingTakeover.requestId
+    ) {
+      pendingTakeover.candidate.send(message);
+      const followerSnapshot = JSON.stringify({ op: "control.snapshot", scene: value.scene });
+      for (const client of clients) {
+        if (
+          client !== socket &&
+          client !== pendingTakeover.candidate &&
+          client.data.controlId !== null
+        )
+          client.send(followerSnapshot);
+      }
+      return true;
+    }
+    if (
+      (value.op === "control.snapshot" || value.op === "control.scene.changed") &&
+      socket === owner
+    ) {
+      for (const client of clients) {
+        if (client !== socket && client.data.controlId !== null) client.send(message);
+      }
+      return true;
+    }
+    return false;
+  }
+
+  function releaseOwner(): void {
+    pendingTakeover = null;
+    owner = null;
+    broadcastOwnership();
+  }
+
+  function cancelTakeover(): void {
+    pendingTakeover = null;
+    broadcastOwnership();
+  }
+
+  function broadcastOwnership(): void {
+    for (const client of clients) {
+      if (client.data.controlId === null) continue;
+      client.send(
+        JSON.stringify({
+          op: "control.owner",
+          owner: client === owner,
+          ownerName: owner ? `page ${owner.data.controlId}` : null,
+        }),
+      );
+    }
+  }
+
   return {
     url: server.url.toString().replace(/\/$/, ""),
     async stop() {
       clearInterval(frameTimer);
       clearInterval(healthTimer);
+      clearInterval(ownershipTimer);
       for (const client of clients) client.close(1001, "bridge stopping");
       await server.stop(true);
       patchWatcher.close();

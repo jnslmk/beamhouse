@@ -78,10 +78,13 @@ body {
 
 .workspace {
   height: calc(100% - 58px);
+  position: relative;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 360px;
+  grid-template: minmax(0, 1fr) / minmax(0, 1fr);
 }
 #viewport {
+  width: 100%;
+  height: 100%;
   min-width: 0;
   min-height: 0;
   position: relative;
@@ -151,11 +154,32 @@ body {
   height: 2px;
   pointer-events: none;
 }
-.panel {
+.overlay {
+  position: absolute;
+  z-index: 5;
+  top: 18px;
+  right: 18px;
+  bottom: 18px;
+  width: min(440px, calc(100% - 36px));
   overflow: auto;
-  border-left: 1px solid #302d2a;
-  padding: 24px 22px 36px;
-  background: #171614;
+  border: 1px solid #302d2a;
+  border-radius: 9px;
+  padding: 16px 22px 36px;
+  background: #171614f5;
+  box-shadow: 0 20px 70px #0009;
+}
+.overlay-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 18px;
+}
+.overlay-tabs [data-overlay-close] {
+  margin-left: auto;
+}
+.overlay-tabs [data-active="true"] {
+  border-color: #e6a24b;
+  color: #f0b779;
 }
 .panel-heading {
   display: flex;
@@ -247,6 +271,82 @@ h1 {
 }
 .strip-status {
   margin-top: 20px;
+}
+.editor,
+.camera-views {
+  margin-top: 20px;
+  padding-top: 18px;
+  border-top: 1px solid #302d2a;
+}
+.editor p {
+  color: #827c75;
+  font-size: 11px;
+}
+.editor-note {
+  margin: 8px 0;
+  font:
+    10px ui-monospace,
+    monospace;
+}
+.editor label,
+.camera-save {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: #aaa49c;
+  font:
+    10px ui-monospace,
+    monospace;
+}
+select,
+input,
+button {
+  border: 1px solid #48433e;
+  border-radius: 4px;
+  background: #211f1c;
+  color: #e9e5df;
+  font: inherit;
+}
+select,
+input {
+  padding: 5px 6px;
+}
+button {
+  padding: 6px 8px;
+  cursor: pointer;
+}
+button:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+[data-gizmo-mode][data-active="true"] {
+  border-color: #e6a24b;
+  color: #f0b779;
+}
+.placement-fields {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  margin-top: 10px;
+}
+.placement-fields label {
+  display: grid;
+  gap: 3px;
+}
+.placement-fields input {
+  min-width: 0;
+  width: 100%;
+}
+.history-actions,
+[data-camera-views] {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+.camera-save input {
+  min-width: 0;
+  flex: 1;
 }
 .strip-list {
   display: grid;

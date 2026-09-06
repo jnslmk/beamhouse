@@ -70,12 +70,15 @@ describe("running Beamhouse", () => {
     await page.locator('html[data-ready="true"]').waitFor({ timeout: 2_000 });
 
     expect(performance.now() - startedAt).toBeLessThan(2_000);
+    expect(await page.locator("[data-overlay]").isHidden()).toBe(true);
     await expectCount(page.locator("#viewport canvas"), 1);
+    await openFixtures();
     await expectCount(page.locator("[data-fixture]"), 3);
     await page.locator('[data-status="live"]').waitFor();
   });
 
   test("delivers concurrent real protocols without arbitration or DMX output", async () => {
+    await openUniverses();
     // A graceful release keeps the last rendered frame visibly marked as old.
     await sendUdp(sacn(1, [9, 8, 7]), sacnPort);
     await levelsBecome([9, 8, 7]);
@@ -121,10 +124,11 @@ describe("running Beamhouse", () => {
     expect(await page.locator("#universe-status").getAttribute("data-contention")).toBe("false");
 
     expect(existsSync(auditPath) ? readFileSync(auditPath, "utf8") : "").toBe("");
-    expect(await page.locator(".chip.passive").innerText()).toContain("none · passive");
+    expect(await page.locator('[data-chip-tab="universes"]').count()).toBe(2);
   });
 
   test("renders the reference STAR-TENT pixel ramp from normal UDP universe frames", async () => {
+    await openFixtures();
     const universeTwo = new Uint8Array(512);
     const universeThree = new Uint8Array(512);
     for (let pixel = 0; pixel < 230; pixel += 1) {
@@ -156,6 +160,247 @@ describe("running Beamhouse", () => {
     expect(visual.inner.bestGreen).toBeGreaterThan(20);
     expect(visual.outer.bestBlue).toBeGreaterThan(20);
   });
+
+  test("edits fixture placement through one persistent undo history while the live feed continues", async () => {
+    await expectCount(page.locator("[data-chip-tab]"), 8);
+    await openFixtures();
+    await sendUdp(sacn(43, [71, 72, 73]), sacnPort);
+    await levelsBecome([71, 72, 73]);
+
+    await page.locator('[data-fixture="1"]').click();
+    await page.locator('[data-placement-field="x"]').fill("2.4");
+    await page.locator('[data-placement-field="x"]').press("Enter");
+    await page.locator('[data-placement-x="2.4"]').waitFor();
+    expect(await page.locator("[data-history-count]").textContent()).toBe("1");
+
+    await page.locator("[data-undo]").click();
+    await page.locator('[data-placement-x="-2.25"]').waitFor();
+    expect(await page.locator("[data-history-count]").textContent()).toBe("1");
+    await page.locator("[data-redo]").click();
+    await page.locator('[data-placement-x="2.4"]').waitFor();
+    await page.locator('[data-placement-field="x"]').fill("2.4");
+    await page.locator('[data-placement-field="x"]').press("Enter");
+    expect(await page.locator("[data-history-count]").textContent()).toBe("1");
+
+    await page.locator("[data-camera-view-name]").fill("operator");
+    await page.locator("[data-camera-save]").click();
+    await page.locator('[data-camera-view="operator"]').waitFor();
+    expect(await page.locator("[data-history-count]").textContent()).toBe("2");
+
+    await page.reload({ waitUntil: "domcontentloaded" });
+    await page.locator('html[data-ready="true"]').waitFor();
+    await openFixtures();
+    await page.locator('[data-fixture="1"]').click();
+    await page.locator('[data-placement-x="2.4"]').waitFor();
+    await page.locator('[data-camera-view="operator"]').waitFor();
+
+    await page.locator('[data-editable-fixture="101"]').click();
+    await page.locator('[data-placement-field="x"]').fill("1.75");
+    await page.locator('[data-placement-field="x"]').press("Enter");
+    await page.locator('[data-placement-x="1.75"]').waitFor();
+    expect(await page.locator("[data-history-count]").textContent()).toBe("1");
+    await page.reload({ waitUntil: "domcontentloaded" });
+    await page.locator('html[data-ready="true"]').waitFor();
+    await openFixtures();
+    await page.locator('[data-editable-fixture="101"]').click();
+    await page.locator('[data-placement-x="1.75"]').waitFor();
+
+    await sendUdp(sacn(44, [81, 82, 83]), sacnPort);
+    await levelsBecome([81, 82, 83]);
+  }, 15_000);
+
+  test("propagates every owner placement while keeping follower controls read-only", async () => {
+    const follower = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+    try {
+      await follower.goto(`http://127.0.0.1:${httpPort}`, { waitUntil: "domcontentloaded" });
+      await follower.locator('html[data-ready="true"]').waitFor();
+      await openFixturesOn(follower);
+      await follower.locator("#ownership-status", { hasText: "follower · page" }).waitFor();
+
+      await page.locator('[data-fixture="1"]').click();
+      await page.locator('[data-placement-field="x"]').fill("3.1");
+      await page.locator('[data-placement-field="x"]').press("Enter");
+      await page.locator('[data-placement-x="3.1"]').waitFor();
+      await follower.locator('[data-fixture="1"]').click();
+      await follower.locator('[data-placement-x="3.1"]').waitFor();
+      expect(
+        await follower.locator("[data-placement-controls]").getAttribute("data-readonly"),
+      ).toBe("true");
+      for (const control of await follower
+        .locator(
+          "[data-placement-controls] input, [data-placement-controls] select, [data-placement-controls] button, [data-camera-mutation]",
+        )
+        .all())
+        expect(await control.isDisabled()).toBe(true);
+      expect(
+        await follower.locator("[data-placement-controls]").getAttribute("data-placement-x"),
+      ).toBe("3.1");
+
+      await page.locator('[data-fixture="2"]').click();
+      await page.locator('[data-placement-field="x"]').fill("5.5");
+      await page.locator('[data-placement-field="x"]').press("Enter");
+      await follower.locator('[data-fixture-mark="2"][data-rendered-placement-x="5.5"]').waitFor();
+      expect(await follower.locator("#selection-status").textContent()).toBe("1");
+      expect(
+        await follower.locator("[data-placement-controls]").getAttribute("data-placement-x"),
+      ).toBe("3.1");
+    } finally {
+      await follower.close();
+    }
+  }, 15_000);
+
+  test("adopts an acknowledged current snapshot before completing takeover", async () => {
+    await page.evaluate(() => {
+      const originalSend = Reflect.get(WebSocket.prototype, "send");
+      const queued: Array<{ socket: WebSocket; data: string }> = [];
+      const control = {
+        queued,
+        releaseTakeoverSnapshot() {
+          const index = queued.findIndex(({ data }) => {
+            const value = JSON.parse(data) as { op?: unknown; requestId?: unknown };
+            return value.op === "control.snapshot" && typeof value.requestId === "number";
+          });
+          const message = queued.splice(index, 1)[0];
+          if (!message) throw new Error("missing queued takeover snapshot");
+          originalSend.call(message.socket, message.data);
+        },
+        restore() {
+          WebSocket.prototype.send = originalSend;
+        },
+      };
+      (
+        window as typeof window & { beamhouseSnapshotBlock?: typeof control }
+      ).beamhouseSnapshotBlock = control;
+      WebSocket.prototype.send = function (data) {
+        if (typeof data === "string") {
+          const value = JSON.parse(data) as { op?: unknown };
+          if (value.op === "control.snapshot") {
+            queued.push({ socket: this, data });
+            return;
+          }
+        }
+        originalSend.call(this, data);
+      };
+    });
+
+    const candidateContext = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+    const candidate = await candidateContext.newPage();
+    try {
+      await candidate.goto(`http://127.0.0.1:${httpPort}`, { waitUntil: "domcontentloaded" });
+      await candidate.locator('html[data-ready="true"]').waitFor();
+      await openFixturesOn(candidate);
+      await candidate.locator("#ownership-status", { hasText: "follower · page" }).waitFor();
+      await candidate.locator('[data-fixture="2"]').click();
+      await candidate.locator('[data-placement-x="0"]').waitFor();
+
+      await candidate.evaluate(() => {
+        const originalSend = Reflect.get(WebSocket.prototype, "send");
+        const queued: Array<{ socket: WebSocket; data: string }> = [];
+        const control = {
+          queued,
+          releaseAcknowledgement() {
+            const message = queued.shift();
+            if (!message) throw new Error("missing queued snapshot acknowledgement");
+            originalSend.call(message.socket, message.data);
+          },
+          restore() {
+            WebSocket.prototype.send = originalSend;
+          },
+        };
+        (
+          window as typeof window & {
+            beamhouseAcknowledgementBlock?: typeof control;
+          }
+        ).beamhouseAcknowledgementBlock = control;
+        WebSocket.prototype.send = function (data) {
+          if (typeof data === "string") {
+            const value = JSON.parse(data) as { op?: unknown };
+            if (value.op === "control.snapshot.ack") {
+              queued.push({ socket: this, data });
+              return;
+            }
+          }
+          originalSend.call(this, data);
+        };
+      });
+
+      candidate.once("dialog", (dialog) => void dialog.accept());
+      await candidate.locator("[data-takeover]").click();
+      await page.waitForFunction(() => {
+        const block = (
+          window as typeof window & {
+            beamhouseSnapshotBlock?: { queued: Array<{ data: string }> };
+          }
+        ).beamhouseSnapshotBlock;
+        return block?.queued.some(({ data }) => {
+          const value = JSON.parse(data) as { requestId?: unknown };
+          return typeof value.requestId === "number";
+        });
+      });
+      expect(await candidate.locator("#ownership-status").textContent()).toContain("follower");
+      expect(
+        await candidate.locator("[data-placement-controls]").getAttribute("data-placement-x"),
+      ).toBe("0");
+
+      await page.evaluate(() => {
+        const block = (
+          window as typeof window & {
+            beamhouseSnapshotBlock?: { releaseTakeoverSnapshot(): void };
+          }
+        ).beamhouseSnapshotBlock;
+        if (!block) throw new Error("missing snapshot blocker");
+        block.releaseTakeoverSnapshot();
+      });
+      await candidate.locator('[data-placement-x="5.5"]').waitFor();
+      await candidate.waitForFunction(
+        () =>
+          (
+            window as typeof window & {
+              beamhouseAcknowledgementBlock?: { queued: unknown[] };
+            }
+          ).beamhouseAcknowledgementBlock?.queued.length === 1,
+      );
+      expect(await candidate.locator("#ownership-status").textContent()).toContain("follower");
+      expect(await candidate.locator('[data-placement-field="x"]').isDisabled()).toBe(true);
+      expect(await candidate.locator("[data-history-count]").textContent()).toBe("0");
+
+      await candidate.evaluate(() => {
+        const block = (
+          window as typeof window & {
+            beamhouseAcknowledgementBlock?: { releaseAcknowledgement(): void };
+          }
+        ).beamhouseAcknowledgementBlock;
+        if (!block) throw new Error("missing acknowledgement blocker");
+        block.releaseAcknowledgement();
+      });
+      await candidate.locator("#ownership-status", { hasText: "owner" }).waitFor();
+      expect(await candidate.locator('[data-placement-field="x"]').isDisabled()).toBe(false);
+
+      await candidate.locator('[data-placement-field="x"]').fill("6");
+      await candidate.locator('[data-placement-field="x"]').press("Enter");
+      await page.locator('[data-placement-x="6"]').waitFor();
+      expect(await candidate.locator("[data-history-count]").textContent()).toBe("1");
+      expect(await page.locator("[data-history-count]").textContent()).toBe("0");
+      await candidate.locator("[data-undo]").click();
+      await page.locator('[data-placement-x="5.5"]').waitFor();
+    } finally {
+      await page.evaluate(() => {
+        (
+          window as typeof window & {
+            beamhouseSnapshotBlock?: { restore(): void };
+          }
+        ).beamhouseSnapshotBlock?.restore();
+      });
+      await candidate.evaluate(() => {
+        (
+          window as typeof window & {
+            beamhouseAcknowledgementBlock?: { restore(): void };
+          }
+        ).beamhouseAcknowledgementBlock?.restore();
+      });
+      await candidateContext.close();
+    }
+  }, 15_000);
 });
 
 async function canvasColorSamples(
@@ -216,6 +461,21 @@ async function canvasColorSamples(
     },
     { encoded: screenshot.toString("base64"), start, end },
   );
+}
+
+async function openFixturesOn(target: Page): Promise<void> {
+  await target.locator('[data-chip-tab="fixtures"]').first().click();
+  await target.locator("[data-overlay]").waitFor({ state: "visible" });
+}
+
+async function openFixtures(): Promise<void> {
+  await page.locator('[data-chip-tab="fixtures"]').first().click();
+  await page.locator('[data-overlay-panel="fixtures"]').waitFor();
+}
+
+async function openUniverses(): Promise<void> {
+  await page.locator('[data-chip-tab="universes"]').first().click();
+  await page.locator('[data-overlay-panel="universes"]').waitFor();
 }
 
 async function levelsBecome(expected: number[]): Promise<void> {

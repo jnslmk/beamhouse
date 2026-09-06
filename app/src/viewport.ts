@@ -1,19 +1,32 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import { TransformControls } from "three/addons/controls/TransformControls.js";
 import type { LinearRGB, StripFixture } from "./reference-rig.ts";
+import { samePlacement, type Placement } from "./scene.ts";
 
-export interface CubeFixture {
+export interface EditableFixture {
+  id: number;
+  setPlacement(placement: FixturePlacement): void;
+  placement(): FixturePlacement;
+}
+
+export interface CubeFixture extends EditableFixture {
   address: number;
   setLevel(level: number): void;
 }
+
+export type FixturePlacement = Placement;
 
 interface RenderedCube extends CubeFixture {
   mesh: THREE.Mesh<THREE.BoxGeometry, THREE.MeshStandardMaterial>;
   marker: HTMLElement;
 }
 
-export interface TextureStrip {
-  id: number;
+interface RenderedFixture extends EditableFixture {
+  mesh: THREE.Object3D;
+}
+
+export interface TextureStrip extends EditableFixture {
   setPixels(pixels: LinearRGB): void;
   setTrust(stale: boolean, contended: boolean): void;
 }
@@ -26,6 +39,16 @@ export interface StripProbeMarkers {
 export interface Viewport {
   cubes: CubeFixture[];
   strips: TextureStrip[];
+  fixtures: EditableFixture[];
+  selectFixture(id: number | null): void;
+  setEditable(editable: boolean): void;
+  setGizmoMode(mode: "translate" | "rotate"): void;
+  setSnap(step: number | null): void;
+  cameraView(): { position: [number, number, number]; target: [number, number, number] };
+  setCameraView(view: {
+    position: [number, number, number];
+    target: [number, number, number];
+  }): void;
 }
 
 export function createViewport(
@@ -34,6 +57,7 @@ export function createViewport(
   stripFixtures: readonly StripFixture[],
   stripMarkers: HTMLElement[] = [],
   stripProbeMarkers: readonly StripProbeMarkers[] = [],
+  onTransform?: (id: number, placement: FixturePlacement) => void,
 ): Viewport {
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0x11100f);
@@ -55,6 +79,50 @@ export function createViewport(
   controls.target.set(0, 0.35, 0);
   controls.minDistance = 4;
   controls.maxDistance = 18;
+  const gizmo = new TransformControls(camera, renderer.domElement);
+  gizmo.setSpace("world");
+  let snapStep: number | null = 0.25;
+  gizmo.translationSnap = snapStep;
+  gizmo.rotationSnap = THREE.MathUtils.degToRad(15);
+  scene.add(gizmo.getHelper());
+  let editable = false;
+  let selectedFixture: RenderedFixture | null = null;
+  let dragStart: FixturePlacement | null = null;
+  gizmo.addEventListener("dragging-changed", (event) => {
+    if (!editable) {
+      gizmo.detach();
+      dragStart = null;
+      controls.enabled = true;
+      return;
+    }
+    controls.enabled = !event.value;
+    if (event.value && gizmo.object) {
+      dragStart = placementFor(gizmo.object);
+    }
+  });
+  gizmo.addEventListener("mouseDown", () => {
+    if (!editable) return;
+    dragStart = gizmo.object ? placementFor(gizmo.object) : null;
+  });
+  gizmo.addEventListener("mouseUp", () => {
+    if (!editable) return;
+    const selected = gizmo.object;
+    if (!selected) return;
+    const fixture = editableFixtures.find((candidate) => candidate.mesh === selected);
+    const next = placementFor(selected);
+    if (fixture && dragStart && !samePlacement(dragStart, next)) onTransform?.(fixture.id, next);
+    dragStart = null;
+  });
+  window.addEventListener("keydown", (event) => {
+    if (event.key !== "Alt") return;
+    gizmo.translationSnap = null;
+    gizmo.rotationSnap = null;
+  });
+  window.addEventListener("keyup", (event) => {
+    if (event.key !== "Alt") return;
+    gizmo.translationSnap = snapStep;
+    gizmo.rotationSnap = snapStep === null ? null : THREE.MathUtils.degToRad(15);
+  });
 
   scene.add(new THREE.HemisphereLight(0xd8e1ee, 0x3a332b, 1.7));
   const key = new THREE.DirectionalLight(0xffd6a3, 3.2);
@@ -87,6 +155,7 @@ export function createViewport(
     mesh.rotation.x = -0.08;
     scene.add(mesh);
     return {
+      id: index + 1,
       address: index + 1,
       mesh,
       marker: markers[index] ?? document.createElement("span"),
@@ -94,6 +163,25 @@ export function createViewport(
         const normalized = level / 255;
         material.emissiveIntensity = normalized * 2.8;
         material.color.set(color).multiplyScalar(0.17 + normalized * 0.42);
+      },
+      setPlacement(placement) {
+        mesh.position.fromArray(placement.position);
+        mesh.rotation.set(
+          THREE.MathUtils.degToRad(placement.rotation[0]),
+          THREE.MathUtils.degToRad(placement.rotation[1]),
+          THREE.MathUtils.degToRad(placement.rotation[2]),
+        );
+        this.marker.dataset.renderedPlacementX = String(placement.position[0]);
+      },
+      placement() {
+        return {
+          position: mesh.position.toArray(),
+          rotation: [
+            THREE.MathUtils.radToDeg(mesh.rotation.x),
+            THREE.MathUtils.radToDeg(mesh.rotation.y),
+            THREE.MathUtils.radToDeg(mesh.rotation.z),
+          ],
+        };
       },
     };
   });
@@ -150,8 +238,28 @@ export function createViewport(
         marker.textContent = label;
         marker.dataset.visible = String(label.length > 0);
       },
+      setPlacement(placement) {
+        mesh.position.fromArray(placement.position);
+        mesh.rotation.set(
+          THREE.MathUtils.degToRad(placement.rotation[0]),
+          THREE.MathUtils.degToRad(placement.rotation[1]),
+          THREE.MathUtils.degToRad(placement.rotation[2]),
+        );
+        const marker = stripMarkers[index];
+        if (marker) marker.dataset.renderedPlacementX = String(placement.position[0]);
+      },
+      placement() {
+        return placementFor(mesh);
+      },
     };
   });
+  const editableFixtures: RenderedFixture[] = [
+    ...fixtures,
+    ...strips.flatMap((fixture, index) => {
+      const mesh = stripMeshes[index];
+      return mesh ? [{ ...fixture, mesh }] : [];
+    }),
+  ];
 
   const resize = () => {
     const width = host.clientWidth;
@@ -175,11 +283,11 @@ export function createViewport(
       if (!marker) continue;
       const definition = stripFixtures[index];
       if (!definition) continue;
-      const position = new THREE.Vector3(...definition.placement.position).project(camera);
-      marker.style.left = `${(position.x * 0.5 + 0.5) * host.clientWidth}px`;
-      marker.style.top = `${(-position.y * 0.5 + 0.5) * host.clientHeight}px`;
       const mesh = stripMeshes[index];
       if (!mesh) continue;
+      const position = mesh.position.clone().project(camera);
+      marker.style.left = `${(position.x * 0.5 + 0.5) * host.clientWidth}px`;
+      marker.style.top = `${(-position.y * 0.5 + 0.5) * host.clientHeight}px`;
       const probe = stripProbeMarkers[index];
       if (!probe) continue;
       for (const [element, x] of [
@@ -196,5 +304,52 @@ export function createViewport(
     }
     renderer.render(scene, camera);
   });
-  return { cubes: fixtures, strips };
+  return {
+    cubes: fixtures,
+    strips,
+    fixtures: editableFixtures,
+    selectFixture(id) {
+      selectedFixture = editableFixtures.find((candidate) => candidate.id === id) ?? null;
+      if (editable && selectedFixture) gizmo.attach(selectedFixture.mesh);
+      else gizmo.detach();
+    },
+    setEditable(nextEditable) {
+      editable = nextEditable;
+      dragStart = null;
+      controls.enabled = true;
+      if (editable && selectedFixture) gizmo.attach(selectedFixture.mesh);
+      else gizmo.detach();
+    },
+    setGizmoMode(mode) {
+      if (editable) gizmo.setMode(mode);
+    },
+    setSnap(step) {
+      if (!editable) return;
+      snapStep = step;
+      gizmo.translationSnap = step;
+      gizmo.rotationSnap = step === null ? null : THREE.MathUtils.degToRad(15);
+    },
+    cameraView() {
+      return {
+        position: camera.position.toArray(),
+        target: controls.target.toArray(),
+      };
+    },
+    setCameraView(view) {
+      camera.position.fromArray(view.position);
+      controls.target.fromArray(view.target);
+      controls.update();
+    },
+  };
+}
+
+function placementFor(object: THREE.Object3D): FixturePlacement {
+  return {
+    position: object.position.toArray(),
+    rotation: [
+      THREE.MathUtils.radToDeg(object.rotation.x),
+      THREE.MathUtils.radToDeg(object.rotation.y),
+      THREE.MathUtils.radToDeg(object.rotation.z),
+    ],
+  };
 }
