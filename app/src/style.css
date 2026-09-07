@@ -100,6 +100,21 @@ body {
   color: #77716b;
   pointer-events: none;
 }
+.render-note {
+  position: absolute;
+  left: 18px;
+  top: 12px;
+  z-index: 2;
+  padding: 4px 8px;
+  font:
+    11px ui-monospace,
+    monospace;
+  color: #f0c979;
+  background: #11100fcc;
+  border: 1px solid #9d6f3f;
+  border-radius: 4px;
+  pointer-events: none;
+}
 #viewport canvas {
   display: block;
   width: 100%;

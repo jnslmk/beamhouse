@@ -42,6 +42,7 @@ export interface Viewport {
   fixtures: EditableFixture[];
   selectFixtures(ids: readonly number[]): void;
   setEditable(editable: boolean): void;
+  setRenderMode(mode: "live" | "intensity"): void;
   setGizmoMode(mode: "translate" | "rotate"): void;
   setSnap(step: number | null): void;
   setSceneFixtures(
@@ -63,6 +64,7 @@ export function createViewport(
   stripMarkers: HTMLElement[] = [],
   stripProbeMarkers: readonly StripProbeMarkers[] = [],
   onTransform?: (id: number, placement: FixturePlacement) => void,
+  onSelect?: (id: number, additive: boolean) => void,
 ): Viewport {
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0x11100f);
@@ -146,6 +148,7 @@ export function createViewport(
   scene.add(grid);
 
   const colors = [0xffa52f, 0x49a4ff, 0xf05baa];
+  let renderMode: "live" | "intensity" = "live";
   const fixtures = colors.map((color, index): RenderedCube => {
     const material = new THREE.MeshStandardMaterial({
       color: new THREE.Color(color).multiplyScalar(0.17),
@@ -166,6 +169,13 @@ export function createViewport(
       marker: markers[index] ?? document.createElement("span"),
       setLevel(level: number) {
         const normalized = level / 255;
+        if (renderMode === "intensity") {
+          material.emissive.set(0xffb340);
+          material.emissiveIntensity = normalized * 2.8;
+          material.color.set(0x1a1a1a);
+          return;
+        }
+        material.emissive.set(color);
         material.emissiveIntensity = normalized * 2.8;
         material.color.set(color).multiplyScalar(0.17 + normalized * 0.42);
       },
@@ -318,6 +328,31 @@ export function createViewport(
     }
   };
 
+  const picker = new THREE.Raycaster();
+  const pointer = new THREE.Vector2();
+  let downAt: { x: number; y: number } | null = null;
+  renderer.domElement.addEventListener("pointerdown", (event) => {
+    downAt = { x: event.clientX, y: event.clientY };
+  });
+  renderer.domElement.addEventListener("pointerup", (event) => {
+    if (!downAt) return;
+    const moved = Math.hypot(event.clientX - downAt.x, event.clientY - downAt.y);
+    downAt = null;
+    if (moved > 5) return;
+    const rect = renderer.domElement.getBoundingClientRect();
+    pointer.set(
+      ((event.clientX - rect.left) / rect.width) * 2 - 1,
+      -((event.clientY - rect.top) / rect.height) * 2 + 1,
+    );
+    picker.setFromCamera(pointer, camera);
+    const hit = picker.intersectObjects(
+      editableFixtures.map((fixture) => fixture.mesh),
+      false,
+    )[0];
+    if (!hit) return;
+    const fixture = editableFixtures.find((candidate) => candidate.mesh === hit.object);
+    if (fixture) onSelect?.(fixture.id, event.shiftKey);
+  });
   const resize = () => {
     const width = host.clientWidth;
     const height = host.clientHeight;
@@ -372,6 +407,9 @@ export function createViewport(
           : null;
       if (editable && selectedFixture) gizmo.attach(selectedFixture.mesh);
       else gizmo.detach();
+    },
+    setRenderMode(mode) {
+      renderMode = mode;
     },
     setEditable(nextEditable) {
       editable = nextEditable;

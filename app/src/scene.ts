@@ -110,6 +110,27 @@ type ControlMessage =
   | { op: "control.snapshot"; scene: unknown; requestId?: number }
   | { op: "control.scene.changed"; scene: unknown };
 
+function describeCommand(command: SceneCommand): string {
+  switch (command.kind) {
+    case "placement.set":
+      return `move ${command.fixtureIds.join(",")}`;
+    case "placement.clear":
+      return `revert ${command.fixtureIds.join(",")}`;
+    case "array.set":
+      return `array ${command.id}`;
+    case "camera.saveView":
+      return `camera ${command.name}`;
+    case "fixture.add":
+      return `add fixture ${command.fixture.id}`;
+    case "definition.set":
+      return `define ${command.id}`;
+    default: {
+      const exhaustive: never = command;
+      return exhaustive;
+    }
+  }
+}
+
 const databaseName = "beamhouse.scene.v1";
 const storeName = "working-scenes";
 const workingSceneKey = "current";
@@ -175,6 +196,10 @@ export class SceneCommands {
     );
   }
 
+  isOverridden(id: number): boolean {
+    return this.#scene.overrides[String(id)] !== undefined;
+  }
+
   arrays(): Readonly<Record<string, ArrayDef>> {
     return this.#scene.arrays;
   }
@@ -224,6 +249,13 @@ export class SceneCommands {
 
   canRedo(): boolean {
     return this.#cursor < this.#history.length;
+  }
+
+  history(): { label: string; undone: boolean }[] {
+    return this.#history.map((entry, index) => ({
+      label: describeCommand(entry.command),
+      undone: index >= this.#cursor,
+    }));
   }
 
   apply(command: SceneCommand): void {

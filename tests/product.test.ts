@@ -966,6 +966,163 @@ describe("running Beamhouse", () => {
       await sendUdp(sacn(sequence, [123], 0, 6), sacnPort);
     await page.locator('[data-local-fixture="-5"][data-local-level="123"]').waitFor();
   }, 15_000);
+  test("navigates the single overlay from state chips showing current values", async () => {
+    await expectCount(page.locator("[data-chip-tab]"), 8);
+    expect(await page.locator("#feed-status").textContent()).not.toBe("connecting");
+    expect(await page.locator("#universe-status").textContent()).toMatch(/^1 · /);
+    expect(await page.locator("#patch-status").textContent()).toMatch(/reference/);
+    expect(await page.locator("#render-status").textContent()).toBe("live");
+    expect(await page.locator("#hold-status").textContent()).toBe("off");
+    await page.locator('[data-chip-tab="universes"]').first().click();
+    await page.locator('[data-overlay-panel="universes"]:not([hidden])').waitFor();
+    await page.locator('[data-chip-tab="issues"]').first().click();
+    await page.locator('[data-overlay-panel="issues"]:not([hidden])').waitFor();
+    await page.locator('[data-chip-tab="fixtures"]').first().click();
+    await page.locator('[data-overlay-panel="fixtures"]:not([hidden])').waitFor();
+    await page.locator('[data-overlay-tab="objects"]').click();
+    await expectCount(page.locator('[data-overlay-panel="objects"]:not([hidden])'), 1);
+    await page.locator('[data-overlay-tab="history"]').click();
+    await expectCount(page.locator('[data-overlay-panel="history"]:not([hidden])'), 1);
+  }, 15_000);
+  test("composes additive trust marks and lists patch issues in context", async () => {
+    page.once("dialog", (dialog) => void dialog.accept());
+    await page.locator("[data-takeover]").click();
+    await page.locator("#ownership-status", { hasText: "owner" }).waitFor();
+    await openFixtures();
+    await page.locator("[data-local-definition-source]").selectOption("existing");
+    await page.locator("[data-local-definition]").fill("gdtf:missing-fixture");
+    await page.locator("[data-local-universe]").fill("40");
+    await page.locator("[data-local-address]").fill("1");
+    await page.locator("[data-local-footprint]").fill("1");
+    await page.locator("[data-local-breaks]").fill("");
+    await page.locator("[data-local-add]").click();
+    const unresolved = page.locator('[data-local-fixture][data-marks*="unresolved"]');
+    await unresolved.first().waitFor();
+    expect(await unresolved.first().textContent()).toContain("gdtf:missing-fixture");
+    for (let copy = 0; copy < 2; copy += 1) {
+      await page.locator("[data-local-definition]").fill("bhs:tube");
+      await page.locator("[data-local-universe]").fill("41");
+      await page.locator("[data-local-address]").fill("1");
+      await page.locator("[data-local-add]").click();
+    }
+    const overlap41 = page.locator('[data-local-fixture][data-marks*="overlap"]', {
+      hasText: "41.001",
+    });
+    await expectCount(overlap41, 2);
+    const overlapped = overlap41.first();
+    await overlapped.click();
+    await page.locator('[data-placement-field="x"]').fill("7.5");
+    await page.locator('[data-placement-field="x"]').press("Enter");
+    await page.locator('[data-placement-x="7.5"]').waitFor();
+    const composed = await overlap41.first().getAttribute("data-marks");
+    expect(composed).toContain("overlap");
+    expect(composed).toContain("overridden");
+    await page.locator("[data-local-universe]").fill("64000");
+    await page.locator("[data-local-add]").click();
+    await page.locator("[data-local-error]", { hasText: "1–63999" }).waitFor();
+    await page.locator('[data-chip-tab="issues"]').first().click();
+    await page.locator('[data-overlay-panel="issues"]:not([hidden])').waitFor();
+    expect(await page.locator("[data-issue]").count()).toBeGreaterThanOrEqual(3);
+    expect(await page.locator("#patch-status").textContent()).toMatch(/reference · [1-9]/);
+  }, 15_000);
+  test("surfaces the undo-grained journal in the History view", async () => {
+    await openFixtures();
+    const before = await page.locator("[data-history-entry]").count();
+    expect(before).toBeGreaterThan(0);
+    await page
+      .locator('[data-local-fixture][data-marks*="overlap"]', { hasText: "41.001" })
+      .first()
+      .click();
+    await page.locator('[data-placement-field="x"]').fill("8.5");
+    await page.locator('[data-placement-field="x"]').press("Enter");
+    await page.locator('[data-placement-x="8.5"]').waitFor();
+    await page.locator('[data-overlay-tab="history"]').click();
+    await page.locator('[data-overlay-panel="history"]:not([hidden])').waitFor();
+    expect(await page.locator("[data-history-entry]").last().textContent()).toContain("move");
+    await page.locator('[data-overlay-tab="fixtures"]').click();
+    await page.locator('[data-overlay-panel="fixtures"]:not([hidden])').waitFor();
+    await page.locator("[data-undo]").click();
+    await page.locator('[data-overlay-tab="history"]').click();
+    await page.locator('[data-history-entry][data-undone="true"]').first().waitFor();
+    await page.locator('[data-overlay-tab="fixtures"]').click();
+    await page.locator('[data-overlay-panel="fixtures"]:not([hidden])').waitFor();
+    await page.locator("[data-redo]").click();
+    await page.locator('[data-overlay-tab="history"]').click();
+    await expectCount(page.locator('[data-history-entry][data-undone="true"]'), 0);
+  }, 15_000);
+  test("pins the selected rendered state locally while frames keep arriving", async () => {
+    await openFixtures();
+    await page.locator("[data-local-definition-source]").selectOption("existing");
+    await page.locator("[data-local-definition]").fill("bhs:tube");
+    await page.locator("[data-local-universe]").fill("42");
+    await page.locator("[data-local-address]").fill("1");
+    await page.locator("[data-local-breaks]").fill("");
+    await page.locator("[data-local-add]").click();
+    const held = page.locator("[data-local-fixture]", { hasText: "42.001" });
+    // LiveFeed's subscription travels over the real WebSocket; wait for that platform boundary.
+    await Bun.sleep(250);
+    for (let sequence = 51; sequence < 71; sequence += 1)
+      await sendUdp(sacn(sequence, [100], 0, 42), sacnPort);
+    await page.locator('[data-local-fixture][data-local-level="100"]').first().waitFor();
+    await held.first().click();
+    await page.locator('[data-chip-tab="fixtures"]', { hasText: "Hold" }).click();
+    expect(await page.locator("#hold-status").textContent()).toBe("on");
+    for (let sequence = 71; sequence < 91; sequence += 1) {
+      await sendUdp(sacn(sequence, [200], 0, 42), sacnPort);
+      await sendUdp(sacn(sequence, [11, 12, 13]), sacnPort);
+    }
+    await levelsBecome([11, 12, 13]);
+    expect(await held.first().getAttribute("data-local-level")).toBe("100");
+    await page.locator('[data-chip-tab="fixtures"]', { hasText: "Hold" }).click();
+    expect(await page.locator("#hold-status").textContent()).toBe("off");
+    for (let sequence = 91; sequence < 111; sequence += 1)
+      await sendUdp(sacn(sequence, [150], 0, 42), sacnPort);
+    await page.locator('[data-local-fixture][data-local-level="150"]').first().waitFor();
+  }, 15_000);
+  test("renders the explicitly relative intensity map and source-shaped universe health", async () => {
+    await openFixtures();
+    await page.locator('[data-chip-tab="fixtures"]', { hasText: "Render" }).click();
+    expect(await page.locator("#render-status").textContent()).toBe("intensity");
+    await expectCount(page.locator("[data-intensity-note]:not([hidden])"), 1);
+    expect(await page.locator("[data-intensity-note]").textContent()).toMatch(
+      /relative per emitter/,
+    );
+    expect(await page.locator("[data-intensity-note]").textContent()).toMatch(/no photometric/);
+    expect(await page.locator("#viewport").getAttribute("data-render-mode")).toBe("intensity");
+    await page.locator('[data-chip-tab="fixtures"]', { hasText: "Render" }).click();
+    expect(await page.locator("#render-status").textContent()).toBe("live");
+    await sendUdp(sacn(120, [50, 51, 52]), sacnPort);
+    await levelsBecome([50, 51, 52]);
+    await openUniverses();
+    const source = page.locator('[data-source^="sacn:"]');
+    await source.first().waitFor();
+    expect(await source.first().innerText()).toContain("claimed");
+    expect(await page.locator("[data-arbitration-note]").textContent()).toMatch(/never arbitrates/);
+    for (let sequence = 121; sequence < 131; sequence += 1)
+      await sendUdp(sacn(sequence, [77], 0, 42), sacnPort);
+    const section42 = page.locator('[data-universe="42"]');
+    await section42.waitFor();
+    await expectCount(section42.locator("[data-source]"), 1);
+    expect(await section42.textContent()).toContain("Universe 42");
+  }, 15_000);
+  test("selects fixtures by picking the viewport", async () => {
+    await openFixtures();
+    await page.keyboard.press("Escape");
+    await page.locator("[data-overlay]").waitFor({ state: "hidden" });
+    const point = await page.evaluate(() => {
+      const host = document.querySelector("#viewport")!.getBoundingClientRect();
+      const marker = document.querySelector<HTMLElement>('[data-fixture-mark="1"]')!;
+      return {
+        x: host.left + Number.parseFloat(marker.style.left || "0"),
+        y: host.top + Number.parseFloat(marker.style.top || "0"),
+      };
+    });
+    await page.mouse.click(point.x, point.y);
+    await page.waitForFunction(
+      () => document.querySelector("#selection-status")?.textContent === "1",
+    );
+    expect(await page.locator('[data-fixture="1"]').getAttribute("data-selected")).toBe("true");
+  }, 15_000);
 });
 
 async function canvasColorSamples(

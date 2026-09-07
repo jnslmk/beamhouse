@@ -6,6 +6,7 @@ import {
   resolveColor,
   textureBytesForStrip,
   universesForStrips,
+  type LinearRGB,
 } from "./reference-rig.ts";
 import { createViewport, type StripProbeMarkers } from "./viewport.ts";
 import {
@@ -16,6 +17,7 @@ import {
   SceneCommands,
   type ArrayDef,
   type BhsDefinition,
+  type BreakAddress,
   type LocalFixture,
   type Pivot,
   type Placement,
@@ -32,11 +34,11 @@ root.innerHTML = `
     <div class="status-chips" aria-label="Scene navigation">
       <button class="chip" type="button" data-chip-tab="universes"><span>Feed</span><b id="feed-status">connecting</b></button>
       <button class="chip" type="button" data-chip-tab="universes"><span>Universes</span><b id="universe-status">1 · waiting</b></button>
-      <button class="chip" type="button" data-chip-tab="fixtures"><span>Patch</span><b>reference</b></button>
+      <button class="chip" type="button" data-chip-tab="issues"><span>Patch</span><b id="patch-status">reference</b></button>
       <button class="chip" type="button" data-chip-tab="fixtures"><span>Selection</span><b id="selection-status">none</b></button>
-      <button class="chip" type="button" data-chip-tab="fixtures"><span>Render</span><b>live</b></button>
-      <button class="chip" type="button" data-chip-tab="fixtures"><span>Hold</span><b>off</b></button>
-      <button class="chip" type="button" data-chip-tab="fixtures"><span>Snap</span><b>0.25 m</b></button>
+      <button class="chip" type="button" data-chip-tab="fixtures" data-render-toggle aria-pressed="false"><span>Render</span><b id="render-status">live</b></button>
+      <button class="chip" type="button" data-chip-tab="fixtures" data-hold-toggle aria-pressed="false"><span>Hold</span><b id="hold-status">off</b></button>
+      <button class="chip" type="button" data-chip-tab="fixtures"><span>Snap</span><b id="snap-status">0.25 m</b></button>
       <button class="chip" type="button" data-chip-tab="fixtures" data-takeover><span>Camera</span><b id="ownership-status">claiming</b></button>
     </div>
   </header>
@@ -48,15 +50,15 @@ root.innerHTML = `
         <span class="fixture-mark" data-fixture-mark="3"></span>
         ${referenceStrips.map((strip) => `<span class="strip-mark" data-strip-mark="${strip.id}"></span>`).join("")}
         ${referenceStrips.map((strip) => `<span data-strip-probe="${strip.id}-start"></span><span data-strip-probe="${strip.id}-end"></span>`).join("")}
-      </div>
+      <div class="render-note" data-intensity-note hidden>Intensity map · relative per emitter · no photometric claim</div>
     </div>
     <aside class="overlay" data-overlay hidden aria-label="Scene workspace">
-      <nav class="overlay-tabs" aria-label="Scene panels">
-        <button type="button" data-overlay-tab="fixtures">Fixtures</button>
-        <button type="button" data-overlay-tab="objects">Objects</button>
-        <button type="button" data-overlay-tab="universes">Universes</button>
-        <button type="button" data-overlay-tab="history">History</button>
-        <button type="button" data-overlay-tab="issues">Issues</button>
+      <nav class="overlay-tabs" aria-label="Scene panels" role="tablist">
+        <button type="button" role="tab" data-overlay-tab="fixtures">Fixtures</button>
+        <button type="button" role="tab" data-overlay-tab="objects">Objects</button>
+        <button type="button" role="tab" data-overlay-tab="universes">Universes</button>
+        <button type="button" role="tab" data-overlay-tab="history">History</button>
+        <button type="button" role="tab" data-overlay-tab="issues">Issues</button>
         <button type="button" data-overlay-close aria-label="Close workspace">Close</button>
       </nav>
       <section data-overlay-panel="fixtures">
@@ -176,8 +178,8 @@ root.innerHTML = `
       </section>
       </section>
       <section data-overlay-panel="universes" hidden>
+      <p class="lede" data-arbitration-note>Beamhouse never arbitrates contention — every source is drawn last-writer-wins.</p>
       <section class="universe-health" id="universe-health" aria-live="polite">
-        <div class="empty-state">Waiting for an sACN or Art-Net source…</div>
       </section>
       <section class="terminations" id="terminations"></section>
       </section>
@@ -193,8 +195,8 @@ root.innerHTML = `
           <button type="button" data-object-add>Add scene object</button>
         </div>
       </section>
-      <section data-overlay-panel="history" hidden><p class="lede">Undo and redo are available while editing a selected fixture.</p></section>
-      <section data-overlay-panel="issues" hidden><p class="lede">No patch issues in the reference rig.</p></section>
+      <section data-overlay-panel="history" hidden><p class="lede">One stack shared by both front-ends: undo walks it back, redo walks it forward.</p><ol data-history></ol></section>
+      <section data-overlay-panel="issues" hidden><p class="lede">Every issue originates in an ingest; the count rides the Patch chip.</p><ol data-issues><li data-issues-empty>No patch issues in the reference rig.</li></ol></section>
     </aside>
   </section>
 `;
@@ -207,6 +209,9 @@ const stripProbeMarkers: StripProbeMarkers[] = referenceStrips.map((strip) => ({
   end: required(`[data-strip-probe="${strip.id}-end"]`),
 }));
 let selectedIds: number[] = [];
+let holdActive = false;
+let renderMode: "live" | "intensity" = "live";
+const heldIds = new Set<number>();
 let editingDefinition: string | null = null;
 const commands = await SceneCommands.create();
 const viewportApi = createViewport(
@@ -217,12 +222,14 @@ const viewportApi = createViewport(
   stripProbeMarkers,
   (id, placement) =>
     commands.apply({ kind: "placement.set", fixtureIds: [id], placements: { [id]: placement } }),
+  (id, additive) => selectFixture(id, additive),
 );
 const { cubes, strips, fixtures: editableFixtures } = viewportApi;
 const fixtureRows = [...document.querySelectorAll<HTMLElement>("[data-fixture]")];
 const receivedUniverses = new Set<number>();
 const latestFrames = new Map<number, Uint8Array>();
 let latestHealth: UniversesMessage | null = null;
+let lastTrustKey = "";
 let liveFeed: LiveFeed | null = null;
 
 const defaultPlacements = new Map(
@@ -248,6 +255,7 @@ required<HTMLButtonElement>("[data-takeover]").addEventListener("click", () => {
 });
 
 for (const chip of document.querySelectorAll<HTMLButtonElement>("[data-chip-tab]")) {
+  if ("holdToggle" in chip.dataset || "renderToggle" in chip.dataset) continue;
   chip.addEventListener("click", () => openOverlay(chip.dataset.chipTab ?? "fixtures"));
 }
 for (const tab of document.querySelectorAll<HTMLButtonElement>("[data-overlay-tab]")) {
@@ -255,6 +263,21 @@ for (const tab of document.querySelectorAll<HTMLButtonElement>("[data-overlay-ta
 }
 required<HTMLButtonElement>("[data-overlay-close]").addEventListener("click", () => {
   required("[data-overlay]").hidden = true;
+});
+required("[data-hold-toggle]").addEventListener("click", () => {
+  holdActive = !holdActive;
+  heldIds.clear();
+  if (holdActive) for (const id of selectedIds) heldIds.add(id);
+  required("#hold-status").textContent = holdActive ? "on" : "off";
+  required("[data-hold-toggle]").setAttribute("aria-pressed", String(holdActive));
+});
+required("[data-render-toggle]").addEventListener("click", () => {
+  renderMode = renderMode === "live" ? "intensity" : "live";
+  viewportApi.setRenderMode(renderMode);
+  required("#render-status").textContent = renderMode;
+  required("#viewport").dataset.renderMode = renderMode;
+  required("[data-intensity-note]").hidden = renderMode === "live";
+  required("[data-render-toggle]").setAttribute("aria-pressed", String(renderMode === "intensity"));
 });
 
 bindFixtureRows();
@@ -320,8 +343,10 @@ required<HTMLButtonElement>("[data-object-add]").addEventListener("click", () =>
   commands.apply(command);
 });
 required<HTMLSelectElement>("[data-grid-snap]").addEventListener("change", (event) => {
+  const select = event.currentTarget as HTMLSelectElement;
+  required("#snap-status").textContent = select.value === "0" ? "off" : `${select.value} m`;
   if (!commands.isOwner()) return;
-  const value = Number((event.currentTarget as HTMLSelectElement).value);
+  const value = Number(select.value);
   viewportApi.setSnap(value === 0 ? null : value);
 });
 for (const button of document.querySelectorAll<HTMLButtonElement>("[data-gizmo-mode]")) {
@@ -463,6 +488,7 @@ liveFeed = new LiveFeed(subscriptionUniverses(commands.fixtures()), {
       latestFrames.set(universe.universe, universe.slots);
     }
     const levels = localFixtureLevels();
+    if (holdActive) for (const id of heldIds) levels.delete(id);
     viewportApi.setSceneFixtureLevels(levels);
     for (const [id, level] of levels)
       document
@@ -470,7 +496,10 @@ liveFeed = new LiveFeed(subscriptionUniverses(commands.fixtures()), {
         ?.setAttribute("data-local-level", String(level));
     for (const [index, strip] of strips.entries()) {
       const definition = referenceStrips[index];
-      if (definition) strip.setPixels(resolveColor(textureBytesForStrip(definition, latestFrames)));
+      if (definition && !(holdActive && heldIds.has(definition.id))) {
+        const resolved = resolveColor(textureBytesForStrip(definition, latestFrames));
+        strip.setPixels(renderMode === "intensity" ? intensityPixels(resolved) : resolved);
+      }
     }
     const first = referenceStrips[0]
       ? textureBytesForStrip(referenceStrips[0], latestFrames)
@@ -489,6 +518,7 @@ liveFeed = new LiveFeed(subscriptionUniverses(commands.fixtures()), {
     const universe = universes.find((candidate) => candidate.universe === 1);
     if (!universe) return;
     cubes.forEach((cube, index) => {
+      if (holdActive && heldIds.has(cube.id)) return;
       const level = universe.slots[cube.address - 1] ?? 0;
       cube.setLevel(level);
       const row = fixtureRows[index];
@@ -521,7 +551,6 @@ function renderHealth(message: UniversesMessage): void {
     const retainedFrame = receivedUniverses.has(1);
     status.textContent = retainedFrame ? "1 · stale" : "1 · waiting";
     status.dataset.contention = "false";
-    health.innerHTML = `<div class="empty-state">${retainedFrame ? "No active source · last frame retained" : "Waiting for an sACN or Art-Net source…"}</div>`;
     health.dataset.stale = String(retainedFrame);
     setFixtureTrust(retainedFrame, false);
   } else {
@@ -529,9 +558,11 @@ function renderHealth(message: UniversesMessage): void {
     status.textContent = `1 · ${contended ? "contended" : universe.stale ? "stale" : "live"}`;
     status.dataset.contention = String(contended);
     health.dataset.stale = String(universe.stale);
-    health.innerHTML = universeMarkup(universe);
     setFixtureTrust(universe.stale, contended);
   }
+  health.innerHTML =
+    message.universes.map(universeSection).join("") ||
+    `<div class="empty-state">Waiting for an sACN or Art-Net source…</div>`;
 
   const terminations = required("#terminations");
   terminations.innerHTML = message.terminations
@@ -542,6 +573,21 @@ function renderHealth(message: UniversesMessage): void {
         </p>`,
     )
     .join("");
+  const trustKey = message.universes
+    .map((candidate) => `${candidate.universe}:${candidate.stale}:${candidate.sources.length}`)
+    .join(";");
+  if (trustKey !== lastTrustKey) {
+    lastTrustKey = trustKey;
+    renderSceneFixtures(commands.fixtures());
+  }
+}
+
+function universeSection(universe: UniverseHealth): string {
+  if (universe.sources.length === 0)
+    return `<section data-universe="${universe.universe}"><div class="empty-state">No active source on universe ${universe.universe}</div></section>`;
+  return `<section data-universe="${universe.universe}">
+    <div class="health-heading"><b>Universe ${universe.universe}</b><span>${universe.stale ? "all stale" : "receiving"}</span></div>
+    ${universeMarkup(universe)}</section>`;
 }
 
 function renderStripTrust(message: UniversesMessage): void {
@@ -566,7 +612,7 @@ function universeMarkup(universe: UniverseHealth): string {
   return `
     <div class="health-heading">
       <b>Arriving sources</b>
-      <span>${universe.stale ? "all stale" : "receiving"}</span>
+      <span>${universe.sources.length} source${universe.sources.length === 1 ? "" : "s"}</span>
     </div>
     <div class="source-list">
       ${universe.sources
@@ -579,7 +625,7 @@ function universeMarkup(universe: UniverseHealth): string {
                 <div><dt>Arriving</dt><dd>${source.frames} frames · ${source.rateHz} Hz</dd></div>
                 <div><dt>Sequence</dt><dd>${source.drops === 0 ? "healthy" : `${source.drops} dropped`}</dd></div>
                 <div><dt>State</dt><dd>${source.stale ? "stale" : "live"}</dd></div>
-                <div><dt>Priority</dt><dd>${source.priority ?? "— unavailable"}</dd></div>
+                <div><dt>Priority</dt><dd>${source.priority === null ? "— unavailable" : `${source.priority} claimed`}</dd></div>
                 <div><dt>Blind</dt><dd>${source.preview === null ? "— unavailable" : source.preview ? "preview" : "program"}</dd></div>
               </dl>
             </article>`,
@@ -611,23 +657,44 @@ function syncSceneFixtures(): void {
   viewportApi.selectFixtures(selectedIds);
   liveFeed?.setUniverses(subscriptionUniverses(fixtures));
 }
-
 function renderSceneFixtures(fixtures: readonly LocalFixture[]): void {
+  const overlaps = patchOverlaps(fixtures);
+  const marksFor = (fixture: LocalFixture): string[] => {
+    const marks: string[] = [];
+    if (fixture.addresses.length > 0) {
+      const trust = breakTrust(fixture.addresses);
+      if (trust.contended) marks.push("disputed");
+      if (trust.stale) marks.push("old");
+    }
+    if (commands.isOverridden(fixture.id)) marks.push("overridden");
+    if ((overlaps.get(fixture.id)?.size ?? 0) > 0) marks.push("patch overlap");
+    if (
+      !commands.definitions()[fixture.definition] &&
+      !resolvedReferenceDefinition(fixture.definition)
+    )
+      marks.push("unresolved definition");
+    return marks;
+  };
   const item = (fixture: LocalFixture) => {
     const definition = commands.definitions()[fixture.definition];
     const detail =
       fixture.addresses.length === 0
         ? "no address"
         : fixture.addresses
-            .map((address) => `${address.universe}.${String(address.address).padStart(3, "0")}`)
+            .map(
+              (address) =>
+                `<span data-break="${address.universe}.${String(address.address).padStart(3, "0")}">${address.universe}.${String(address.address).padStart(3, "0")}</span>`,
+            )
             .join(" · ");
     const pixels = definition?.kind === "strip" ? ` · ${definition.pixels} px` : "";
     const resolved = resolvedReferenceDefinition(fixture.definition);
     const resolvedDetail = resolved ? ` · ${resolved.length} m · ${resolved.footprint} slots` : "";
+    const marks = marksFor(fixture);
+    const marksDetail = marks.length > 0 ? ` · ${marks.join(" · ")}` : "";
     const edit = definition
       ? `<button type="button" data-edit-definition="${escapeHtml(fixture.definition)}">Edit definition</button>`
       : "";
-    return `<li role="button" tabindex="0" data-local-fixture="${fixture.id}" data-editable-fixture="${fixture.id}" data-mode="${escapeHtml(fixture.mode)}"${resolved ? ` data-resolved-footprint="${resolved.footprint}" data-resolved-length="${resolved.length}"` : ""}><span><b>${fixture.id} · ${escapeHtml(fixture.definition)}${pixels}</b><small>${detail}${resolvedDetail}</small></span>${edit}</li>`;
+    return `<li role="button" tabindex="0" data-local-fixture="${fixture.id}" data-editable-fixture="${fixture.id}" data-mode="${escapeHtml(fixture.mode)}" data-marks="${escapeHtml(marks.join(" · "))}"${resolved ? ` data-resolved-footprint="${resolved.footprint}" data-resolved-length="${resolved.length}"` : ""}><span><b>${fixture.id} · ${escapeHtml(fixture.definition)}${pixels}</b><small>${detail}${resolvedDetail}${marksDetail}</small></span>${edit}</li>`;
   };
   for (const [kind, list] of [
     ["local-fixtures", fixtures.filter((fixture) => fixture.addresses.length > 0)],
@@ -646,6 +713,7 @@ function renderSceneFixtures(fixtures: readonly LocalFixture[]): void {
           fixture.addresses
             .map((address) => `${address.universe}.${address.address}.${address.footprint}`)
             .join("+"),
+          marksFor(fixture).join("+"),
         ].join("|");
       })
       .join(";");
@@ -655,6 +723,95 @@ function renderSceneFixtures(fixtures: readonly LocalFixture[]): void {
       bindFixtureRows();
     }
   }
+  renderIssues(fixtures, overlaps);
+}
+
+function breakTrust(addresses: readonly BreakAddress[]): {
+  stale: boolean;
+  contended: boolean;
+} {
+  let stale = false;
+  let contended = false;
+  if (!latestHealth) return { stale, contended };
+  for (const address of addresses) {
+    const universe = latestHealth.universes.find(
+      (candidate) => candidate.universe === address.universe,
+    );
+    if (!universe || universe.sources.length === 0) continue;
+    stale = stale || universe.stale;
+    contended = contended || universe.sources.length > 1;
+  }
+  return { stale, contended };
+}
+
+function breakRanges(fixture: LocalFixture): { universe: number; from: number; to: number }[] {
+  const inline = commands.definitions()[fixture.definition];
+  const resolved = inline ?? resolvedReferenceDefinition(fixture.definition);
+  const stripFootprint =
+    resolved && "pixels" in resolved
+      ? resolved.pixels * resolved.channelsPerPixel
+      : resolved && "footprint" in resolved
+        ? resolved.footprint
+        : null;
+  return fixture.addresses.map((address) => {
+    const slots = stripFootprint ?? address.footprint;
+    return { universe: address.universe, from: address.address, to: address.address + slots - 1 };
+  });
+}
+
+function patchOverlaps(fixtures: readonly LocalFixture[]): Map<number, Set<number>> {
+  const overlaps = new Map<number, Set<number>>();
+  const ranges = fixtures.map((fixture) => ({ fixture, ranges: breakRanges(fixture) }));
+  for (let left = 0; left < ranges.length; left += 1) {
+    for (let right = left + 1; right < ranges.length; right += 1) {
+      const a = ranges[left]!;
+      const b = ranges[right]!;
+      const shared = a.ranges.some((first) =>
+        b.ranges.some(
+          (second) =>
+            first.universe === second.universe &&
+            first.from <= second.to &&
+            second.from <= first.to,
+        ),
+      );
+      if (!shared) continue;
+      for (const [one, other] of [
+        [a.fixture.id, b.fixture.id],
+        [b.fixture.id, a.fixture.id],
+      ] as const) {
+        const entry = overlaps.get(one) ?? new Set<number>();
+        entry.add(other);
+        overlaps.set(one, entry);
+      }
+    }
+  }
+  return overlaps;
+}
+
+function renderIssues(fixtures: readonly LocalFixture[], overlaps: Map<number, Set<number>>): void {
+  const rows: string[] = [];
+  for (const fixture of fixtures) {
+    const others = [...(overlaps.get(fixture.id) ?? [])].sort((a, b) => a - b);
+    if (others.length > 0)
+      rows.push(
+        `<li data-issue="overlap:${fixture.id}">Fixture ${fixture.id} · ${escapeHtml(fixture.definition)} shares addressed slots with ${others.join(", ")}</li>`,
+      );
+    if (
+      !commands.definitions()[fixture.definition] &&
+      !resolvedReferenceDefinition(fixture.definition)
+    )
+      rows.push(
+        `<li data-issue="unresolved:${fixture.id}">Fixture ${fixture.id} · ${escapeHtml(fixture.definition)} has no resolved definition and renders a placeholder</li>`,
+      );
+  }
+  required("[data-issues]").innerHTML =
+    rows.length === 0
+      ? `<li data-issues-empty>No patch issues in the reference rig.</li>`
+      : rows.join("");
+  required("#patch-status").textContent =
+    rows.length === 0
+      ? "reference"
+      : `reference · ${rows.length} issue${rows.length === 1 ? "" : "s"}`;
 }
 
 function bindFixtureRows(): void {
@@ -662,16 +819,7 @@ function bindFixtureRows(): void {
     if (row.dataset.selectionBound) continue;
     row.dataset.selectionBound = "true";
     row.addEventListener("click", (event) => {
-      const id = Number(row.dataset.editableFixture);
-      if (event.shiftKey) {
-        selectedIds = selectedIds.includes(id)
-          ? selectedIds.filter((member) => member !== id)
-          : [...selectedIds, id];
-      } else {
-        selectedIds = [id];
-      }
-      viewportApi.selectFixtures(selectedIds);
-      renderPlacementEditor();
+      selectFixture(Number(row.dataset.editableFixture), event.shiftKey);
     });
     row.addEventListener("keydown", (event) => {
       if (event.key !== "Enter" && event.key !== " ") return;
@@ -913,6 +1061,17 @@ function renderPlacementEditor(): void {
   ))
     control.disabled = !owner;
   required("[data-history-count]").textContent = String(commands.historyCount());
+  const journal = required("[data-history]");
+  const entries = commands.history();
+  journal.innerHTML =
+    entries.length === 0
+      ? `<li data-history-empty>No commands yet.</li>`
+      : entries
+          .map(
+            (entry) =>
+              `<li data-history-entry data-undone="${entry.undone}">${escapeHtml(entry.label)}</li>`,
+          )
+          .join("");
   required<HTMLButtonElement>("[data-undo]").disabled = !owner || !commands.canUndo();
   required<HTMLButtonElement>("[data-redo]").disabled = !owner || !commands.canRedo();
   const views = required("[data-camera-views]");
@@ -935,11 +1094,53 @@ function openOverlay(tab: string): void {
   const overlay = required("[data-overlay]");
   overlay.hidden = false;
   for (const panel of overlay.querySelectorAll<HTMLElement>("[data-overlay-panel]")) {
-    panel.hidden = panel.dataset.overlayPanel !== tab;
+    const active = panel.dataset.overlayPanel === tab;
+    panel.hidden = !active;
   }
   for (const button of overlay.querySelectorAll<HTMLButtonElement>("[data-overlay-tab]")) {
-    button.dataset.active = String(button.dataset.overlayTab === tab);
+    const active = button.dataset.overlayTab === tab;
+    button.dataset.active = String(active);
+    button.setAttribute("aria-selected", String(active));
   }
+  overlay
+    .querySelector<HTMLElement>(`[data-overlay-panel="${tab}"]`)
+    ?.setAttribute("tabindex", "-1");
+}
+function selectFixture(id: number, additive: boolean): void {
+  if (additive) {
+    selectedIds = selectedIds.includes(id)
+      ? selectedIds.filter((member) => member !== id)
+      : [...selectedIds, id];
+  } else {
+    selectedIds = [id];
+  }
+  if (holdActive) pinHold();
+  viewportApi.selectFixtures(selectedIds);
+  renderPlacementEditor();
+}
+
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && !required("[data-overlay]").hidden)
+    required("[data-overlay]").hidden = true;
+});
+function pinHold(): void {
+  heldIds.clear();
+  for (const id of selectedIds) heldIds.add(id);
+}
+const intensityScratch = new Map<number, Float32Array>();
+function intensityPixels(resolved: LinearRGB): LinearRGB {
+  let out = intensityScratch.get(resolved.length);
+  if (!out) {
+    out = new Float32Array(resolved.length);
+    intensityScratch.set(resolved.length, out);
+  }
+  for (let index = 0; index + 2 < resolved.length; index += 3) {
+    const peak = Math.max(resolved[index]!, resolved[index + 1]!, resolved[index + 2]!);
+    out[index] = peak;
+    out[index + 1] = peak;
+    out[index + 2] = peak;
+  }
+  return out as LinearRGB;
 }
 
 function trustLabel(stale: boolean, contended: boolean): string {
