@@ -1081,6 +1081,40 @@ describe("running Beamhouse", () => {
       await sendUdp(sacn(sequence, [123], 0, 6), sacnPort);
     await page.locator('[data-local-fixture="-5"][data-local-level="123"]').waitFor();
   }, 15_000);
+  test("displays an arbitrary committed third-party definition from mesh or proxy", async () => {
+    interface GdtfPreviewResult {
+      definition: string;
+      source: string;
+    }
+    const preview = (filename: string) => {
+      const base64 = Buffer.from(
+        readFileSync(resolve(repository, "definitions/authored", filename)),
+      ).toString("base64");
+      return page.evaluate((payload: string): Promise<GdtfPreviewResult> => {
+        // Loader hook installed by main.ts at startup.
+        const candidates = window as unknown as Record<string, unknown>;
+        const hook = candidates["__beamhouseLoadGdtf"] as (
+          base64: string,
+        ) => Promise<GdtfPreviewResult>;
+        return hook(payload);
+      }, base64);
+    };
+    // Mesh-less third-party definition: proxy primitive, id from FixtureTypeID.
+    const glp = await preview("GLP@impression 90 RGB@v1.gdtf");
+    expect(glp).toEqual({
+      definition: "gdtf:9C7854E1-32D5-4DE9-BB8E-6D121F27CF48",
+      source: "proxy",
+    });
+    await page.locator('#viewport[data-gdtf-source="proxy"]').waitFor();
+    expect(await page.locator("#viewport").getAttribute("data-gdtf-definition")).toBe(
+      "gdtf:9C7854E1-32D5-4DE9-BB8E-6D121F27CF48",
+    );
+    // Archived GLB present: the referenced mesh renders instead of the proxy.
+    const spoke = await preview("Beamhouse@WLED STAR-TENT Spoke 23px@v1.gdtf");
+    expect(spoke.definition).toBe("gdtf:1B9F1C2E-7A64-4C0D-9E33-5A2D8B47F016");
+    expect(spoke.source).toBe("mesh");
+    await page.locator('#viewport[data-gdtf-source="mesh"]').waitFor();
+  }, 15_000);
   test("navigates the single overlay from state chips showing current values", async () => {
     await expectCount(page.locator("[data-chip-tab]"), 8);
     expect(await page.locator("#feed-status").textContent()).not.toBe("connecting");

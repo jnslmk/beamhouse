@@ -1,0 +1,17 @@
+{
+  "name": "gdtf-ts",
+  "version": "0.1.0",
+  "license": "MIT",
+  "description": "Runtime-agnostic GDTF parser and resolver. Bytes in, plain GDTF-shaped data out.",
+  "type": "module",
+  "exports": "./src/index.ts",
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "fflate": "0.8.3"
+  },
+  "devDependencies": {
+    "typescript": "catalog:"
+  }
+}

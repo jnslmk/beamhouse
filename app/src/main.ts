@@ -1,4 +1,7 @@
 import type { UniverseHealth, UniversesMessage } from "@beamhouse/wire";
+import { parseGdtf, proxyPrimitive, type GdtfGeometryNode } from "gdtf-ts";
+import type { Object3D } from "three";
+import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { LiveFeed } from "./live-feed.ts";
 import {
   referenceStrips,
@@ -244,6 +247,66 @@ const viewportApi = createViewport(
   (id, additive) => selectFixture(id, additive),
 );
 const { cubes, strips, fixtures: editableFixtures } = viewportApi;
+// Beamhouse-side convergence: gdtf-ts owns bytes → definition, this layer owns
+// definition → display, including the canonical-mesh cache.
+const gdtfMeshCache = new Map<string, Object3D>();
+function findGdtfGeometry(
+  nodes: readonly GdtfGeometryNode[],
+  name: string,
+): GdtfGeometryNode | undefined {
+  for (const node of nodes) {
+    if (node.name === name) return node;
+    const nested = findGdtfGeometry(node.children, name);
+    if (nested) return nested;
+  }
+  return undefined;
+}
+async function loadGdtfPreview(base64: string): Promise<{ definition: string; source: string }> {
+  const bytes = Uint8Array.from(atob(base64), (char) => char.charCodeAt(0));
+  const definition = parseGdtf(bytes);
+  const root =
+    (definition.modes[0]
+      ? findGdtfGeometry(definition.geometries, definition.modes[0].geometry)
+      : undefined) ?? definition.geometries[0];
+  const model = definition.models.find((entry) => entry.name === root?.target);
+  // The mesh is the mode-root model's own GLB: any other part would misattribute the preview.
+  const meshModel = model?.glb ? model : undefined;
+  let mesh: Object3D | null = null;
+  if (meshModel?.glb) {
+    // One stem names different meshes in different archives: key by fixture plus stem.
+    const cacheKey = `${definition.fixtureTypeId}/${meshModel.file}`;
+    let cached = gdtfMeshCache.get(cacheKey);
+    if (!cached) {
+      try {
+        cached = (await new GLTFLoader().parseAsync(meshModel.glb.slice().buffer, "")).scene;
+        gdtfMeshCache.set(cacheKey, cached);
+      } catch {
+        cached = undefined;
+      }
+    }
+    mesh = cached ?? null;
+  }
+  viewportApi.showGdtfFixture(
+    {
+      kind: "primitive",
+      primitive: proxyPrimitive(model?.primitiveType ?? ""),
+      width: model?.width ?? 1,
+      depth: model?.length ?? 1,
+      height: model?.height ?? 0.5,
+    },
+    mesh,
+  );
+  const id = `gdtf:${definition.fixtureTypeId}`;
+  viewport.dataset.gdtfDefinition = id;
+  viewport.dataset.gdtfRevision = definition.revisionHint;
+  return { definition: id, source: mesh ? "mesh" : "proxy" };
+}
+declare global {
+  interface Window {
+    __beamhouseLoadGdtf: typeof loadGdtfPreview;
+  }
+}
+window.__beamhouseLoadGdtf = loadGdtfPreview;
 const fixtureRows = [...document.querySelectorAll<HTMLElement>("[data-fixture]")];
 const receivedUniverses = new Set<number>();
 const latestFrames = new Map<number, Uint8Array>();

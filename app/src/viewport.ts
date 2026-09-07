@@ -56,6 +56,8 @@ export interface Viewport {
     fixtures: readonly LocalFixture[],
     definitions: Readonly<Record<string, BhsDefinition>>,
   ): void;
+  /** Third-party definition preview: referenced mesh when present, proxy primitive otherwise. */
+  showGdtfFixture(definition: BhsDefinition, mesh: THREE.Object3D | null): void;
   setSceneFixtureLevels(levels: ReadonlyMap<number, number>): void;
   cameraView(): { position: [number, number, number]; target: [number, number, number] };
   setCameraView(view: {
@@ -294,20 +296,28 @@ export function createViewport(
   ];
   const localFixtures = new Map<number, RenderedFixture>();
   const localMaterials = new Map<number, THREE.MeshStandardMaterial>();
+  let gdtfPreview: THREE.Object3D | null = null;
+  let gdtfPreviewOwned = false;
+  const showGdtfFixture = (definition: BhsDefinition, mesh: THREE.Object3D | null) => {
+    if (gdtfPreview) {
+      scene.remove(gdtfPreview);
+      if (gdtfPreviewOwned) disposeObject(gdtfPreview);
+      gdtfPreview = null;
+    }
+    // ponytail: cached meshes are borrowed, proxy meshes are owned and disposed on replace.
+    gdtfPreview = mesh ?? localFixtureMesh(definition, "gdtf:preview");
+    gdtfPreviewOwned = mesh === null;
+    gdtfPreview.position.set(0, 0.5, 0);
+    scene.add(gdtfPreview);
+    host.dataset.gdtfSource = mesh ? "mesh" : "proxy";
+  };
   const setSceneFixtures = (
     nextFixtures: readonly LocalFixture[],
     definitions: Readonly<Record<string, BhsDefinition>>,
   ) => {
     for (const fixture of localFixtures.values()) {
       scene.remove(fixture.mesh);
-      fixture.mesh.traverse((object) => {
-        if (!("geometry" in object) || !(object.geometry instanceof THREE.BufferGeometry)) return;
-        object.geometry.dispose();
-        if (!("material" in object)) return;
-        const materials = object.material;
-        for (const material of Array.isArray(materials) ? materials : [materials])
-          if (material instanceof THREE.Material) material.dispose();
-      });
+      disposeObject(fixture.mesh);
       localMaterials.delete(fixture.id);
       const index = editableFixtures.indexOf(fixture);
       if (index >= 0) editableFixtures.splice(index, 1);
@@ -484,6 +494,7 @@ export function createViewport(
       }
     },
     setSceneFixtures,
+    showGdtfFixture,
     capture(maxEdge = 1280, quality = 0.8) {
       return new Promise<CaptureResult>((resolve, reject) => {
         // No preserveDrawingBuffer tax: render and read back in the same frame.
@@ -525,6 +536,17 @@ export function createViewport(
       });
     },
   };
+}
+
+function disposeObject(object: THREE.Object3D): void {
+  object.traverse((entry) => {
+    if (!("geometry" in entry) || !(entry.geometry instanceof THREE.BufferGeometry)) return;
+    entry.geometry.dispose();
+    if (!("material" in entry)) return;
+    const materials = entry.material;
+    for (const material of Array.isArray(materials) ? materials : [materials])
+      if (material instanceof THREE.Material) material.dispose();
+  });
 }
 
 function localFixtureMesh(definition: BhsDefinition | undefined, definitionId: string): THREE.Mesh {
