@@ -847,6 +847,125 @@ describe("running Beamhouse", () => {
       await page.locator('[data-fixture-mark="1"]').getAttribute("data-rendered-placement-x"),
     ).toBe("-2.25");
   }, 15_000);
+  test("adds addressed local fixtures and addressless scene objects through one persistent fixture model", async () => {
+    page.once("dialog", (dialog) => void dialog.accept());
+    await page.locator("[data-takeover]").click();
+    await page.locator("#ownership-status", { hasText: "owner" }).waitFor();
+    await openFixtures();
+
+    await page.locator("[data-local-definition-source]").selectOption("new-strip");
+    await page.locator("[data-inline-definition-id]").fill("bhs:tube");
+    await page.locator('[data-inline-strip="pixels"]').fill("60");
+    await page.locator("[data-local-universe]").fill("64000");
+    await page.locator("[data-local-address]").fill("1");
+    await page.locator("[data-local-add]").click();
+    await page.locator("[data-local-error]", { hasText: "1–63999" }).waitFor();
+    await page.locator("[data-local-universe]").fill("4");
+    await page.locator("[data-local-address]").fill("400");
+    await page.locator("[data-local-add]").click();
+    await page.locator("[data-local-error]", { hasText: "runs past slot 512" }).waitFor();
+    expect(await page.locator('[data-local-fixture="-1"]').count()).toBe(0);
+
+    await page.locator("[data-local-address]").fill("333");
+    await page.locator("[data-local-breaks]").fill("5.001");
+    const historyBeforeFixture = Number(await page.locator("[data-history-count]").textContent());
+    await page.locator("[data-local-add]").click();
+    await page.locator('[data-local-fixture="-1"]', { hasText: "4.333 · 5.001" }).waitFor();
+    expect(Number(await page.locator("[data-history-count]").textContent())).toBe(
+      historyBeforeFixture + 1,
+    );
+    // LiveFeed's subscription travels over the real WebSocket; wait for that platform boundary.
+    await Bun.sleep(250);
+    const slot333 = [...Array<number>(332).fill(0), 199];
+    for (let sequence = 1; sequence < 41; sequence += 1)
+      await sendUdp(sacn(sequence, slot333, 0, 4), sacnPort);
+    await page.locator('[data-local-fixture="-1"][data-local-level="199"]').waitFor();
+
+    await page.locator("[data-local-definition-source]").selectOption("existing");
+    await page.locator("[data-local-definition]").fill("bhs:tube");
+    await page.locator("[data-local-universe]").fill("5");
+    await page.locator("[data-local-address]").fill("1");
+    await page.locator("[data-local-add]").click();
+    await page.locator('[data-local-fixture="-2"]', { hasText: "5.001" }).waitFor();
+    const historyBeforeDefinition = Number(
+      await page.locator("[data-history-count]").textContent(),
+    );
+    await page.locator('[data-edit-definition="bhs:tube"]').first().click();
+    await page.locator("[data-definition-affects]", { hasText: "2 fixtures" }).waitFor();
+    await page.locator('[data-definition-strip="pixels"]').fill("30");
+    await page.locator("[data-definition-save]").click();
+    await page.locator('[data-local-fixture="-1"]', { hasText: "30 px" }).waitFor();
+    expect(Number(await page.locator("[data-history-count]").textContent())).toBe(
+      historyBeforeDefinition + 1,
+    );
+    await page.locator('[data-definition-strip="pixels"]').fill("100");
+    await page.locator("[data-definition-save]").click();
+    await page.locator("[data-local-error]", { hasText: "would run" }).waitFor();
+    await page.locator('[data-local-fixture="-1"]', { hasText: "30 px" }).waitFor();
+
+    await page.locator('[data-overlay-tab="objects"]').click();
+    await page.locator("[data-object-definition]").fill("bhs:stage");
+    await page.locator('[data-object-primitive="width"]').fill("4");
+    const historyBeforeObject = Number(await page.locator("[data-history-count]").textContent());
+    await page.locator("[data-object-add]").click();
+    await page.locator('[data-local-fixture="-3"]', { hasText: "no address" }).waitFor();
+    expect(await page.locator('[data-local-fixture="-3"]').getAttribute("data-mode")).toBe("");
+    expect(Number(await page.locator("[data-history-count]").textContent())).toBe(
+      historyBeforeObject + 1,
+    );
+    await page.locator("[data-object-add]").click();
+    await page.locator('[data-local-fixture="-4"]', { hasText: "no address" }).waitFor();
+
+    await page.locator('[data-local-fixture="-4"]').click();
+    await page.locator('[data-local-fixture="-3"]').press("Enter");
+    await page.locator('[data-overlay-tab="fixtures"]').click();
+    await page.locator("[data-placement-controls]").getAttribute("data-placement-x");
+    expect(await page.locator("#selection-status").textContent()).toBe("-3");
+    const subscribeProbe = page.evaluate(
+      () =>
+        new Promise<unknown[]>((resolve) => {
+          const original = Reflect.get(WebSocket.prototype, "send");
+          const seen: unknown[] = [];
+          WebSocket.prototype.send = function (data) {
+            if (typeof data === "string" && data.includes('"subscribe"')) {
+              seen.push(JSON.parse(data));
+              if (
+                seen.some((message) => (message as { universes?: number[] }).universes?.includes(6))
+              ) {
+                WebSocket.prototype.send = original;
+                resolve(seen);
+              }
+            }
+            return original.call(this, data);
+          };
+          setTimeout(() => {
+            WebSocket.prototype.send = original;
+            resolve(seen);
+          }, 2_000);
+        }),
+    );
+    await page.locator("[data-local-definition-source]").selectOption("existing");
+    await page.locator("[data-local-definition]").fill("gdtf:1B9F1C2E-7A64-4C0D-9E33-5A2D8B47F016");
+    await page.locator("[data-local-universe]").fill("6");
+    await page.locator("[data-local-address]").fill("1");
+    await page.locator("[data-local-footprint]").fill("69");
+    await page.locator("[data-local-breaks]").fill("");
+    await page.locator("[data-local-add]").click();
+    expect(
+      (await subscribeProbe).some((message) =>
+        (message as { universes?: number[] }).universes?.includes(6),
+      ),
+    ).toBe(true);
+    await page.locator('[data-local-fixture="-5"][data-resolved-footprint="69"]').waitFor();
+    expect(
+      await page.locator('[data-local-fixture="-5"]').getAttribute("data-resolved-length"),
+    ).toBe("1.5");
+    // The new universe was subscribed through the same real WebSocket immediately above.
+    await Bun.sleep(250);
+    for (let sequence = 1; sequence < 41; sequence += 1)
+      await sendUdp(sacn(sequence, [123], 0, 6), sacnPort);
+    await page.locator('[data-local-fixture="-5"][data-local-level="123"]').waitFor();
+  }, 15_000);
 });
 
 async function canvasColorSamples(

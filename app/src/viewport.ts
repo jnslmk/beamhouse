@@ -1,8 +1,8 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { TransformControls } from "three/addons/controls/TransformControls.js";
-import type { LinearRGB, StripFixture } from "./reference-rig.ts";
-import { samePlacement, type Placement } from "./scene.ts";
+import { resolvedReferenceDefinition, type LinearRGB, type StripFixture } from "./reference-rig.ts";
+import { samePlacement, type BhsDefinition, type LocalFixture, type Placement } from "./scene.ts";
 
 export interface EditableFixture {
   id: number;
@@ -44,6 +44,11 @@ export interface Viewport {
   setEditable(editable: boolean): void;
   setGizmoMode(mode: "translate" | "rotate"): void;
   setSnap(step: number | null): void;
+  setSceneFixtures(
+    fixtures: readonly LocalFixture[],
+    definitions: Readonly<Record<string, BhsDefinition>>,
+  ): void;
+  setSceneFixtureLevels(levels: ReadonlyMap<number, number>): void;
   cameraView(): { position: [number, number, number]; target: [number, number, number] };
   setCameraView(view: {
     position: [number, number, number];
@@ -266,6 +271,52 @@ export function createViewport(
       return mesh ? [{ ...fixture, mesh }] : [];
     }),
   ];
+  const localFixtures = new Map<number, RenderedFixture>();
+  const localMaterials = new Map<number, THREE.MeshStandardMaterial>();
+  const setSceneFixtures = (
+    nextFixtures: readonly LocalFixture[],
+    definitions: Readonly<Record<string, BhsDefinition>>,
+  ) => {
+    for (const fixture of localFixtures.values()) {
+      scene.remove(fixture.mesh);
+      fixture.mesh.traverse((object) => {
+        if (!("geometry" in object) || !(object.geometry instanceof THREE.BufferGeometry)) return;
+        object.geometry.dispose();
+        if (!("material" in object)) return;
+        const materials = object.material;
+        for (const material of Array.isArray(materials) ? materials : [materials])
+          if (material instanceof THREE.Material) material.dispose();
+      });
+      localMaterials.delete(fixture.id);
+      const index = editableFixtures.indexOf(fixture);
+      if (index >= 0) editableFixtures.splice(index, 1);
+    }
+    localFixtures.clear();
+    for (const fixture of nextFixtures) {
+      const mesh = localFixtureMesh(definitions[fixture.definition], fixture.definition);
+      mesh.position.set(0, 0.5, 0);
+      scene.add(mesh);
+      const rendered: RenderedFixture = {
+        id: fixture.id,
+        mesh,
+        setPlacement(placement) {
+          mesh.position.fromArray(placement.position);
+          mesh.rotation.set(
+            THREE.MathUtils.degToRad(placement.rotation[0]),
+            THREE.MathUtils.degToRad(placement.rotation[1]),
+            THREE.MathUtils.degToRad(placement.rotation[2]),
+          );
+        },
+        placement() {
+          return placementFor(mesh);
+        },
+      };
+      localFixtures.set(fixture.id, rendered);
+      if (mesh.material instanceof THREE.MeshStandardMaterial)
+        localMaterials.set(fixture.id, mesh.material);
+      editableFixtures.push(rendered);
+    }
+  };
 
   const resize = () => {
     const width = host.clientWidth;
@@ -349,7 +400,61 @@ export function createViewport(
       controls.target.fromArray(view.target);
       controls.update();
     },
+    setSceneFixtureLevels(levels) {
+      for (const [id, material] of localMaterials) {
+        const level = (levels.get(id) ?? 0) / 255;
+        material.emissive.setRGB(level, level, level);
+        material.emissiveIntensity = level;
+      }
+    },
+    setSceneFixtures,
   };
+}
+
+function localFixtureMesh(definition: BhsDefinition | undefined, definitionId: string): THREE.Mesh {
+  const material = new THREE.MeshStandardMaterial({
+    color: 0x86817c,
+    metalness: 0.08,
+    roughness: 0.7,
+  });
+  if (definition?.kind === "strip") {
+    const length = (definition.pixels * definition.pitchMm) / 1000;
+    if (definition.primitive === "Cylinder") {
+      const mesh = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.5, 1, 20), material);
+      mesh.geometry.rotateZ(Math.PI / 2);
+      mesh.scale.set(length, 0.05, 0.05);
+      return mesh;
+    }
+    if (definition.primitive === "Sphere") {
+      const mesh = new THREE.Mesh(new THREE.SphereGeometry(1), material);
+      mesh.scale.set(length / 2, 0.025, 0.025);
+      return mesh;
+    }
+    return new THREE.Mesh(new THREE.BoxGeometry(length, 0.05, 0.05), material);
+  }
+  if (definition?.kind === "primitive") {
+    if (definition.primitive === "Cylinder") {
+      const mesh = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 1, 20), material);
+      mesh.scale.set(definition.width / 2, definition.height, definition.depth / 2);
+      return mesh;
+    }
+    if (definition.primitive === "Sphere") {
+      const mesh = new THREE.Mesh(new THREE.SphereGeometry(1), material);
+      mesh.scale.set(definition.width / 2, definition.height / 2, definition.depth / 2);
+      return mesh;
+    }
+    return new THREE.Mesh(
+      new THREE.BoxGeometry(definition.width, definition.height, definition.depth),
+      material,
+    );
+  }
+  const resolved = resolvedReferenceDefinition(definitionId);
+  if (resolved)
+    return new THREE.Mesh(
+      new THREE.BoxGeometry(resolved.length, resolved.height, resolved.width),
+      material,
+    );
+  return new THREE.Mesh(new THREE.BoxGeometry(1, 0.5, 1), material);
 }
 
 function placementFor(object: THREE.Object3D): FixturePlacement {

@@ -14,10 +14,44 @@ export function samePlacement(left: Placement, right: Placement): boolean {
   );
 }
 
+export type PrimitiveType = "Cube" | "Cylinder" | "Sphere";
+
+export type BhsDefinition =
+  | {
+      kind: "strip";
+      pixels: number;
+      pitchMm: number;
+      channelsPerPixel: number;
+      primitive: PrimitiveType;
+    }
+  | {
+      kind: "primitive";
+      primitive: PrimitiveType;
+      width: number;
+      depth: number;
+      height: number;
+    };
+
+export interface BreakAddress {
+  universe: number;
+  address: number;
+  footprint: number;
+}
+
+/** A scene object is this same fixture shape with an empty mode and no addresses. */
+export interface LocalFixture {
+  id: number;
+  definition: string;
+  mode: string;
+  addresses: BreakAddress[];
+}
+
 interface PersistedScene {
   overrides: Record<string, Placement>;
   views: Record<string, CameraView>;
   arrays: Record<string, ArrayDef>;
+  definitions: Record<string, BhsDefinition>;
+  fixtures: Record<string, LocalFixture>;
 }
 
 export type ArrayDef =
@@ -55,7 +89,14 @@ export type SceneCommand =
   | { kind: "placement.set"; fixtureIds: number[]; placements: Record<string, Placement> }
   | { kind: "placement.clear"; fixtureIds: number[] }
   | { kind: "array.set"; id: string; array: ArrayDef }
-  | { kind: "camera.saveView"; name: string; view: CameraView };
+  | { kind: "camera.saveView"; name: string; view: CameraView }
+  | {
+      kind: "fixture.add";
+      fixture: LocalFixture;
+      placement: Placement;
+      definition?: { id: string; value: BhsDefinition };
+    }
+  | { kind: "definition.set"; id: string; value: BhsDefinition };
 
 interface HistoryEntry {
   command: SceneCommand;
@@ -141,6 +182,37 @@ export class SceneCommands {
   views(): Readonly<Record<string, CameraView>> {
     return this.#scene.views;
   }
+  definitions(): Readonly<Record<string, BhsDefinition>> {
+    return this.#scene.definitions;
+  }
+
+  fixtures(): readonly LocalFixture[] {
+    return Object.values(this.#scene.fixtures);
+  }
+
+  nextFixtureId(): number {
+    return Math.min(0, ...Object.values(this.#scene.fixtures).map((fixture) => fixture.id)) - 1;
+  }
+
+  fixtureAddError(command: Extract<SceneCommand, { kind: "fixture.add" }>): string | null {
+    return fixtureAddError(command, this.#scene);
+  }
+
+  definitionSetError(id: unknown, value: unknown): string | null {
+    if (!isBhsId(id) || !isBhsDefinition(value) || !this.#scene.definitions[id])
+      return "Choose an existing Beamhouse definition.";
+    const footprint = value.kind === "strip" ? value.pixels * value.channelsPerPixel : null;
+    if (
+      footprint !== null &&
+      Object.values(this.#scene.fixtures).some(
+        (fixture) =>
+          fixture.definition === id &&
+          fixture.addresses.some((address) => address.address + footprint - 1 > 512),
+      )
+    )
+      return "This shared definition would run a fixture past slot 512.";
+    return null;
+  }
 
   historyCount(): number {
     return this.#history.length;
@@ -155,7 +227,10 @@ export class SceneCommands {
   }
 
   apply(command: SceneCommand): void {
-    if (!this.#owner) return;
+    if (!this.#owner || !isCommandKind(command)) return;
+    if (command.kind === "fixture.add" && this.fixtureAddError(command)) return;
+    if (command.kind === "definition.set" && this.definitionSetError(command.id, command.value))
+      return;
     const before = clone(this.#scene);
     const after = apply(command, before);
     if (sameScene(before, after)) return;
@@ -266,10 +341,175 @@ function apply(command: SceneCommand, scene: PersistedScene): PersistedScene {
         other.memberIds = other.memberIds.filter((id) => !memberIds.includes(id));
     }
     after.arrays[command.id] = { ...command.array, id: command.id, memberIds };
-  } else {
+  } else if (command.kind === "camera.saveView") {
     after.views[command.name] = command.view;
+  } else if (command.kind === "definition.set") {
+    if (!isBhsId(command.id) || !isBhsDefinition(command.value) || !after.definitions[command.id])
+      return scene;
+    const footprint =
+      command.value.kind === "strip" ? command.value.pixels * command.value.channelsPerPixel : null;
+    if (
+      footprint !== null &&
+      Object.values(after.fixtures).some(
+        (fixture) =>
+          fixture.definition === command.id &&
+          fixture.addresses.some((address) => address.address + footprint - 1 > 512),
+      )
+    )
+      return scene;
+    after.definitions[command.id] = command.value;
+  } else {
+    if (fixtureAddError(command, scene)) return scene;
+    if (command.definition) after.definitions[command.definition.id] = command.definition.value;
+    after.fixtures[String(command.fixture.id)] = command.fixture;
+    after.overrides[String(command.fixture.id)] = command.placement;
   }
   return after;
+}
+function isCommandKind(value: unknown): value is SceneCommand {
+  if (!value || typeof value !== "object" || !("kind" in value)) return false;
+  return (
+    value.kind === "placement.set" ||
+    value.kind === "placement.clear" ||
+    value.kind === "array.set" ||
+    value.kind === "camera.saveView" ||
+    value.kind === "fixture.add" ||
+    value.kind === "definition.set"
+  );
+}
+
+function fixtureAddError(command: unknown, scene: PersistedScene): string | null {
+  if (!command || typeof command !== "object" || !("fixture" in command))
+    return "Local fixtures need a new allocated negative id, definition, and placement.";
+  const rawFixture = command.fixture;
+  if (!rawFixture || typeof rawFixture !== "object")
+    return "Local fixtures need a new allocated negative id, definition, and placement.";
+  if (
+    !("id" in rawFixture) ||
+    !("definition" in rawFixture) ||
+    !("mode" in rawFixture) ||
+    !("addresses" in rawFixture) ||
+    !("placement" in command) ||
+    typeof rawFixture.id !== "number" ||
+    !Number.isInteger(rawFixture.id) ||
+    rawFixture.id >= 0 ||
+    scene.fixtures[String(rawFixture.id)] ||
+    typeof rawFixture.definition !== "string" ||
+    rawFixture.definition.length === 0 ||
+    typeof rawFixture.mode !== "string" ||
+    !isPlacement(command.placement)
+  )
+    return "Local fixtures need a new allocated negative id, definition, and placement.";
+  if (!Array.isArray(rawFixture.addresses))
+    return "Each break needs a universe, address, and footprint.";
+  const addresses: unknown[] = rawFixture.addresses;
+  for (const address of addresses) {
+    if (
+      !address ||
+      typeof address !== "object" ||
+      !("universe" in address) ||
+      typeof address.universe !== "number" ||
+      !Number.isInteger(address.universe) ||
+      address.universe < 1 ||
+      address.universe > 63_999
+    )
+      return "Universe must be 1–63999.";
+    if (!isBreakAddress(address)) return "Each break needs a universe, address, and footprint.";
+  }
+  if ((addresses.length === 0) !== (rawFixture.mode.length === 0))
+    return "Scene objects have an empty mode and no address; fixtures need both.";
+  let inline: BhsDefinition | undefined;
+  if ("definition" in command && command.definition !== undefined) {
+    const definition = command.definition;
+    if (
+      !definition ||
+      typeof definition !== "object" ||
+      !("id" in definition) ||
+      !("value" in definition) ||
+      typeof definition.id !== "string" ||
+      definition.id !== rawFixture.definition ||
+      !isBhsId(definition.id) ||
+      scene.definitions[definition.id] ||
+      !isBhsDefinition(definition.value)
+    )
+      return "An inline Beamhouse definition is created with its first local fixture.";
+    inline = definition.value;
+  }
+  const resolved = inline ?? scene.definitions[rawFixture.definition];
+  if (isBhsId(rawFixture.definition) && !resolved)
+    return "A bhs: definition is reachable only through the fixture that creates it.";
+  const footprint = resolved?.kind === "strip" ? resolved.pixels * resolved.channelsPerPixel : null;
+  for (const address of addresses) {
+    if (!isBreakAddress(address)) return "Each break needs a universe, address, and footprint.";
+    const slots = footprint ?? address.footprint;
+    if (address.address + slots - 1 > 512)
+      return `Universe ${address.universe}.${address.address} runs past slot 512.`;
+  }
+  return null;
+}
+
+function isBhsId(id: unknown): id is string {
+  return typeof id === "string" && id.startsWith("bhs:");
+}
+
+function isBhsDefinition(value: unknown): value is BhsDefinition {
+  if (!value || typeof value !== "object") return false;
+  const definition = value as Partial<BhsDefinition>;
+  if (
+    definition.kind === "strip" &&
+    typeof definition.pixels === "number" &&
+    Number.isInteger(definition.pixels) &&
+    definition.pixels > 0 &&
+    typeof definition.pitchMm === "number" &&
+    Number.isFinite(definition.pitchMm) &&
+    definition.pitchMm > 0 &&
+    typeof definition.channelsPerPixel === "number" &&
+    Number.isInteger(definition.channelsPerPixel) &&
+    definition.channelsPerPixel > 0 &&
+    isPrimitiveType(definition.primitive)
+  )
+    return true;
+  return (
+    definition.kind === "primitive" &&
+    isPrimitiveType(definition.primitive) &&
+    typeof definition.width === "number" &&
+    Number.isFinite(definition.width) &&
+    definition.width > 0 &&
+    typeof definition.depth === "number" &&
+    Number.isFinite(definition.depth) &&
+    definition.depth > 0 &&
+    typeof definition.height === "number" &&
+    Number.isFinite(definition.height) &&
+    definition.height > 0
+  );
+}
+
+function isPrimitiveType(value: unknown): value is PrimitiveType {
+  return value === "Cube" || value === "Cylinder" || value === "Sphere";
+}
+
+function isBreakAddress(value: unknown): value is BreakAddress {
+  if (!value || typeof value !== "object") return false;
+  const address = value as Partial<BreakAddress>;
+  return (
+    typeof address.universe === "number" &&
+    Number.isInteger(address.universe) &&
+    address.universe >= 1 &&
+    address.universe <= 63_999 &&
+    typeof address.address === "number" &&
+    Number.isInteger(address.address) &&
+    address.address > 0 &&
+    address.address <= 512 &&
+    typeof address.footprint === "number" &&
+    Number.isInteger(address.footprint) &&
+    address.footprint > 0
+  );
+}
+
+function isPlacement(value: unknown): value is Placement {
+  if (!value || typeof value !== "object") return false;
+  const placement = value as Partial<Placement>;
+  return isTuple3(placement.position) && isTuple3(placement.rotation);
 }
 
 function openDatabase(): Promise<IDBDatabase> {
@@ -301,7 +541,8 @@ function save(database: IDBDatabase, scene: PersistedScene): Promise<void> {
 }
 
 function normalize(value: unknown): PersistedScene {
-  if (!value || typeof value !== "object") return { overrides: {}, views: {}, arrays: {} };
+  if (!value || typeof value !== "object")
+    return { overrides: {}, views: {}, arrays: {}, definitions: {}, fixtures: {} };
   const scene = value as Partial<PersistedScene>;
   const arrays: Record<string, ArrayDef> = {};
   if (scene.arrays && typeof scene.arrays === "object") {
@@ -310,7 +551,70 @@ function normalize(value: unknown): PersistedScene {
       if (valid) arrays[id] = valid;
     }
   }
-  return { overrides: scene.overrides ?? {}, views: scene.views ?? {}, arrays };
+  const definitions: Record<string, BhsDefinition> = {};
+  if (scene.definitions && typeof scene.definitions === "object") {
+    for (const [id, definition] of Object.entries(scene.definitions)) {
+      if (isBhsId(id) && isBhsDefinition(definition)) definitions[id] = definition;
+    }
+  }
+  const fixtures: Record<string, LocalFixture> = {};
+  if (scene.fixtures && typeof scene.fixtures === "object") {
+    for (const [id, fixture] of Object.entries(scene.fixtures)) {
+      const valid = normalizeLocalFixture(fixture, definitions);
+      if (valid && String(valid.id) === id) fixtures[id] = valid;
+    }
+  }
+  for (const id of Object.keys(definitions)) {
+    if (!Object.values(fixtures).some((fixture) => fixture.definition === id))
+      delete definitions[id];
+  }
+  return {
+    overrides: scene.overrides ?? {},
+    views: scene.views ?? {},
+    arrays,
+    definitions,
+    fixtures,
+  };
+}
+
+function normalizeLocalFixture(
+  value: unknown,
+  definitions: Readonly<Record<string, BhsDefinition>>,
+): LocalFixture | null {
+  if (!isLocalFixture(value)) return null;
+  const fixture = value;
+  const definition = definitions[fixture.definition];
+  if (isBhsId(fixture.definition) && !definition) return null;
+  const footprint =
+    definition?.kind === "strip" ? definition.pixels * definition.channelsPerPixel : null;
+  if (
+    fixture.addresses.some(
+      (address) => address.address + (footprint ?? address.footprint) - 1 > 512,
+    )
+  )
+    return null;
+  return {
+    id: fixture.id,
+    definition: fixture.definition,
+    mode: fixture.mode,
+    addresses: fixture.addresses,
+  };
+}
+
+function isLocalFixture(value: unknown): value is LocalFixture {
+  if (!value || typeof value !== "object") return false;
+  const fixture = value as Partial<LocalFixture>;
+  return (
+    typeof fixture.id === "number" &&
+    Number.isInteger(fixture.id) &&
+    fixture.id < 0 &&
+    typeof fixture.definition === "string" &&
+    fixture.definition.length > 0 &&
+    typeof fixture.mode === "string" &&
+    Array.isArray(fixture.addresses) &&
+    fixture.addresses.every(isBreakAddress) &&
+    (fixture.addresses.length === 0) === (fixture.mode.length === 0)
+  );
 }
 
 function isTuple3(value: unknown): value is [number, number, number] {

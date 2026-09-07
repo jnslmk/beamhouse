@@ -7,6 +7,7 @@ export interface BreakAddress {
 
 export interface StripFixture {
   id: number;
+  definitionId?: string;
   pixels: number;
   addresses: readonly BreakAddress[];
   definition: ResolvedStripDefinition;
@@ -36,10 +37,27 @@ const SPOKE_DEFINITION: ResolvedStripDefinition = {
   height: 0.0137,
 };
 
+export const referenceDefinitionId = "gdtf:1B9F1C2E-7A64-4C0D-9E33-5A2D8B47F016";
+
+export const resolvedReferenceDefinitions: Readonly<
+  Record<string, ResolvedStripDefinition & { footprint: number }>
+> = {
+  [referenceDefinitionId]: { ...SPOKE_DEFINITION, footprint: PIXELS_PER_SPOKE * SLOTS_PER_PIXEL },
+  "ofl:beamhouse:wled-star-tent-spoke-23px": {
+    ...SPOKE_DEFINITION,
+    footprint: PIXELS_PER_SPOKE * SLOTS_PER_PIXEL,
+  },
+};
+
+export function resolvedReferenceDefinition(id: string) {
+  return resolvedReferenceDefinitions[id];
+}
+
 export const referenceStrips: readonly StripFixture[] = Array.from({ length: 10 }, (_, index) => {
   const radialAngle = (index / 10) * Math.PI * 2;
   return {
     id: 101 + index,
+    definitionId: referenceDefinitionId,
     pixels: PIXELS_PER_SPOKE,
     definition: SPOKE_DEFINITION,
     placement: {

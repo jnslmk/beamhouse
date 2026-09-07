@@ -8,14 +8,16 @@ export interface LiveFeedHandlers {
 
 export class LiveFeed {
   readonly #socket: WebSocket;
+  #universes: number[];
 
   constructor(universes: readonly number[], handlers: LiveFeedHandlers) {
+    this.#universes = normalizeUniverses(universes);
     handlers.status("connecting");
     const protocol = location.protocol === "https:" ? "wss:" : "ws:";
     this.#socket = new WebSocket(`${protocol}//${location.host}/ws`);
     this.#socket.binaryType = "arraybuffer";
     this.#socket.addEventListener("open", () => {
-      this.#socket.send(JSON.stringify({ op: "subscribe", universes }));
+      this.#subscribe();
       handlers.status("live");
     });
     this.#socket.addEventListener("close", () => handlers.status("disconnected"));
@@ -32,6 +34,17 @@ export class LiveFeed {
     });
   }
 
+  setUniverses(universes: readonly number[]): void {
+    this.#universes = normalizeUniverses(universes);
+    if (this.#socket.readyState === WebSocket.OPEN) this.#subscribe();
+  }
+  subscribed(): readonly number[] {
+    return [...this.#universes];
+  }
+
+  #subscribe(): void {
+    this.#socket.send(JSON.stringify({ op: "subscribe", universes: this.#universes }));
+  }
   close(): void {
     this.#socket.close();
   }
@@ -46,4 +59,10 @@ function isUniversesMessage(value: unknown): value is UniversesMessage {
     "universes" in value &&
     Array.isArray(value.universes)
   );
+}
+
+function normalizeUniverses(universes: readonly number[]): number[] {
+  return [
+    ...new Set(universes.filter((universe) => Number.isInteger(universe) && universe > 0)),
+  ].sort((left, right) => left - right);
 }

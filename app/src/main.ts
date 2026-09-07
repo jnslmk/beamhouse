@@ -2,6 +2,7 @@ import type { UniverseHealth, UniversesMessage } from "@beamhouse/wire";
 import { LiveFeed } from "./live-feed.ts";
 import {
   referenceStrips,
+  resolvedReferenceDefinition,
   resolveColor,
   textureBytesForStrip,
   universesForStrips,
@@ -14,8 +15,11 @@ import {
   samePlacement,
   SceneCommands,
   type ArrayDef,
+  type BhsDefinition,
+  type LocalFixture,
   type Pivot,
   type Placement,
+  type SceneCommand,
 } from "./scene.ts";
 import "./style.css";
 
@@ -73,6 +77,41 @@ root.innerHTML = `
           )
           .join("")}
       </ol>
+      <section class="local-fixtures" aria-label="Local fixtures">
+        <div class="health-heading"><b>Local fixtures</b><output data-local-error></output></div>
+        <ol data-local-fixtures></ol>
+        <div class="array-form">
+          <label>source<select data-local-definition-source><option value="existing">existing definition</option><option value="new-strip">new Beamhouse strip</option></select></label>
+          <label>definition<input data-local-definition value="gdtf:example"></label>
+          <label data-inline-definition-fields hidden>id<input data-inline-definition-id value="bhs:strip"></label>
+          <label data-inline-definition-fields hidden>pixels<input data-inline-strip="pixels" type="number" min="1" value="23"></label>
+          <label data-inline-definition-fields hidden>pitch mm<input data-inline-strip="pitch" type="number" min="1" value="25"></label>
+          <label data-inline-definition-fields hidden>channels/pixel<input data-inline-strip="channels" type="number" min="1" value="3"></label>
+          <label data-inline-definition-fields hidden>primitive<select data-inline-strip="primitive"><option>Cube</option><option>Cylinder</option><option>Sphere</option></select></label>
+          <label>mode<input data-local-mode value="default"></label>
+          <label>universe<input data-local-universe type="number" min="1" value="4"></label>
+          <label>address<input data-local-address type="number" min="1" max="512" value="1"></label>
+          <label>footprint<input data-local-footprint type="number" min="1" value="1"></label>
+          <label>additional breaks<input data-local-breaks placeholder="5.001, 6.001"></label>
+          <button type="button" data-local-add>Add local fixture</button>
+        </div>
+        <section data-definition-editor hidden>
+          <p data-definition-affects></p>
+          <div class="array-form">
+            <label>pixels<input data-definition-strip="pixels" type="number" min="1"></label>
+            <label>pitch mm<input data-definition-strip="pitch" type="number" min="1"></label>
+            <label>channels/pixel<input data-definition-strip="channels" type="number" min="1"></label>
+            <label>primitive<select data-definition-strip="primitive"><option>Cube</option><option>Cylinder</option><option>Sphere</option></select></label>
+            <div data-definition-primitive-fields hidden>
+              <label>primitive<select data-definition-primitive="type"><option>Cube</option><option>Cylinder</option><option>Sphere</option></select></label>
+              <label>width<input data-definition-primitive="width" type="number" min="0.01"></label>
+              <label>depth<input data-definition-primitive="depth" type="number" min="0.01"></label>
+              <label>height<input data-definition-primitive="height" type="number" min="0.01"></label>
+            </div>
+            <button type="button" data-definition-save>Save definition</button>
+          </div>
+        </section>
+      </section>
       <section class="editor" aria-label="Fixture placement editor">
         <div class="health-heading"><b>Placement</b><output data-history-count>0</output></div>
         <p data-placement-empty>Select a fixture to edit its placement.</p>
@@ -142,7 +181,18 @@ root.innerHTML = `
       </section>
       <section class="terminations" id="terminations"></section>
       </section>
-      <section data-overlay-panel="objects" hidden><p class="lede">Objects share the fixture selection space.</p></section>
+      <section data-overlay-panel="objects" hidden>
+        <p class="lede">Objects share the fixture selection space.</p>
+        <ol data-scene-objects></ol>
+        <div class="array-form">
+          <label>definition<input data-object-definition value="bhs:object"></label>
+          <label>primitive<select data-object-primitive="type"><option>Cube</option><option>Cylinder</option><option>Sphere</option></select></label>
+          <label>width<input data-object-primitive="width" type="number" min="0.01" value="1"></label>
+          <label>depth<input data-object-primitive="depth" type="number" min="0.01" value="1"></label>
+          <label>height<input data-object-primitive="height" type="number" min="0.01" value="1"></label>
+          <button type="button" data-object-add>Add scene object</button>
+        </div>
+      </section>
       <section data-overlay-panel="history" hidden><p class="lede">Undo and redo are available while editing a selected fixture.</p></section>
       <section data-overlay-panel="issues" hidden><p class="lede">No patch issues in the reference rig.</p></section>
     </aside>
@@ -157,6 +207,7 @@ const stripProbeMarkers: StripProbeMarkers[] = referenceStrips.map((strip) => ({
   end: required(`[data-strip-probe="${strip.id}-end"]`),
 }));
 let selectedIds: number[] = [];
+let editingDefinition: string | null = null;
 const commands = await SceneCommands.create();
 const viewportApi = createViewport(
   viewport,
@@ -172,6 +223,7 @@ const fixtureRows = [...document.querySelectorAll<HTMLElement>("[data-fixture]")
 const receivedUniverses = new Set<number>();
 const latestFrames = new Map<number, Uint8Array>();
 let latestHealth: UniversesMessage | null = null;
+let liveFeed: LiveFeed | null = null;
 
 const defaultPlacements = new Map(
   editableFixtures.map((fixture) => [fixture.id, fixture.placement()]),
@@ -180,7 +232,11 @@ for (const fixture of editableFixtures) {
   const fallback = defaultPlacements.get(fixture.id);
   if (fallback) fixture.setPlacement(commands.placement(fixture.id, fallback));
 }
-commands.onChanged(renderPlacementEditor);
+syncSceneFixtures();
+commands.onChanged(() => {
+  syncSceneFixtures();
+  renderPlacementEditor();
+});
 renderPlacementEditor();
 
 required<HTMLButtonElement>("[data-takeover]").addEventListener("click", () => {
@@ -201,20 +257,68 @@ required<HTMLButtonElement>("[data-overlay-close]").addEventListener("click", ()
   required("[data-overlay]").hidden = true;
 });
 
-for (const row of document.querySelectorAll<HTMLElement>("[data-editable-fixture]")) {
-  row.addEventListener("click", (event) => {
-    const id = Number(row.dataset.editableFixture);
-    if (event.shiftKey) {
-      selectedIds = selectedIds.includes(id)
-        ? selectedIds.filter((member) => member !== id)
-        : [...selectedIds, id];
-    } else {
-      selectedIds = [id];
-    }
-    viewportApi.selectFixtures(selectedIds);
-    renderPlacementEditor();
-  });
-}
+bindFixtureRows();
+required<HTMLSelectElement>("[data-local-definition-source]").addEventListener("change", () => {
+  const inline =
+    required<HTMLSelectElement>("[data-local-definition-source]").value === "new-strip";
+  for (const field of document.querySelectorAll<HTMLElement>("[data-inline-definition-fields]"))
+    field.hidden = !inline;
+  required<HTMLInputElement>("[data-local-definition]").disabled = inline;
+});
+required<HTMLButtonElement>("[data-local-add]").addEventListener("click", () => {
+  if (!commands.isOwner()) return;
+  const source = required<HTMLSelectElement>("[data-local-definition-source]").value;
+  const inline = source === "new-strip";
+  const definition = inline ? inlineStripDefinition() : undefined;
+  const fixture: LocalFixture = {
+    id: commands.nextFixtureId(),
+    definition: inline
+      ? required<HTMLInputElement>("[data-inline-definition-id]").value.trim()
+      : required<HTMLInputElement>("[data-local-definition]").value.trim(),
+    mode: required<HTMLInputElement>("[data-local-mode]").value.trim(),
+    addresses: localAddresses(),
+  };
+  const command: Extract<SceneCommand, { kind: "fixture.add" }> = {
+    kind: "fixture.add",
+    fixture,
+    placement: { position: [0, 0.5, 0], rotation: [0, 0, 0] },
+    ...(definition ? { definition: { id: fixture.definition, value: definition } } : {}),
+  };
+  const error = commands.fixtureAddError(command);
+  required("[data-local-error]").textContent = error ?? "";
+  if (!error) commands.apply(command);
+});
+required<HTMLButtonElement>("[data-definition-save]").addEventListener("click", () => {
+  if (!commands.isOwner() || !editingDefinition) return;
+  const definition = commands.definitions()[editingDefinition];
+  if (!definition) return;
+  const value =
+    definition.kind === "strip" ? inlineStripDefinition(true) : inlinePrimitiveDefinition(true);
+  const error = commands.definitionSetError(editingDefinition, value);
+  required("[data-local-error]").textContent = error ?? "";
+  if (!error) commands.apply({ kind: "definition.set", id: editingDefinition, value });
+});
+required<HTMLButtonElement>("[data-object-add]").addEventListener("click", () => {
+  if (!commands.isOwner()) return;
+  const fixture: LocalFixture = {
+    id: commands.nextFixtureId(),
+    definition: required<HTMLInputElement>("[data-object-definition]").value.trim(),
+    mode: "",
+    addresses: [],
+  };
+  const existing = commands.definitions()[fixture.definition];
+  const command: Extract<SceneCommand, { kind: "fixture.add" }> = {
+    kind: "fixture.add",
+    fixture,
+    placement: { position: [0, 0.5, 0], rotation: [0, 0, 0] },
+    ...(existing || !fixture.definition.startsWith("bhs:")
+      ? {}
+      : { definition: { id: fixture.definition, value: inlinePrimitiveDefinition() } }),
+  };
+  const error = commands.fixtureAddError(command);
+  if (error) return;
+  commands.apply(command);
+});
 required<HTMLSelectElement>("[data-grid-snap]").addEventListener("change", (event) => {
   if (!commands.isOwner()) return;
   const value = Number((event.currentTarget as HTMLSelectElement).value);
@@ -352,12 +456,18 @@ required<HTMLButtonElement>("[data-array-save]").addEventListener("click", () =>
   commands.apply({ kind: "array.set", id, array });
 });
 
-new LiveFeed([1, ...universesForStrips(referenceStrips)], {
+liveFeed = new LiveFeed(subscriptionUniverses(commands.fixtures()), {
   frame(universes) {
     for (const universe of universes) {
       receivedUniverses.add(universe.universe);
       latestFrames.set(universe.universe, universe.slots);
     }
+    const levels = localFixtureLevels();
+    viewportApi.setSceneFixtureLevels(levels);
+    for (const [id, level] of levels)
+      document
+        .querySelector<HTMLElement>(`[data-local-fixture="${CSS.escape(String(id))}"]`)
+        ?.setAttribute("data-local-level", String(level));
     for (const [index, strip] of strips.entries()) {
       const definition = referenceStrips[index];
       if (definition) strip.setPixels(resolveColor(textureBytesForStrip(definition, latestFrames)));
@@ -365,6 +475,8 @@ new LiveFeed([1, ...universesForStrips(referenceStrips)], {
     const first = referenceStrips[0]
       ? textureBytesForStrip(referenceStrips[0], latestFrames)
       : null;
+    const subscriptionElement = required("[data-local-error]");
+    subscriptionElement.dataset.subscribed = liveFeed?.subscribed().join(",") ?? "";
     const last = referenceStrips.at(-1)
       ? textureBytesForStrip(referenceStrips.at(-1)!, latestFrames)
       : null;
@@ -484,6 +596,216 @@ function setFixtureTrust(stale: boolean, contended: boolean): void {
   }
 }
 
+function syncSceneFixtures(): void {
+  const fixtures = commands.fixtures();
+  viewportApi.setSceneFixtures(fixtures, commands.definitions());
+  for (const fixture of fixtures)
+    defaultPlacements.set(
+      fixture.id,
+      defaultPlacements.get(fixture.id) ?? {
+        position: [0, 0.5, 0],
+        rotation: [0, 0, 0],
+      },
+    );
+  renderSceneFixtures(fixtures);
+  viewportApi.selectFixtures(selectedIds);
+  liveFeed?.setUniverses(subscriptionUniverses(fixtures));
+}
+
+function renderSceneFixtures(fixtures: readonly LocalFixture[]): void {
+  const item = (fixture: LocalFixture) => {
+    const definition = commands.definitions()[fixture.definition];
+    const detail =
+      fixture.addresses.length === 0
+        ? "no address"
+        : fixture.addresses
+            .map((address) => `${address.universe}.${String(address.address).padStart(3, "0")}`)
+            .join(" · ");
+    const pixels = definition?.kind === "strip" ? ` · ${definition.pixels} px` : "";
+    const resolved = resolvedReferenceDefinition(fixture.definition);
+    const resolvedDetail = resolved ? ` · ${resolved.length} m · ${resolved.footprint} slots` : "";
+    const edit = definition
+      ? `<button type="button" data-edit-definition="${escapeHtml(fixture.definition)}">Edit definition</button>`
+      : "";
+    return `<li role="button" tabindex="0" data-local-fixture="${fixture.id}" data-editable-fixture="${fixture.id}" data-mode="${escapeHtml(fixture.mode)}"${resolved ? ` data-resolved-footprint="${resolved.footprint}" data-resolved-length="${resolved.length}"` : ""}><span><b>${fixture.id} · ${escapeHtml(fixture.definition)}${pixels}</b><small>${detail}${resolvedDetail}</small></span>${edit}</li>`;
+  };
+  for (const [kind, list] of [
+    ["local-fixtures", fixtures.filter((fixture) => fixture.addresses.length > 0)],
+    ["scene-objects", fixtures.filter((fixture) => fixture.addresses.length === 0)],
+  ] as const) {
+    const host = required(`[data-${kind}]`);
+    const signature = list
+      .map((fixture) => {
+        const definition = commands.definitions()[fixture.definition];
+        const pixels = definition?.kind === "strip" ? definition.pixels : "";
+        return [
+          fixture.id,
+          fixture.definition,
+          fixture.mode,
+          pixels,
+          fixture.addresses
+            .map((address) => `${address.universe}.${address.address}.${address.footprint}`)
+            .join("+"),
+        ].join("|");
+      })
+      .join(";");
+    if (host.dataset.fixtureSignature !== signature) {
+      host.dataset.fixtureSignature = signature;
+      host.innerHTML = list.map(item).join("");
+      bindFixtureRows();
+    }
+  }
+}
+
+function bindFixtureRows(): void {
+  for (const row of document.querySelectorAll<HTMLElement>("[data-editable-fixture]")) {
+    if (row.dataset.selectionBound) continue;
+    row.dataset.selectionBound = "true";
+    row.addEventListener("click", (event) => {
+      const id = Number(row.dataset.editableFixture);
+      if (event.shiftKey) {
+        selectedIds = selectedIds.includes(id)
+          ? selectedIds.filter((member) => member !== id)
+          : [...selectedIds, id];
+      } else {
+        selectedIds = [id];
+      }
+      viewportApi.selectFixtures(selectedIds);
+      renderPlacementEditor();
+    });
+    row.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter" && event.key !== " ") return;
+      event.preventDefault();
+      row.click();
+    });
+  }
+  for (const button of document.querySelectorAll<HTMLButtonElement>("[data-edit-definition]")) {
+    if (button.dataset.definitionBound) continue;
+    button.dataset.definitionBound = "true";
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      openDefinitionEditor(button.dataset.editDefinition ?? "");
+    });
+  }
+}
+
+function openDefinitionEditor(id: string): void {
+  const definition = commands.definitions()[id];
+  if (!definition) return;
+  editingDefinition = id;
+  const editor = required<HTMLElement>("[data-definition-editor]");
+  editor.hidden = false;
+  const strip = definition.kind === "strip";
+  for (const control of editor.querySelectorAll<HTMLInputElement | HTMLSelectElement>(
+    "[data-definition-strip]",
+  ))
+    control.closest("label")!.hidden = !strip;
+  required<HTMLElement>("[data-definition-primitive-fields]").hidden = strip;
+  required("[data-definition-affects]").textContent =
+    `Editing ${id} affects ${commands.fixtures().filter((fixture) => fixture.definition === id).length} fixtures.`;
+  if (strip) {
+    required<HTMLInputElement>('[data-definition-strip="pixels"]').value = String(
+      definition.pixels,
+    );
+    required<HTMLInputElement>('[data-definition-strip="pitch"]').value = String(
+      definition.pitchMm,
+    );
+    required<HTMLInputElement>('[data-definition-strip="channels"]').value = String(
+      definition.channelsPerPixel,
+    );
+    required<HTMLSelectElement>('[data-definition-strip="primitive"]').value = definition.primitive;
+  } else {
+    required<HTMLSelectElement>('[data-definition-primitive="type"]').value = definition.primitive;
+    required<HTMLInputElement>('[data-definition-primitive="width"]').value = String(
+      definition.width,
+    );
+    required<HTMLInputElement>('[data-definition-primitive="depth"]').value = String(
+      definition.depth,
+    );
+    required<HTMLInputElement>('[data-definition-primitive="height"]').value = String(
+      definition.height,
+    );
+  }
+}
+
+function inlineStripDefinition(editing = false): BhsDefinition {
+  const selector = editing ? "data-definition-strip" : "data-inline-strip";
+  const value = (field: string) =>
+    Number(required<HTMLInputElement>(`[${selector}="${field}"]`).value);
+  const primitive = required<HTMLSelectElement>(`[${selector}="primitive"]`).value;
+  return {
+    kind: "strip",
+    pixels: value("pixels"),
+    pitchMm: value("pitch"),
+    channelsPerPixel: value("channels"),
+    primitive: primitive === "Cylinder" || primitive === "Sphere" ? primitive : "Cube",
+  };
+}
+
+function inlinePrimitiveDefinition(editing = false): BhsDefinition {
+  const selector = editing ? "data-definition-primitive" : "data-object-primitive";
+  const value = (field: string) =>
+    Number(required<HTMLInputElement>(`[${selector}="${field}"]`).value);
+  const primitive = required<HTMLSelectElement>(`[${selector}="type"]`).value;
+  return {
+    kind: "primitive",
+    primitive: primitive === "Cylinder" || primitive === "Sphere" ? primitive : "Cube",
+    width: value("width"),
+    depth: value("depth"),
+    height: value("height"),
+  };
+}
+
+function localAddresses(): LocalFixture["addresses"] {
+  const footprint = Number(required<HTMLInputElement>("[data-local-footprint]").value);
+  const primary = {
+    universe: Number(required<HTMLInputElement>("[data-local-universe]").value),
+    address: Number(required<HTMLInputElement>("[data-local-address]").value),
+    footprint,
+  };
+  const additional = required<HTMLInputElement>("[data-local-breaks]")
+    .value.split(",")
+    .map((value) => value.trim())
+    .filter(Boolean)
+    .map((value) => {
+      const [universe, address] = value.split(".");
+      return { universe: Number(universe), address: Number(address), footprint };
+    });
+  return [primary, ...additional];
+}
+
+function subscriptionUniverses(fixtures: readonly LocalFixture[]): number[] {
+  return [
+    1,
+    ...universesForStrips(referenceStrips),
+    ...fixtures.flatMap((fixture) => fixture.addresses.map((address) => address.universe)),
+  ];
+}
+
+function localFixtureLevels(): Map<number, number> {
+  const levels = new Map<number, number>();
+  for (const fixture of commands.fixtures()) {
+    const inline = commands.definitions()[fixture.definition];
+    const resolved = inline ?? resolvedReferenceDefinition(fixture.definition);
+    const stripFootprint =
+      resolved && "pixels" in resolved
+        ? resolved.pixels * resolved.channelsPerPixel
+        : resolved && "footprint" in resolved
+          ? resolved.footprint
+          : null;
+    let level = 0;
+    for (const address of fixture.addresses) {
+      const slots = latestFrames.get(address.universe);
+      if (!slots) continue;
+      const footprint = stripFootprint ?? address.footprint;
+      for (const value of slots.subarray(address.address - 1, address.address - 1 + footprint))
+        level = Math.max(level, value ?? 0);
+    }
+    if (fixture.addresses.length > 0) levels.set(fixture.id, level);
+  }
+  return levels;
+}
+
 function effectivePlacements(): Map<number, Placement> {
   const placements = new Map<number, Placement>();
   for (const fixture of editableFixtures) {
@@ -583,6 +905,12 @@ function renderPlacementEditor(): void {
   for (const control of document.querySelectorAll<
     HTMLInputElement | HTMLSelectElement | HTMLButtonElement
   >("[data-arrange-mutation]"))
+    control.disabled = !owner;
+  for (const control of document.querySelectorAll<
+    HTMLInputElement | HTMLSelectElement | HTMLButtonElement
+  >(
+    '[data-local-fixtures] input, [data-local-fixtures] select, [data-local-fixtures] button, [data-definition-editor] input, [data-definition-editor] select, [data-definition-editor] button, [data-overlay-panel="objects"] input, [data-overlay-panel="objects"] select, [data-overlay-panel="objects"] button',
+  ))
     control.disabled = !owner;
   required("[data-history-count]").textContent = String(commands.historyCount());
   required<HTMLButtonElement>("[data-undo]").disabled = !owner || !commands.canUndo();
