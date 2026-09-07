@@ -166,7 +166,7 @@ export async function startBridge(config: BridgeConfig): Promise<RunningBridge> 
   }
 
   function handleControl(socket: ControlSocket, message: string): boolean {
-    let value: { op?: unknown; requestId?: unknown; scene?: unknown };
+    let value: { op?: unknown; requestId?: unknown; scene?: unknown; follow?: unknown };
     try {
       const parsed: unknown = JSON.parse(message);
       if (!parsed || typeof parsed !== "object") return false;
@@ -177,7 +177,7 @@ export async function startBridge(config: BridgeConfig): Promise<RunningBridge> 
     if (value.op === "control.join") {
       if (socket.data.controlId === null) socket.data.controlId = nextControlId++;
       socket.data.lastLiveness = Date.now();
-      if (!owner) owner = socket;
+      if (!owner && value.follow !== true) owner = socket;
       broadcastOwnership();
       owner?.send(JSON.stringify({ op: "control.snapshot.request" }));
       return true;

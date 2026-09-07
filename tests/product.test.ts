@@ -4,7 +4,7 @@ import { createServer } from "node:net";
 import { createSocket } from "node:dgram";
 import { resolve } from "node:path";
 import { Packet } from "sacn";
-import { chromium, type Browser, type Page } from "playwright";
+import { chromium, type Browser, type BrowserContext, type Page } from "playwright";
 
 const repository = resolve(import.meta.dir, "..");
 const auditPath = resolve(repository, ".codex-tmp/udp-send-audit.log");
@@ -75,6 +75,7 @@ describe("running Beamhouse", () => {
     await openFixtures();
     await expectCount(page.locator("[data-fixture]"), 3);
     await page.locator('[data-status="live"]').waitFor();
+    await page.locator("#ownership-status", { hasText: "owner" }).waitFor();
   });
 
   test("delivers concurrent real protocols without arbitration or DMX output", async () => {
@@ -250,48 +251,56 @@ describe("running Beamhouse", () => {
   }, 15_000);
 
   test("adopts an acknowledged current snapshot before completing takeover", async () => {
-    await page.evaluate(() => {
-      const originalSend = Reflect.get(WebSocket.prototype, "send");
-      const queued: Array<{ socket: WebSocket; data: string }> = [];
-      const control = {
-        queued,
-        releaseTakeoverSnapshot() {
-          const index = queued.findIndex(({ data }) => {
-            const value = JSON.parse(data) as { op?: unknown; requestId?: unknown };
-            return value.op === "control.snapshot" && typeof value.requestId === "number";
-          });
-          const message = queued.splice(index, 1)[0];
-          if (!message) throw new Error("missing queued takeover snapshot");
-          originalSend.call(message.socket, message.data);
-        },
-        restore() {
-          WebSocket.prototype.send = originalSend;
-        },
-      };
-      (
-        window as typeof window & { beamhouseSnapshotBlock?: typeof control }
-      ).beamhouseSnapshotBlock = control;
-      WebSocket.prototype.send = function (data) {
-        if (typeof data === "string") {
-          const value = JSON.parse(data) as { op?: unknown };
-          if (value.op === "control.snapshot") {
-            queued.push({ socket: this, data });
-            return;
-          }
-        }
-        originalSend.call(this, data);
-      };
-    });
-
-    const candidateContext = await browser.newContext({ viewport: { width: 1280, height: 800 } });
-    const candidate = await candidateContext.newPage();
+    let candidateContext: BrowserContext | null = null;
+    let candidate: Page | null = null;
     try {
+      await page.evaluate(() => {
+        const originalSend = Reflect.get(WebSocket.prototype, "send");
+        const queued: Array<{ socket: WebSocket; data: string }> = [];
+        const control = {
+          queued,
+          releaseTakeoverSnapshot() {
+            const index = queued.findIndex(({ data }) => {
+              const value = JSON.parse(data) as { op?: unknown; requestId?: unknown };
+              return value.op === "control.snapshot" && typeof value.requestId === "number";
+            });
+            const message = queued.splice(index, 1)[0];
+            if (!message) throw new Error("missing queued takeover snapshot");
+            originalSend.call(message.socket, message.data);
+          },
+          restore() {
+            WebSocket.prototype.send = originalSend;
+          },
+        };
+        (
+          window as typeof window & { beamhouseSnapshotBlock?: typeof control }
+        ).beamhouseSnapshotBlock = control;
+        WebSocket.prototype.send = function (data) {
+          if (typeof data === "string") {
+            const value = JSON.parse(data) as { op?: unknown };
+            if (value.op === "control.snapshot") {
+              queued.push({ socket: this, data });
+              return;
+            }
+          }
+          originalSend.call(this, data);
+        };
+      });
+
+      candidateContext = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+      const seed = await candidateContext.newPage();
+      await seed.goto(`http://127.0.0.1:${httpPort}`, { waitUntil: "domcontentloaded" });
+      await seed.locator('html[data-ready="true"]').waitFor();
+      await writeWorkingPlacement(seed, 2, 9);
+      await seed.close();
+      candidate = await candidateContext.newPage();
       await candidate.goto(`http://127.0.0.1:${httpPort}`, { waitUntil: "domcontentloaded" });
       await candidate.locator('html[data-ready="true"]').waitFor();
       await openFixturesOn(candidate);
       await candidate.locator("#ownership-status", { hasText: "follower · page" }).waitFor();
       await candidate.locator('[data-fixture="2"]').click();
-      await candidate.locator('[data-placement-x="0"]').waitFor();
+      await candidate.locator('[data-placement-x="9"]').waitFor();
+      expect(await workingPlacementX(candidate, 2)).toBe(9);
 
       await candidate.evaluate(() => {
         const originalSend = Reflect.get(WebSocket.prototype, "send");
@@ -340,7 +349,7 @@ describe("running Beamhouse", () => {
       expect(await candidate.locator("#ownership-status").textContent()).toContain("follower");
       expect(
         await candidate.locator("[data-placement-controls]").getAttribute("data-placement-x"),
-      ).toBe("0");
+      ).toBe("9");
 
       await page.evaluate(() => {
         const block = (
@@ -352,6 +361,7 @@ describe("running Beamhouse", () => {
         block.releaseTakeoverSnapshot();
       });
       await candidate.locator('[data-placement-x="5.5"]').waitFor();
+      expect(await workingPlacementX(candidate, 2)).toBe(9);
       await candidate.waitForFunction(
         () =>
           (
@@ -381,9 +391,10 @@ describe("running Beamhouse", () => {
       await page.locator('[data-placement-x="6"]').waitFor();
       expect(await candidate.locator("[data-history-count]").textContent()).toBe("1");
       expect(await page.locator("[data-history-count]").textContent()).toBe("0");
+      expect(await workingPlacementX(candidate, 2)).toBe(6);
+      expect(await workingPlacementX(page, 2)).toBe(5.5);
       await candidate.locator("[data-undo]").click();
       await page.locator('[data-placement-x="5.5"]').waitFor();
-    } finally {
       await page.evaluate(() => {
         (
           window as typeof window & {
@@ -398,8 +409,111 @@ describe("running Beamhouse", () => {
           }
         ).beamhouseAcknowledgementBlock?.restore();
       });
-      await candidateContext.close();
+      await candidate.close();
+      await page.locator("#ownership-status", { hasText: "unowned" }).waitFor();
+      page.once("dialog", (dialog) => void dialog.accept());
+      await page.locator("[data-takeover]").click();
+      await page.locator("#ownership-status", { hasText: "owner" }).waitFor();
+    } finally {
+      try {
+        await page.evaluate(() => {
+          const target = window as typeof window & {
+            beamhouseSnapshotBlock?: { restore(): void };
+          };
+          target.beamhouseSnapshotBlock?.restore();
+          delete target.beamhouseSnapshotBlock;
+        });
+      } finally {
+        try {
+          if (candidate && !candidate.isClosed())
+            await candidate.evaluate(() => {
+              const target = window as typeof window & {
+                beamhouseAcknowledgementBlock?: { restore(): void };
+              };
+              target.beamhouseAcknowledgementBlock?.restore();
+              delete target.beamhouseAcknowledgementBlock;
+            });
+        } finally {
+          await candidateContext?.close();
+        }
+      }
     }
+  }, 15_000);
+  test("fails closed after a page wake until an explicit takeover", async () => {
+    await openFixtures();
+    await page.locator('[data-fixture="2"]').click();
+    const persisted = await workingPlacementX(page, 2);
+    await sendUdp(sacn(45, [91, 92, 93]), sacnPort);
+    await levelsBecome([91, 92, 93]);
+
+    await page.evaluate(() =>
+      window.dispatchEvent(new PageTransitionEvent("pagehide", { persisted: true })),
+    );
+    await page.locator("#ownership-status", { hasText: "unowned" }).waitFor();
+    expect(await page.locator('[data-placement-field="x"]').isDisabled()).toBe(true);
+    await page.evaluate(() => {
+      const input = document.querySelector<HTMLInputElement>('[data-placement-field="x"]');
+      if (!input) throw new Error("missing placement field");
+      input.value = "99";
+      input.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    expect(await workingPlacementX(page, 2)).toBe(persisted);
+
+    const firstWake = page.waitForEvent("websocket");
+    await page.evaluate(() =>
+      window.dispatchEvent(new PageTransitionEvent("pageshow", { persisted: true })),
+    );
+    await (
+      await firstWake
+    ).waitForEvent("framesent", {
+      predicate: (frame) =>
+        typeof frame.payload === "string" && frame.payload.includes("control.join"),
+    });
+    await page.locator("#ownership-status", { hasText: "unowned" }).waitFor();
+    expect(await page.locator('[data-placement-field="x"]').isDisabled()).toBe(true);
+    page.once("dialog", (dialog) => void dialog.accept());
+    await page.locator("[data-takeover]").click();
+    await page.locator("#ownership-status", { hasText: "owner" }).waitFor();
+    await sendUdp(sacn(46, [94, 95, 96]), sacnPort);
+    await levelsBecome([94, 95, 96]);
+
+    await page.evaluate(() =>
+      window.dispatchEvent(new PageTransitionEvent("pagehide", { persisted: true })),
+    );
+    await page.locator("#ownership-status", { hasText: "unowned" }).waitFor();
+    expect(await page.locator('[data-placement-field="x"]').isDisabled()).toBe(true);
+    await page.evaluate(() => {
+      const input = document.querySelector<HTMLInputElement>('[data-placement-field="x"]');
+      if (!input) throw new Error("missing placement field");
+      input.value = "98";
+      input.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    expect(await workingPlacementX(page, 2)).toBe(persisted);
+
+    const secondWake = page.waitForEvent("websocket");
+    await page.evaluate(() =>
+      window.dispatchEvent(new PageTransitionEvent("pageshow", { persisted: true })),
+    );
+    await (
+      await secondWake
+    ).waitForEvent("framesent", {
+      predicate: (frame) =>
+        typeof frame.payload === "string" && frame.payload.includes("control.join"),
+    });
+    await page.locator("#ownership-status", { hasText: "unowned" }).waitFor();
+    expect(await page.locator('[data-placement-field="x"]').isDisabled()).toBe(true);
+    await page.evaluate(() => {
+      const input = document.querySelector<HTMLInputElement>('[data-placement-field="x"]');
+      if (!input) throw new Error("missing placement field");
+      input.value = "97";
+      input.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    expect(await workingPlacementX(page, 2)).toBe(persisted);
+    page.once("dialog", (dialog) => void dialog.accept());
+    await page.locator("[data-takeover]").click();
+    await page.locator("#ownership-status", { hasText: "owner" }).waitFor();
+    await sendUdp(sacn(47, [97, 98, 99]), sacnPort);
+    await levelsBecome([97, 98, 99]);
   }, 15_000);
   test("aligns and distributes a multi-selection as one undo entry per operation", async () => {
     page.once("dialog", (dialog) => void dialog.accept());
@@ -1219,6 +1333,70 @@ async function currentLevels(): Promise<number[]> {
 async function expectCount(locator: ReturnType<Page["locator"]>, count: number): Promise<void> {
   await locator.first().waitFor({ state: count > 0 ? "visible" : "detached" });
   expect(await locator.count()).toBe(count);
+}
+
+async function workingPlacementX(target: Page, fixtureId: number): Promise<number | null> {
+  return target.evaluate(async (id) => {
+    const database = await new Promise<IDBDatabase>((resolve, reject) => {
+      const request = indexedDB.open("beamhouse.scene.v1", 1);
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error ?? new Error("could not open working scene"));
+    });
+    try {
+      const scene = await new Promise<
+        { overrides?: Record<string, { position?: number[] }> } | undefined
+      >((resolve, reject) => {
+        const request = database
+          .transaction("working-scenes")
+          .objectStore("working-scenes")
+          .get("current") as IDBRequest<
+          { overrides?: Record<string, { position?: number[] }> } | undefined
+        >;
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error ?? new Error("could not read working scene"));
+      });
+      return scene?.overrides?.[String(id)]?.position?.[0] ?? null;
+    } finally {
+      database.close();
+    }
+  }, fixtureId);
+}
+
+async function writeWorkingPlacement(target: Page, fixtureId: number, x: number): Promise<void> {
+  await target.evaluate(
+    async ({ id, positionX }) => {
+      const database = await new Promise<IDBDatabase>((resolve, reject) => {
+        const request = indexedDB.open("beamhouse.scene.v1", 1);
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error ?? new Error("could not open working scene"));
+      });
+      try {
+        await new Promise<void>((resolve, reject) => {
+          const request = database
+            .transaction("working-scenes", "readwrite")
+            .objectStore("working-scenes")
+            .put(
+              {
+                overrides: {
+                  [String(id)]: { position: [positionX, 0, 0], rotation: [0, 0, 0] },
+                },
+                views: {},
+                arrays: {},
+                definitions: {},
+                fixtures: {},
+              },
+              "current",
+            );
+          request.onsuccess = () => resolve();
+          request.onerror = () =>
+            reject(request.error ?? new Error("could not seed working scene"));
+        });
+      } finally {
+        database.close();
+      }
+    },
+    { id: fixtureId, positionX: x },
+  );
 }
 
 function sacn(sequence: number, values: number[], options = 0, universe = 1): Uint8Array {

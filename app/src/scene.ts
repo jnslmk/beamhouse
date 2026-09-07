@@ -144,27 +144,26 @@ export class SceneCommands {
   #owner = false;
   #ownerName: string | null = null;
   #database: IDBDatabase;
-  #socket: WebSocket;
+  #socket!: WebSocket;
   #liveness: number | null = null;
+  #relinquishing = false;
+  #hidden = false;
+  #lastTransport = 0;
 
   private constructor(scene: PersistedScene, database: IDBDatabase) {
     this.#scene = scene;
     this.#database = database;
-    const protocol = location.protocol === "https:" ? "wss:" : "ws:";
-    this.#socket = new WebSocket(`${protocol}//${location.host}/ws`);
-    this.#socket.addEventListener("open", () => {
-      this.#send({ op: "control.join" });
-      this.#liveness = window.setInterval(() => this.#send({ op: "control.liveness" }), 5_000);
+    this.#connect(false);
+    window.addEventListener("pagehide", () => {
+      this.#hidden = true;
+      this.#stepDown();
+      this.#socket.close();
     });
-    this.#socket.addEventListener("message", (event) => this.#receive(event.data));
-    window.addEventListener(
-      "pagehide",
-      () => {
-        if (this.#liveness !== null) window.clearInterval(this.#liveness);
-        this.#socket.close();
-      },
-      { once: true },
-    );
+    window.addEventListener("pageshow", () => {
+      if (!this.#hidden) return;
+      this.#hidden = false;
+      this.#connect(true);
+    });
   }
 
   static async create(): Promise<SceneCommands> {
@@ -300,9 +299,10 @@ export class SceneCommands {
       return;
     }
     if (message.op === "control.owner") {
-      if (this.#owner && !message.owner) this.#clearHistory();
+      if (!message.owner && (this.#owner || this.#relinquishing)) this.#clearHistory();
       this.#owner = message.owner;
       this.#ownerName = message.ownerName;
+      this.#relinquishing = false;
       this.#notify();
       return;
     }
@@ -310,7 +310,7 @@ export class SceneCommands {
       if (this.#owner) {
         if (message.relinquish) {
           this.#owner = false;
-          this.#clearHistory();
+          this.#relinquishing = true;
           this.#notify();
         }
         this.#send({
@@ -333,6 +333,62 @@ export class SceneCommands {
         this.#send({ op: "control.snapshot.ack", requestId: message.requestId });
       }
     }
+  }
+
+  #connect(follow: boolean): void {
+    if (this.#liveness !== null) window.clearInterval(this.#liveness);
+    this.#liveness = null;
+    const previous = this.#socket as WebSocket | undefined;
+    const protocol = location.protocol === "https:" ? "wss:" : "ws:";
+    const socket = new WebSocket(`${protocol}//${location.host}/ws`);
+    this.#socket = socket;
+    if (previous && previous !== socket && previous.readyState !== WebSocket.CLOSED) {
+      try {
+        previous.close();
+      } catch {
+        // Closing a stale predecessor never fails the replacement connection.
+      }
+    }
+    socket.addEventListener("open", () => {
+      if (socket !== this.#socket) return;
+      this.#lastTransport = Date.now();
+      socket.send(JSON.stringify({ op: "control.join", follow }));
+      this.#liveness = window.setInterval(() => {
+        if (Date.now() - this.#lastTransport > 15_000) {
+          this.#stepDown();
+          socket.close();
+        } else this.#send({ op: "control.liveness" });
+      }, 5_000);
+    });
+    socket.addEventListener("message", (event) => {
+      if (socket !== this.#socket) return;
+      this.#lastTransport = Date.now();
+      this.#receive(event.data);
+    });
+    socket.addEventListener("error", () => {
+      if (socket !== this.#socket) return;
+      this.#stepDown();
+      socket.close();
+    });
+    socket.addEventListener("close", () => {
+      if (socket !== this.#socket) return;
+      this.#stepDown();
+      if (this.#hidden) return;
+      window.setTimeout(() => {
+        if (socket === this.#socket && !this.#hidden) this.#connect(true);
+      }, 1_000);
+    });
+  }
+
+  #stepDown(): void {
+    if (this.#liveness !== null) window.clearInterval(this.#liveness);
+    this.#liveness = null;
+    this.#owner = false;
+    this.#ownerName = null;
+    this.#relinquishing = false;
+    this.#lastTransport = 0;
+    this.#clearHistory();
+    this.#notify();
   }
 
   #send(message: object): void {
