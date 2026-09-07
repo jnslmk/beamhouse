@@ -4,6 +4,7 @@ import { createServer } from "node:net";
 import { createSocket } from "node:dgram";
 import { resolve } from "node:path";
 import { Packet } from "sacn";
+import { encodeShareSnapshot } from "../app/src/share.ts";
 import { chromium, type Browser, type BrowserContext, type Page } from "playwright";
 
 const repository = resolve(import.meta.dir, "..");
@@ -1237,6 +1238,191 @@ describe("running Beamhouse", () => {
     );
     expect(await page.locator('[data-fixture="1"]').getAttribute("data-selected")).toBe("true");
   }, 15_000);
+  test("shares a frozen snapshot link from the desktop action", async () => {
+    await page.locator("[data-share]").click();
+    await page.waitForFunction(
+      () =>
+        location.hash.includes("#s=") ||
+        document.querySelector("[data-share-state]")?.textContent === "file",
+    );
+    expect(await page.evaluate(() => location.hash.length)).toBeLessThanOrEqual(4099);
+  }, 15_000);
+  test("a share link opens read-only from static hosting with no bridge", async () => {
+    const encoded = await encodeShareSnapshot({
+      fixtures: [
+        {
+          id: -1,
+          definition: "bhs:strip",
+          mode: "default",
+          addresses: [{ universe: 2, address: 30, footprint: 69 }],
+        },
+        {
+          id: -2,
+          definition: "bhs:box",
+          mode: "pixel",
+          addresses: [{ universe: 1, address: 1, footprint: 3 }],
+        },
+        { id: -3, definition: "bhs:box", mode: "", addresses: [] },
+      ],
+      definitions: {
+        "bhs:strip": {
+          kind: "strip",
+          pixels: 23,
+          pitchMm: 25,
+          channelsPerPixel: 3,
+          primitive: "Cube",
+        },
+        "bhs:box": { kind: "primitive", primitive: "Cube", width: 1, depth: 1, height: 1 },
+      },
+      placements: new Map([
+        [-1, { position: [0, 0.5, 2], rotation: [0, 0, 0] }],
+        [-2, { position: [-2, 0.5, 0], rotation: [0, 45, 0] }],
+        [-3, { position: [2, 1.5, -1], rotation: [0, 0, 0] }],
+      ]),
+      views: { Front: { position: [0, 3, 8], target: [0, 1, 0] } },
+      now: Date.now() - 3 * 3600 * 1000,
+    });
+    if (encoded.kind !== "link") throw new Error("fixture rig should fit the fragment budget");
+    const dist = resolve(repository, "app/dist");
+    if (!existsSync(resolve(dist, "index.html"))) {
+      const build = Bun.spawnSync(["bun", "run", "build"], {
+        cwd: repository,
+        stdout: "ignore",
+        stderr: "pipe",
+      });
+      if (!build.success) throw new Error(build.stderr.toString());
+    }
+    const staticPort = await freeTcpPort();
+    const staticServer = Bun.serve({
+      port: staticPort,
+      hostname: "127.0.0.1",
+      fetch(request) {
+        const pathname = new URL(request.url).pathname;
+        const file = pathname === "/" ? "index.html" : pathname.slice(1);
+        const resolved = resolve(dist, file);
+        if (!resolved.startsWith(dist)) return new Response("forbidden", { status: 403 });
+        try {
+          const body = readFileSync(resolved);
+          const type = resolved.endsWith(".html")
+            ? "text/html"
+            : resolved.endsWith(".js")
+              ? "text/javascript"
+              : resolved.endsWith(".css")
+                ? "text/css"
+                : "application/octet-stream";
+          return new Response(body, { headers: { "content-type": type } });
+        } catch {
+          return new Response("missing", { status: 404 });
+        }
+      },
+    });
+    try {
+      const viewer = await browser.newPage({ viewport: { width: 390, height: 844 } });
+      try {
+        await viewer.goto(`http://127.0.0.1:${staticPort}/#${encoded.fragment}`, {
+          waitUntil: "domcontentloaded",
+        });
+        await viewer.locator('html[data-ready="true"]').waitFor({ timeout: 10_000 });
+        await viewer.locator('body[data-viewer="true"]').waitFor({ timeout: 10_000 });
+        // No bridge behind static hosting: the socket never opens.
+        expect(
+          await viewer.evaluate(() => {
+            const { promise, resolve: resolveSocket } = Promise.withResolvers<string>();
+            const socket = new WebSocket(
+              `${location.protocol === "https:" ? "wss:" : "ws:"}//${location.host}/ws`,
+            );
+            const done = (value: string) => {
+              try {
+                socket.close();
+              } catch {
+                // A refused socket has nothing to close.
+              }
+              resolveSocket(value);
+            };
+            socket.addEventListener("open", () => done("open"));
+            socket.addEventListener("error", () => done("refused"));
+            setTimeout(() => done("timeout"), 5_000);
+            return promise;
+          }),
+        ).not.toBe("open");
+        await expectCount(viewer.locator("#viewport canvas"), 1);
+        expect(await viewer.locator("[data-snapshot-age]").innerText()).toContain("Snapshot ·");
+        expect(await viewer.locator("[data-snapshot-age]").innerText()).toContain("3h ago");
+        expect(await viewer.locator(".brand strong").innerText()).toContain("demo");
+        // Only actionable chips survive.
+        expect(await viewer.locator(".status-chips .chip:visible").count()).toBe(2);
+        // The Camera chip survives as navigation; its takeover listener is viewer-detached,
+        // proven below when clicking it opens the overlay instead of claiming ownership.
+        // Portrait reserves the bounded rig band above the fixture list.
+        const portraitBox = await viewer.locator("#viewport").boundingBox();
+        expect(portraitBox?.height).toBeGreaterThan(300);
+        expect(portraitBox?.height).toBeLessThan(340);
+        expect(await viewer.locator("[data-viewer-fixture]").count()).toBe(3);
+        expect(await viewer.locator("[data-viewer-count]").innerText()).toContain("3 fixtures");
+        // Tap selection carries the count, never the name.
+        await viewer.locator('[data-viewer-fixture="-2"]').click();
+        await viewer.locator("#selection-status", { hasText: "SEL 1" }).waitFor();
+        // Canvas tap selection works through the same viewport render path.
+        const point = await viewer.evaluate(() => {
+          const host = document.querySelector("#viewport")!.getBoundingClientRect();
+          const marker = document.querySelector<HTMLElement>('[data-fixture-mark="1"]')!;
+          return {
+            x: host.left + Number.parseFloat(marker.style.left || "0"),
+            y: host.top + Number.parseFloat(marker.style.top || "0"),
+          };
+        });
+        await viewer.mouse.click(point.x, point.y);
+        await viewer.waitForFunction(
+          () => document.querySelector("#selection-status")?.textContent === "SEL 1",
+        );
+        // Read-only: the editor never surfaces, even with a selection.
+        expect(await viewer.locator(".editor:visible").count()).toBe(0);
+        expect(await viewer.locator("[data-placement-controls]:visible").count()).toBe(0);
+        // Orbit moves the camera: the marker projection the render loop writes each frame
+        // is the awaited state signal, so no fixed pause and no pixel comparison.
+        const markBefore = await viewer.evaluate(
+          () => document.querySelector<HTMLElement>('[data-fixture-mark="1"]')?.style.left,
+        );
+        const center = await viewer.locator("#viewport").boundingBox();
+        await viewer.mouse.move(
+          (center?.x ?? 195) + (center?.width ?? 390) / 2,
+          (center?.y ?? 0) + 160,
+        );
+        await viewer.mouse.down();
+        await viewer.mouse.move(
+          (center?.x ?? 195) + (center?.width ?? 390) / 2 - 150,
+          (center?.y ?? 0) + 160,
+          { steps: 8 },
+        );
+        await viewer.mouse.up();
+        await viewer.waitForFunction(
+          (before) =>
+            document.querySelector<HTMLElement>('[data-fixture-mark="1"]')?.style.left !== before,
+          markBefore ?? "",
+        );
+        // The Camera chip opens the viewer overlay: fixtures and objects only.
+        await viewer.locator(".status-chips .chip:visible", { hasText: "Camera" }).click();
+        await viewer.locator("[data-overlay]").waitFor({ state: "visible" });
+        expect(await viewer.locator('[data-overlay-tab="issues"]:visible').count()).toBe(0);
+        // The frozen snapshot view survived selection re-renders and still applies.
+        await viewer.locator('[data-camera-view="Front"]').click();
+        // Landscape frames the rig full-height with the list floating; the media-query
+        // flip is the awaited signal.
+        await viewer.keyboard.press("Escape");
+        await viewer.setViewportSize({ width: 844, height: 390 });
+        await viewer.waitForFunction(
+          () =>
+            getComputedStyle(document.querySelector("[data-viewer-list]")!).position === "absolute",
+        );
+        const landscapeBox = await viewer.locator("#viewport").boundingBox();
+        expect(landscapeBox?.height).toBeGreaterThan(300);
+      } finally {
+        await viewer.close();
+      }
+    } finally {
+      await staticServer.stop(true);
+    }
+  }, 60_000);
 });
 
 async function canvasColorSamples(

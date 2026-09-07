@@ -521,3 +521,83 @@ dd {
 .array-form input {
   width: 64px;
 }
+
+/* Read-only share viewer (ADR-0032): no rail, no editor, actionable chips only. */
+body[data-viewer="true"] .editor,
+body[data-viewer="true"] [data-arrange],
+body[data-viewer="true"] .camera-views .camera-save,
+body[data-viewer="true"] .local-fixtures .array-form,
+body[data-viewer="true"] [data-definition-editor],
+body[data-viewer="true"] .local-fixtures,
+body[data-viewer="true"] .strip-status,
+body[data-viewer="true"] .status-chips .chip[hidden],
+body[data-viewer="true"] [data-overlay-tab][hidden] {
+  display: none;
+}
+body[data-viewer="true"] [data-overlay-panel="objects"] .array-form {
+  display: none;
+}
+body[data-viewer="true"] #viewport::after {
+  content: "tap to select · drag to orbit";
+}
+.at-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.snapshot-age {
+  position: absolute;
+  left: 18px;
+  top: 12px;
+  font:
+    11px ui-monospace,
+    monospace;
+  color: #96918a;
+  background: #171614d9;
+  border: 1px solid #302d2a;
+  border-radius: 6px;
+  padding: 4px 8px;
+  pointer-events: none;
+}
+.viewer-list {
+  display: none;
+}
+/* Portrait: a bounded 320 px rig band, the rest spent on the list (ADR-0032 §4). */
+body[data-viewer="true"] .workspace {
+  grid-template: 320px minmax(0, 1fr) / minmax(0, 1fr);
+}
+body[data-viewer="true"] #viewport {
+  height: 320px;
+}
+body[data-viewer="true"] .viewer-list {
+  display: block;
+  overflow: auto;
+  border-top: 1px solid #302d2a;
+  padding: 12px 18px 36px;
+  background: #171614;
+}
+/* Landscape: the rig frames its content box full-frame; the list floats. */
+@media (orientation: landscape) {
+  body[data-viewer="true"] .workspace {
+    grid-template: minmax(0, 1fr) / minmax(0, 1fr);
+  }
+  body[data-viewer="true"] #viewport {
+    height: 100%;
+  }
+  body[data-viewer="true"] .viewer-list {
+    position: absolute;
+    z-index: 4;
+    top: 12px;
+    right: 12px;
+    bottom: 12px;
+    width: 230px;
+    overflow: auto;
+    border: 1px solid #302d2a;
+    border-radius: 9px;
+    padding: 12px 14px 24px;
+    background: #171614f5;
+  }
+}

@@ -144,20 +144,22 @@ export class SceneCommands {
   #owner = false;
   #ownerName: string | null = null;
   #database: IDBDatabase;
-  #socket!: WebSocket;
+  #socket: WebSocket | undefined;
+  #control: boolean;
   #liveness: number | null = null;
   #relinquishing = false;
   #hidden = false;
   #lastTransport = 0;
 
-  private constructor(scene: PersistedScene, database: IDBDatabase) {
+  private constructor(scene: PersistedScene, database: IDBDatabase, control = true) {
     this.#scene = scene;
     this.#database = database;
+    this.#control = control;
     this.#connect(false);
     window.addEventListener("pagehide", () => {
       this.#hidden = true;
       this.#stepDown();
-      this.#socket.close();
+      this.#socket?.close();
     });
     window.addEventListener("pageshow", () => {
       if (!this.#hidden) return;
@@ -166,9 +168,9 @@ export class SceneCommands {
     });
   }
 
-  static async create(): Promise<SceneCommands> {
+  static async create(options: { control?: boolean } = {}): Promise<SceneCommands> {
     const database = await openDatabase();
-    return new SceneCommands(await load(database), database);
+    return new SceneCommands(await load(database), database, options.control ?? true);
   }
 
   onChanged(changed: () => void): void {
@@ -334,11 +336,13 @@ export class SceneCommands {
       }
     }
   }
-
   #connect(follow: boolean): void {
+    // A share-link viewer is frozen at the transport layer too: no dial, no join,
+    // no liveness, no reconnect, and therefore no adopted live snapshots.
+    if (!this.#control) return;
     if (this.#liveness !== null) window.clearInterval(this.#liveness);
     this.#liveness = null;
-    const previous = this.#socket as WebSocket | undefined;
+    const previous = this.#socket;
     const protocol = location.protocol === "https:" ? "wss:" : "ws:";
     const socket = new WebSocket(`${protocol}//${location.host}/ws`);
     this.#socket = socket;
@@ -390,9 +394,8 @@ export class SceneCommands {
     this.#clearHistory();
     this.#notify();
   }
-
   #send(message: object): void {
-    if (this.#socket.readyState === WebSocket.OPEN) this.#socket.send(JSON.stringify(message));
+    if (this.#socket?.readyState === WebSocket.OPEN) this.#socket.send(JSON.stringify(message));
   }
 
   #notify(): void {

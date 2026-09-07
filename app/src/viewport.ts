@@ -55,6 +55,8 @@ export interface Viewport {
     position: [number, number, number];
     target: [number, number, number];
   }): void;
+  /** Frames the rig's content box at meet: the landscape viewer rule (ADR-0032 §4). */
+  frameContentBox(points: readonly (readonly [number, number, number])[]): void;
 }
 
 export function createViewport(
@@ -436,6 +438,33 @@ export function createViewport(
     setCameraView(view) {
       camera.position.fromArray(view.position);
       controls.target.fromArray(view.target);
+      controls.update();
+    },
+    frameContentBox(points) {
+      if (points.length === 0) return;
+      const min = [...points[0]!] as [number, number, number];
+      const max = [...points[0]!] as [number, number, number];
+      for (const point of points)
+        for (let axis = 0; axis < 3; axis += 1) {
+          min[axis] = Math.min(min[axis]!, point[axis]!);
+          max[axis] = Math.max(max[axis]!, point[axis]!);
+        }
+      const center = new THREE.Vector3(
+        (min[0] + max[0]) / 2,
+        (min[1] + max[1]) / 2,
+        (min[2] + max[2]) / 2,
+      );
+      const span = new THREE.Vector3(max[0] - min[0], max[1] - min[1], max[2] - min[2]);
+      const fitHeight = Math.max(span.y, span.x / camera.aspect, span.z / camera.aspect, 1);
+      const distance = Math.min(
+        20,
+        Math.max(5, (fitHeight / 2 / Math.tan(THREE.MathUtils.degToRad(camera.fov / 2))) * 1.25),
+      );
+      const direction = camera.position.clone().sub(controls.target);
+      if (direction.lengthSq() === 0) direction.set(1, 0.8, 1);
+      direction.normalize();
+      controls.target.copy(center);
+      camera.position.copy(center).addScaledVector(direction, distance);
       controls.update();
     },
     setSceneFixtureLevels(levels) {

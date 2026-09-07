@@ -10,6 +10,13 @@ import {
 } from "./reference-rig.ts";
 import { createViewport, type StripProbeMarkers } from "./viewport.ts";
 import {
+  decodeShareFragment,
+  encodeShareSnapshot,
+  formatSnapshotAge,
+  snapshotScene,
+  type ShareSnapshot,
+} from "./share.ts";
+import {
   alignTargets,
   distributeTargets,
   rotateTargets,
@@ -40,18 +47,26 @@ root.innerHTML = `
       <button class="chip" type="button" data-chip-tab="fixtures" data-hold-toggle aria-pressed="false"><span>Hold</span><b id="hold-status">off</b></button>
       <button class="chip" type="button" data-chip-tab="fixtures"><span>Snap</span><b id="snap-status">0.25 m</b></button>
       <button class="chip" type="button" data-chip-tab="fixtures" data-takeover><span>Camera</span><b id="ownership-status">claiming</b></button>
+      <button class="chip" type="button" data-share title="Copy a frozen snapshot link"><span>Share</span><b data-share-state>link</b></button>
     </div>
   </header>
   <section class="workspace">
-    <div id="viewport" aria-label="Live cube and STAR-TENT strip reference patch">
+    <div id="viewport" aria-label="Live cube and STAR-TENT strip reference patch" aria-describedby="viewport-hint">
+      <span class="at-only" id="viewport-hint" data-viewport-hint>Drag to orbit · scroll to zoom</span>
       <div class="viewport-marks" aria-live="polite">
         <span class="fixture-mark" data-fixture-mark="1"></span>
         <span class="fixture-mark" data-fixture-mark="2"></span>
         <span class="fixture-mark" data-fixture-mark="3"></span>
         ${referenceStrips.map((strip) => `<span class="strip-mark" data-strip-mark="${strip.id}"></span>`).join("")}
         ${referenceStrips.map((strip) => `<span data-strip-probe="${strip.id}-start"></span><span data-strip-probe="${strip.id}-end"></span>`).join("")}
+      </div>
       <div class="render-note" data-intensity-note hidden>Intensity map · relative per emitter · no photometric claim</div>
+      <div class="snapshot-age" data-snapshot-age hidden></div>
     </div>
+    <section class="viewer-list" data-viewer-list hidden aria-label="Shared fixtures">
+      <div class="health-heading"><b>Shared rig</b><output data-viewer-count></output></div>
+      <ol class="fixtures" data-viewer-fixtures></ol>
+    </section>
     <aside class="overlay" data-overlay hidden aria-label="Scene workspace">
       <nav class="overlay-tabs" aria-label="Scene panels" role="tablist">
         <button type="button" role="tab" data-overlay-tab="fixtures">Fixtures</button>
@@ -208,12 +223,14 @@ const stripProbeMarkers: StripProbeMarkers[] = referenceStrips.map((strip) => ({
   start: required(`[data-strip-probe="${strip.id}-start"]`),
   end: required(`[data-strip-probe="${strip.id}-end"]`),
 }));
+const viewerSnapshot = await decodeShareFragment(location.hash);
+let viewerActive = false;
 let selectedIds: number[] = [];
 let holdActive = false;
 let renderMode: "live" | "intensity" = "live";
 const heldIds = new Set<number>();
 let editingDefinition: string | null = null;
-const commands = await SceneCommands.create();
+const commands = await SceneCommands.create({ control: viewerSnapshot === null });
 const viewportApi = createViewport(
   viewport,
   fixtureMarks,
@@ -241,18 +258,21 @@ for (const fixture of editableFixtures) {
 }
 syncSceneFixtures();
 commands.onChanged(() => {
-  syncSceneFixtures();
+  // A shared link is frozen: later scene traffic never rewrites the snapshot rig.
+  if (!viewerSnapshot) syncSceneFixtures();
   renderPlacementEditor();
 });
 renderPlacementEditor();
 
-required<HTMLButtonElement>("[data-takeover]").addEventListener("click", () => {
-  if (
-    commands.isOwner() ||
-    confirm(`Take over scene from ${commands.ownerName() ?? "the current owner"}?`)
-  )
-    commands.takeover();
-});
+if (!viewerSnapshot) {
+  required<HTMLButtonElement>("[data-takeover]").addEventListener("click", () => {
+    if (
+      commands.isOwner() ||
+      confirm(`Take over scene from ${commands.ownerName() ?? "the current owner"}?`)
+    )
+      commands.takeover();
+  });
+}
 
 for (const chip of document.querySelectorAll<HTMLButtonElement>("[data-chip-tab]")) {
   if ("holdToggle" in chip.dataset || "renderToggle" in chip.dataset) continue;
@@ -481,64 +501,70 @@ required<HTMLButtonElement>("[data-array-save]").addEventListener("click", () =>
   commands.apply({ kind: "array.set", id, array });
 });
 
-liveFeed = new LiveFeed(subscriptionUniverses(commands.fixtures()), {
-  frame(universes) {
-    for (const universe of universes) {
-      receivedUniverses.add(universe.universe);
-      latestFrames.set(universe.universe, universe.slots);
-    }
-    const levels = localFixtureLevels();
-    if (holdActive) for (const id of heldIds) levels.delete(id);
-    viewportApi.setSceneFixtureLevels(levels);
-    for (const [id, level] of levels)
-      document
-        .querySelector<HTMLElement>(`[data-local-fixture="${CSS.escape(String(id))}"]`)
-        ?.setAttribute("data-local-level", String(level));
-    for (const [index, strip] of strips.entries()) {
-      const definition = referenceStrips[index];
-      if (definition && !(holdActive && heldIds.has(definition.id))) {
-        const resolved = resolveColor(textureBytesForStrip(definition, latestFrames));
-        strip.setPixels(renderMode === "intensity" ? intensityPixels(resolved) : resolved);
+if (!viewerSnapshot) {
+  liveFeed = new LiveFeed(subscriptionUniverses(commands.fixtures()), {
+    frame(universes) {
+      for (const universe of universes) {
+        receivedUniverses.add(universe.universe);
+        latestFrames.set(universe.universe, universe.slots);
       }
-    }
-    const first = referenceStrips[0]
-      ? textureBytesForStrip(referenceStrips[0], latestFrames)
-      : null;
-    const subscriptionElement = required("[data-local-error]");
-    subscriptionElement.dataset.subscribed = liveFeed?.subscribed().join(",") ?? "";
-    const last = referenceStrips.at(-1)
-      ? textureBytesForStrip(referenceStrips.at(-1)!, latestFrames)
-      : null;
-    if (first && last) {
-      const readback = required("[data-strip-readback]");
-      const value = `${first.slice(0, 3).join(",")}|${last.slice(-3).join(",")}`;
-      readback.dataset.stripReadback = value;
-      readback.textContent = `Pixel gradient · ${value.replace("|", " → ")}`;
-    }
-    const universe = universes.find((candidate) => candidate.universe === 1);
-    if (!universe) return;
-    cubes.forEach((cube, index) => {
-      if (holdActive && heldIds.has(cube.id)) return;
-      const level = universe.slots[cube.address - 1] ?? 0;
-      cube.setLevel(level);
-      const row = fixtureRows[index];
-      if (!row) return;
-      row.dataset.level = String(level);
-      const output = row.querySelector("output");
-      if (output) output.textContent = String(level);
-    });
-    if (latestHealth) renderHealth(latestHealth);
-  },
-  health(message) {
-    latestHealth = message;
-    renderHealth(message);
-  },
-  status(status) {
-    const statusElement = required("#feed-status");
-    statusElement.textContent = status;
-    statusElement.dataset.status = status;
-  },
-});
+      const levels = localFixtureLevels();
+      if (holdActive) for (const id of heldIds) levels.delete(id);
+      viewportApi.setSceneFixtureLevels(levels);
+      for (const [id, level] of levels)
+        document
+          .querySelector<HTMLElement>(`[data-local-fixture="${CSS.escape(String(id))}"]`)
+          ?.setAttribute("data-local-level", String(level));
+      for (const [index, strip] of strips.entries()) {
+        const definition = referenceStrips[index];
+        if (definition && !(holdActive && heldIds.has(definition.id))) {
+          const resolved = resolveColor(textureBytesForStrip(definition, latestFrames));
+          strip.setPixels(renderMode === "intensity" ? intensityPixels(resolved) : resolved);
+        }
+      }
+      const first = referenceStrips[0]
+        ? textureBytesForStrip(referenceStrips[0], latestFrames)
+        : null;
+      const subscriptionElement = required("[data-local-error]");
+      subscriptionElement.dataset.subscribed = liveFeed?.subscribed().join(",") ?? "";
+      const last = referenceStrips.at(-1)
+        ? textureBytesForStrip(referenceStrips.at(-1)!, latestFrames)
+        : null;
+      if (first && last) {
+        const readback = required("[data-strip-readback]");
+        const value = `${first.slice(0, 3).join(",")}|${last.slice(-3).join(",")}`;
+        readback.dataset.stripReadback = value;
+        readback.textContent = `Pixel gradient · ${value.replace("|", " → ")}`;
+      }
+      const universe = universes.find((candidate) => candidate.universe === 1);
+      if (!universe) return;
+      cubes.forEach((cube, index) => {
+        if (holdActive && heldIds.has(cube.id)) return;
+        const level = universe.slots[cube.address - 1] ?? 0;
+        cube.setLevel(level);
+        const row = fixtureRows[index];
+        if (!row) return;
+        row.dataset.level = String(level);
+        const output = row.querySelector("output");
+        if (output) output.textContent = String(level);
+      });
+      if (latestHealth) renderHealth(latestHealth);
+    },
+    health(message) {
+      latestHealth = message;
+      renderHealth(message);
+    },
+    status(status) {
+      const statusElement = required("#feed-status");
+      statusElement.textContent = status;
+      statusElement.dataset.status = status;
+    },
+  });
+} else {
+  enterViewerMode(viewerSnapshot);
+}
+
+required<HTMLButtonElement>("[data-share]").addEventListener("click", () => void shareScene());
 
 document.documentElement.dataset.ready = "true";
 
@@ -1074,6 +1100,8 @@ function renderPlacementEditor(): void {
           .join("");
   required<HTMLButtonElement>("[data-undo]").disabled = !owner || !commands.canUndo();
   required<HTMLButtonElement>("[data-redo]").disabled = !owner || !commands.canRedo();
+  // A shared link carries its own frozen views; the command journal behind them is unreachable.
+  if (viewerActive) return;
   const views = required("[data-camera-views]");
   views.innerHTML = Object.keys(commands.views())
     .sort()
@@ -1107,6 +1135,7 @@ function openOverlay(tab: string): void {
     ?.setAttribute("tabindex", "-1");
 }
 function selectFixture(id: number, additive: boolean): void {
+  if (viewerActive && additive) return;
   if (additive) {
     selectedIds = selectedIds.includes(id)
       ? selectedIds.filter((member) => member !== id)
@@ -1117,6 +1146,134 @@ function selectFixture(id: number, additive: boolean): void {
   if (holdActive) pinHold();
   viewportApi.selectFixtures(selectedIds);
   renderPlacementEditor();
+  // The phone chip carries the count, never the name (ADR-0032 §6).
+  if (viewerActive)
+    required("#selection-status").textContent =
+      selectedIds.length === 0 ? "none" : `SEL ${selectedIds.length}`;
+}
+
+function resolveShareReference(id: string): BhsDefinition | null {
+  const resolved = resolvedReferenceDefinition(id);
+  if (!resolved) return null;
+  const pixels =
+    referenceStrips.find((strip) => strip.definitionId === id)?.pixels ??
+    referenceStrips[0]?.pixels ??
+    23;
+  return {
+    kind: "strip",
+    pixels,
+    pitchMm: Math.round((resolved.length * 1000) / pixels),
+    channelsPerPixel: Math.max(1, Math.round(resolved.footprint / pixels)),
+    primitive: "Cube",
+  };
+}
+
+async function shareScene(): Promise<string | null> {
+  const state = required("[data-share-state]");
+  const result = await encodeShareSnapshot({
+    fixtures: commands.fixtures(),
+    definitions: commands.definitions(),
+    placements: effectivePlacements(),
+    views: commands.views(),
+    resolveReference: resolveShareReference,
+  });
+  if (result.kind === "link") {
+    location.hash = result.fragment;
+    state.textContent = "copied";
+    const url = `${location.origin}${location.pathname}#${result.fragment}`;
+    try {
+      await navigator.clipboard.writeText(url);
+    } catch {
+      // Clipboard denial still leaves the link in the address bar.
+    }
+    return url;
+  }
+  const blob = new Blob([result.json], { type: "application/json" });
+  const anchor = document.createElement("a");
+  anchor.href = URL.createObjectURL(blob);
+  anchor.download = result.filename;
+  // A detached anchor click is ignored in Firefox: attach, click, remove.
+  document.body.append(anchor);
+  anchor.click();
+  anchor.remove();
+  setTimeout(() => URL.revokeObjectURL(anchor.href), 1000);
+  // §9.1 fallback copy, stated in the UI where the link would have been.
+  state.textContent = "file";
+  state.title = "Link too large for a URL — downloaded the snapshot as .bhs instead.";
+  return null;
+}
+
+function enterViewerMode(snapshot: ShareSnapshot): void {
+  viewerActive = true;
+  document.body.dataset.viewer = "true";
+  const brand = document.querySelector(".brand strong");
+  if (brand) brand.textContent = "Beamhouse · demo";
+  // Actionable chips only: Selection + Camera survive (ADR-0032 §2).
+  for (const chip of document.querySelectorAll<HTMLElement>(".status-chips .chip")) {
+    const label = chip.querySelector("span")?.textContent;
+    if (label !== "Selection" && label !== "Camera") chip.hidden = true;
+  }
+  for (const tab of document.querySelectorAll<HTMLElement>("[data-overlay-tab]")) {
+    if (tab.dataset.overlayTab !== "fixtures" && tab.dataset.overlayTab !== "objects")
+      tab.hidden = true;
+  }
+  const { definitions, fixtures, placements } = snapshotScene(snapshot);
+  viewportApi.setSceneFixtures(fixtures, definitions);
+  // Objects joins the viewer list only when non-empty (ADR-0032 §5).
+  if (!fixtures.some((fixture) => fixture.addresses.length === 0))
+    document.querySelector<HTMLElement>('[data-overlay-tab="objects"]')!.hidden = true;
+  for (const fixture of fixtures) {
+    const placement = placements.get(fixture.id);
+    if (placement) defaultPlacements.set(fixture.id, placement);
+  }
+  for (const editable of editableFixtures) {
+    const placement = placements.get(editable.id) ?? defaultPlacements.get(editable.id);
+    if (placement) editable.setPlacement(commands.placement(editable.id, placement));
+  }
+  const age = required("[data-snapshot-age]");
+  age.textContent = formatSnapshotAge(snapshot.takenAt);
+  age.hidden = false;
+  required("[data-viewport-hint]").textContent = "Tap to select · drag to orbit";
+  const list = required("[data-viewer-list]");
+  list.hidden = false;
+  const host = required("[data-viewer-fixtures]");
+  host.innerHTML = fixtures
+    .map(
+      (fixture) =>
+        `<li role="button" tabindex="0" data-viewer-fixture="${fixture.id}" data-editable-fixture="${fixture.id}"><span><b>${fixture.id} · ${escapeHtml(fixture.mode)}</b><small>${fixture.addresses.map((address) => `${address.universe}.${String(address.address).padStart(3, "0")}`).join(" · ") || "no address"}</small></span></li>`,
+    )
+    .join("");
+  required("[data-viewer-count]").textContent =
+    fixtures.length === 1 ? "1 fixture" : `${fixtures.length} fixtures`;
+  for (const row of host.querySelectorAll<HTMLElement>("[data-viewer-fixture]"))
+    row.addEventListener("click", () => selectFixture(Number(row.dataset.viewerFixture), false));
+  const names = Object.keys(snapshot.views);
+  if (names.length > 0) {
+    const views = required("[data-camera-views]");
+    views.innerHTML = names
+      .sort()
+      .map(
+        (name) =>
+          `<button type="button" data-camera-view="${escapeHtml(name)}">${escapeHtml(name)}</button>`,
+      )
+      .join("");
+    for (const button of views.querySelectorAll<HTMLButtonElement>("[data-camera-view]")) {
+      button.disabled = false;
+      button.addEventListener("click", () => {
+        const view = snapshot.views[button.dataset.cameraView ?? ""];
+        if (view) viewportApi.setCameraView(view);
+      });
+    }
+  }
+  viewportApi.frameContentBox([
+    ...referenceStrips.map((strip) => strip.placement.position),
+    ...fixtures.map(
+      (fixture) =>
+        placements.get(fixture.id)?.position ?? ([0, 0.5, 0] as [number, number, number]),
+    ),
+  ]);
+  renderPlacementEditor();
+  if (viewerActive) required("#selection-status").textContent = "none";
 }
 
 document.addEventListener("keydown", (event) => {
