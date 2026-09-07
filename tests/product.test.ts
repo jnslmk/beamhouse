@@ -401,6 +401,452 @@ describe("running Beamhouse", () => {
       await candidateContext.close();
     }
   }, 15_000);
+  test("aligns and distributes a multi-selection as one undo entry per operation", async () => {
+    page.once("dialog", (dialog) => void dialog.accept());
+    await page.locator("[data-takeover]").click();
+    await page.locator("#ownership-status", { hasText: "owner" }).waitFor();
+    await openFixtures();
+    for (const [fixture, x] of [
+      [1, "1"],
+      [2, "2"],
+      [3, "9"],
+    ] as const) {
+      await page.locator(`[data-fixture="${fixture}"]`).click();
+      await page.locator('[data-placement-field="x"]').fill(x);
+      await page.locator('[data-placement-field="x"]').press("Enter");
+      await page
+        .locator(`[data-fixture-mark="${fixture}"][data-rendered-placement-x="${x}"]`)
+        .waitFor();
+    }
+    await page.locator('[data-fixture="1"]').click();
+    await page.locator('[data-fixture="2"]').click({ modifiers: ["Shift"] });
+    await page.locator('[data-fixture="3"]').click({ modifiers: ["Shift"] });
+    expect(await page.locator("[data-arrange]").getAttribute("data-selection-ids")).toBe("1,2,3");
+    const before = Number(await page.locator("[data-history-count]").textContent());
+    await page.locator('[data-distribute="x"]').click();
+    await page.locator('[data-fixture-mark="2"][data-rendered-placement-x="5"]').waitFor();
+    expect(Number(await page.locator("[data-history-count]").textContent())).toBe(before + 1);
+    await page.locator("[data-undo]").click();
+    await page.locator('[data-fixture-mark="2"][data-rendered-placement-x="2"]').waitFor();
+    await page.locator("[data-redo]").click();
+    await page.locator('[data-fixture-mark="2"][data-rendered-placement-x="5"]').waitFor();
+    await page.locator('[data-align="x"]').click();
+    await page.locator('[data-fixture-mark="1"][data-rendered-placement-x="5"]').waitFor();
+    await page.locator('[data-fixture-mark="3"][data-rendered-placement-x="5"]').waitFor();
+    expect(Number(await page.locator("[data-history-count]").textContent())).toBe(before + 2);
+    await page.locator("[data-undo]").click();
+    await page.locator('[data-fixture-mark="1"][data-rendered-placement-x="1"]').waitFor();
+  }, 15_000);
+
+  test("keeps line and grid arrays live, persistent, and override-durable", async () => {
+    await openFixtures();
+    await page.locator('[data-fixture="1"]').click();
+    await page.locator('[data-fixture="2"]').click({ modifiers: ["Shift"] });
+    await page.locator('[data-fixture="3"]').click({ modifiers: ["Shift"] });
+    await page.locator("[data-revert]").click();
+    await page.locator('[data-fixture-mark="1"][data-rendered-placement-x="-2.25"]').waitFor();
+    await page.locator("[data-array-id]").fill("cubes-line");
+    await page.locator("[data-array-kind]").selectOption("line");
+    await page.locator("[data-array-members]").fill("1,2,3");
+    await page.locator('[data-array="spacingX"]').fill("2");
+    await page.locator("[data-array-save]").click();
+    await page.locator("[data-array-status]", { hasText: "cubes-line · 3 members" }).waitFor();
+    await page.locator('[data-fixture-mark="3"][data-rendered-placement-x="4"]').waitFor();
+    await page.locator('[data-array="spacingX"]').fill("3");
+    await page.locator("[data-array-save]").click();
+    await page.locator('[data-fixture-mark="3"][data-rendered-placement-x="6"]').waitFor();
+    await page.locator('[data-fixture="2"]').click();
+    await page.locator('[data-placement-field="x"]').fill("10");
+    await page.locator('[data-placement-field="x"]').press("Enter");
+    await page.locator('[data-fixture-mark="2"][data-rendered-placement-x="10"]').waitFor();
+    await page.locator('[data-array="spacingX"]').fill("4");
+    await page.locator("[data-array-save]").click();
+    await page.locator('[data-fixture-mark="3"][data-rendered-placement-x="8"]').waitFor();
+    expect(
+      await page.locator('[data-fixture-mark="2"]').getAttribute("data-rendered-placement-x"),
+    ).toBe("10");
+    await page.locator("[data-array-kind]").selectOption("grid");
+    await page.locator('[data-array="spacingX"]').fill("2");
+    await page.locator('[data-array="spacingZ"]').fill("5");
+    await page.locator('[data-array="columns"]').fill("2");
+    await page.locator("[data-array-save]").click();
+    await page.locator('[data-fixture-mark="3"][data-rendered-placement-z="5"]').waitFor();
+    expect(
+      await page.locator('[data-fixture-mark="1"]').getAttribute("data-rendered-placement-x"),
+    ).toBe("0");
+    expect(
+      await page.locator('[data-fixture-mark="2"]').getAttribute("data-rendered-placement-x"),
+    ).toBe("10");
+    await page.reload({ waitUntil: "domcontentloaded" });
+    await page.locator('html[data-ready="true"]').waitFor();
+    await openFixtures();
+    await page.locator('[data-fixture-mark="3"][data-rendered-placement-z="5"]').waitFor();
+    expect(
+      await page.locator('[data-fixture-mark="2"]').getAttribute("data-rendered-placement-x"),
+    ).toBe("10");
+  }, 15_000);
+
+  test("rotates about own, shared, and explicit pivots as rigid transforms", async () => {
+    await openFixtures();
+    for (const [fixture, x] of [
+      [1, "-2"],
+      [2, "2"],
+    ] as const) {
+      await page.locator(`[data-fixture="${fixture}"]`).click();
+      await page.locator('[data-placement-field="x"]').fill(x);
+      await page.locator('[data-placement-field="x"]').press("Enter");
+      await page
+        .locator(`[data-fixture-mark="${fixture}"][data-rendered-placement-x="${x}"]`)
+        .waitFor();
+    }
+    const mark = (id: number) =>
+      page.evaluate((fixtureId) => {
+        const marker = document.querySelector(`[data-fixture-mark="${fixtureId}"]`);
+        return {
+          x: Number(marker?.getAttribute("data-rendered-placement-x")),
+          z: Number(marker?.getAttribute("data-rendered-placement-z")),
+          ry: Number(marker?.getAttribute("data-rendered-placement-ry")),
+        };
+      }, id);
+    await page.locator('[data-fixture="1"]').click();
+    await page.locator('[data-fixture="2"]').click({ modifiers: ["Shift"] });
+    await page.locator('[data-rotate="ry"]').fill("90");
+    await page.locator("[data-rotate-pivot]").selectOption("own");
+    const beforeOwn = await mark(1);
+    await page.locator("[data-rotate-apply]").click();
+    await page.waitForFunction((previous) => {
+      const marker = document.querySelector('[data-fixture-mark="1"]');
+      return Math.abs(Number(marker?.getAttribute("data-rendered-placement-ry")) - previous) > 89;
+    }, beforeOwn.ry);
+    expect((await mark(1)).x).toBe(-2);
+    expect((await mark(2)).x).toBe(2);
+    await page.locator("[data-undo]").click();
+    await page.waitForFunction((previous) => {
+      const marker = document.querySelector('[data-fixture-mark="1"]');
+      return Math.abs(Number(marker?.getAttribute("data-rendered-placement-ry")) - previous) < 1;
+    }, beforeOwn.ry);
+    await page.locator("[data-rotate-pivot]").selectOption("shared");
+    await page.locator("[data-rotate-apply]").click();
+    await page.waitForFunction(() => {
+      const read = (id: number) =>
+        Number(
+          document
+            .querySelector(`[data-fixture-mark="${id}"]`)
+            ?.getAttribute("data-rendered-placement-x"),
+        );
+      return Math.abs(read(1)) < 1e-6 && Math.abs(read(2)) < 1e-6;
+    });
+    const shared = [await mark(1), await mark(2)];
+    expect(Math.abs(shared[0]!.z)).toBeCloseTo(2, 3);
+    expect(shared[0]!.z).toBeCloseTo(-shared[1]!.z, 3);
+    await page.locator('[data-fixture="1"]').click();
+    await page.locator('[data-fixture="2"]').click({ modifiers: ["Shift"] });
+    await page.locator("[data-revert]").click();
+    await page.locator('[data-fixture-mark="1"][data-rendered-placement-x="0"]').waitFor();
+    for (const [fixture, x] of [
+      [1, "-2"],
+      [2, "2"],
+    ] as const) {
+      await page.locator(`[data-fixture="${fixture}"]`).click();
+      await page.locator('[data-placement-field="x"]').fill(x);
+      await page.locator('[data-placement-field="x"]').press("Enter");
+      await page
+        .locator(`[data-fixture-mark="${fixture}"][data-rendered-placement-x="${x}"]`)
+        .waitFor();
+    }
+    await page.locator('[data-fixture="1"]').click();
+    await page.locator('[data-fixture="2"]').click({ modifiers: ["Shift"] });
+    await page.locator("[data-rotate-pivot]").selectOption("explicit");
+    await page.locator('[data-pivot="x"]').fill("-2");
+    await page.locator("[data-rotate-apply]").click();
+    await page.waitForFunction(
+      () => {
+        const marker = document.querySelector('[data-fixture-mark="2"]');
+        return Math.abs(Number(marker?.getAttribute("data-rendered-placement-x")) + 2) < 1e-6;
+      },
+      undefined,
+      { polling: 100 },
+    );
+    expect((await mark(1)).x).toBeCloseTo(-2, 6);
+    expect((await mark(2)).x).toBeCloseTo(-2, 6);
+    expect(Math.abs((await mark(2)).z)).toBeCloseTo(4, 3);
+  }, 15_000);
+
+  test("arranges the ten STAR-TENT spokes radially with alternating 180-degree flips", async () => {
+    await openFixtures();
+    await page.locator('[data-editable-fixture="101"]').click();
+    for (const id of [102, 103, 104, 105, 106, 107, 108, 109, 110]) {
+      await page.locator(`[data-editable-fixture="${id}"]`).click({ modifiers: ["Shift"] });
+    }
+    await page.locator("[data-revert]").click();
+    await page.locator('[data-strip-mark="101"][data-rendered-placement-x="0.75"]').waitFor();
+    await page.locator("[data-array-id]").fill("spokes");
+    await page.locator("[data-array-kind]").selectOption("radial");
+    await page.locator("[data-array-members]").fill("101,102,103,104,105,106,107,108,109,110");
+    await page.locator("[data-array-save]").click();
+    await page.locator("[data-array-status]", { hasText: "spokes · 10 members" }).waitFor();
+    const spokes = () =>
+      page.evaluate(() =>
+        [101, 102, 103, 104, 105, 106, 107, 108, 109, 110].map((id) => {
+          const marker = document.querySelector(`[data-strip-mark="${id}"]`);
+          return {
+            x: Number(marker?.getAttribute("data-rendered-placement-x")),
+            z: Number(marker?.getAttribute("data-rendered-placement-z")),
+            ry: Number(marker?.getAttribute("data-rendered-placement-ry")),
+          };
+        }),
+      );
+    const initial = await spokes();
+    for (const spoke of initial) {
+      expect(Math.hypot(spoke.x, spoke.z)).toBeCloseTo(0.75, 2);
+    }
+    type Euler = { rx: number; ry: number; rz: number };
+    type Matrix = [[number, number, number], [number, number, number], [number, number, number]];
+    const orient = async (id: number): Promise<Euler> => {
+      await page.locator(`[data-editable-fixture="${id}"]`).click();
+      const read = async (field: string) => {
+        const raw = await page.locator(`[data-placement-field="${field}"]`).inputValue();
+        const value = Number(raw);
+        return Number.isFinite(value) ? value : 0;
+      };
+      return { rx: await read("rx"), ry: await read("ry"), rz: await read("rz") };
+    };
+    const toMatrix = (euler: Euler): Matrix => {
+      const radians = (degrees: number) => (degrees * Math.PI) / 180;
+      const cx = Math.cos(radians(euler.rx));
+      const sx = Math.sin(radians(euler.rx));
+      const cy = Math.cos(radians(euler.ry));
+      const sy = Math.sin(radians(euler.ry));
+      const cz = Math.cos(radians(euler.rz));
+      const sz = Math.sin(radians(euler.rz));
+      return [
+        [cy * cz, -cy * sz, sy],
+        [cx * sz + sx * sy * cz, cx * cz - sx * sy * sz, -sx * cy],
+        [sx * sz - cx * sy * cz, sx * cz + cx * sy * sz, cx * cy],
+      ];
+    };
+    const multiply = (left: Matrix, right: Matrix): Matrix => {
+      const at = (row: 0 | 1 | 2, column: 0 | 1 | 2) =>
+        left[row][0] * right[0][column] +
+        left[row][1] * right[1][column] +
+        left[row][2] * right[2][column];
+      return [
+        [at(0, 0), at(0, 1), at(0, 2)],
+        [at(1, 0), at(1, 1), at(1, 2)],
+        [at(2, 0), at(2, 1), at(2, 2)],
+      ];
+    };
+    const matrixDiff = (left: Matrix, right: Matrix): number =>
+      Math.max(
+        Math.abs(left[0][0] - right[0][0]),
+        Math.abs(left[0][1] - right[0][1]),
+        Math.abs(left[0][2] - right[0][2]),
+        Math.abs(left[1][0] - right[1][0]),
+        Math.abs(left[1][1] - right[1][1]),
+        Math.abs(left[1][2] - right[1][2]),
+        Math.abs(left[2][0] - right[2][0]),
+        Math.abs(left[2][1] - right[2][1]),
+        Math.abs(left[2][2] - right[2][2]),
+      );
+    const spokeIds = [101, 102, 103, 104, 105, 106, 107, 108, 109, 110];
+    const initialOrient: Euler[] = [];
+    for (const id of spokeIds) initialOrient.push(await orient(id));
+    await page.locator('[data-editable-fixture="102"]').click();
+    for (const id of [104, 106, 108, 110]) {
+      await page.locator(`[data-editable-fixture="${id}"]`).click({ modifiers: ["Shift"] });
+    }
+    expect(await page.locator("[data-arrange]").getAttribute("data-selection-ids")).toBe(
+      "102,104,106,108,110",
+    );
+    await page.locator('[data-rotate="ry"]').fill("180");
+    await page.locator("[data-rotate-pivot]").selectOption("own");
+    await page.locator("[data-rotate-apply]").click();
+    await page.waitForFunction(
+      (previous) => {
+        const marker = document.querySelector('[data-strip-mark="102"]');
+        return Math.abs(Number(marker?.getAttribute("data-rendered-placement-ry")) - previous) > 1;
+      },
+      initialOrient[1]!.ry,
+      { polling: 100 },
+    );
+    const flipped = await spokes();
+    const flippedOrient: Euler[] = [];
+    for (const id of spokeIds) flippedOrient.push(await orient(id));
+    const spin = toMatrix({ rx: 0, ry: 180, rz: 0 });
+    const still = toMatrix({ rx: 0, ry: 0, rz: 0 });
+    for (let index = 0; index < 10; index += 1) {
+      expect(flipped[index]!.x).toBeCloseTo(initial[index]!.x, 6);
+      expect(flipped[index]!.z).toBeCloseTo(initial[index]!.z, 6);
+      const expected = multiply(index % 2 === 1 ? spin : still, toMatrix(initialOrient[index]!));
+      expect(matrixDiff(expected, toMatrix(flippedOrient[index]!))).toBeLessThan(1e-6);
+    }
+    await page.reload({ waitUntil: "domcontentloaded" });
+    await page.locator('html[data-ready="true"]').waitFor();
+    await openFixtures();
+    await page.locator("[data-array-status]", { hasText: "spokes · 10 members" }).waitFor();
+    const reloaded = await spokes();
+    for (let index = 0; index < 10; index += 1) {
+      expect(reloaded[index]!.x).toBeCloseTo(flipped[index]!.x, 6);
+      expect(reloaded[index]!.z).toBeCloseTo(flipped[index]!.z, 6);
+      expect(reloaded[index]!.ry).toBeCloseTo(flipped[index]!.ry, 6);
+    }
+  }, 15_000);
+  test("composes multi-axis orientations as one rigid rotation", async () => {
+    await openFixtures();
+    await page.locator('[data-fixture="3"]').click();
+    await page.locator('[data-rotate="rx"]').fill("0");
+    await page.locator('[data-rotate="ry"]').fill("45");
+    await page.locator('[data-rotate="rz"]').fill("0");
+    await page.locator("[data-rotate-pivot]").selectOption("own");
+    const before = Number(await page.locator("[data-history-count]").textContent());
+    await page.locator("[data-rotate-apply]").click();
+    await page.waitForFunction(
+      () => {
+        const marker = document.querySelector('[data-fixture-mark="3"]');
+        return Math.abs(Number(marker?.getAttribute("data-rendered-placement-ry")) - 45) < 1e-6;
+      },
+      undefined,
+      { polling: 100 },
+    );
+    await page.locator('[data-rotate="ry"]').fill("0");
+    await page.locator('[data-rotate="rz"]').fill("90");
+    await page.locator("[data-rotate-apply]").click();
+    await page.waitForFunction(
+      () => {
+        const marker = document.querySelector('[data-fixture-mark="3"]');
+        return Math.abs(Number(marker?.getAttribute("data-rendered-placement-ry"))) < 1e-6;
+      },
+      undefined,
+      { polling: 100 },
+    );
+    expect(
+      Math.abs(Number(await page.locator('[data-placement-field="ry"]').inputValue())),
+    ).toBeLessThan(1e-3);
+    expect(Number(await page.locator("[data-history-count]").textContent())).toBe(before + 2);
+    expect(
+      await page.locator('[data-fixture-mark="3"]').getAttribute("data-rendered-placement-x"),
+    ).toBe("0");
+    expect(
+      await page.locator('[data-fixture-mark="3"]').getAttribute("data-rendered-placement-z"),
+    ).toBe("5");
+  }, 15_000);
+
+  test("spaces radial arrays by an explicit angle step", async () => {
+    await openFixtures();
+    await page.locator('[data-fixture="1"]').click();
+    await page.locator('[data-fixture="2"]').click({ modifiers: ["Shift"] });
+    await page.locator('[data-fixture="3"]').click({ modifiers: ["Shift"] });
+    await page.locator("[data-revert]").click();
+    await page.locator('[data-fixture-mark="1"][data-rendered-placement-x="0"]').waitFor();
+    await page.locator("[data-array-id]").fill("tri");
+    await page.locator("[data-array-kind]").selectOption("radial");
+    await page.locator("[data-array-members]").fill("1,2,3");
+    await page.locator('[data-array="radius"]').fill("2");
+    await page.locator('[data-array="stepDeg"]').fill("120");
+    await page.locator("[data-array-save]").click();
+    await page.locator("[data-array-status]", { hasText: "tri · 3 members" }).waitFor();
+    const positions = () =>
+      page.evaluate(() =>
+        [1, 2, 3].map((id) => {
+          const marker = document.querySelector(`[data-fixture-mark="${id}"]`);
+          return {
+            x: Number(marker?.getAttribute("data-rendered-placement-x")),
+            z: Number(marker?.getAttribute("data-rendered-placement-z")),
+          };
+        }),
+      );
+    const wide = await positions();
+    expect(wide[0]!.x).toBeCloseTo(2, 6);
+    expect(wide[1]!.x).toBeCloseTo(-1, 6);
+    expect(wide[1]!.z).toBeCloseTo(1.732, 3);
+    expect(wide[2]!.x).toBeCloseTo(-1, 6);
+    expect(wide[2]!.z).toBeCloseTo(-1.732, 3);
+    await page.locator('[data-array="stepDeg"]').fill("90");
+    await page.locator("[data-array-save]").click();
+    await page.locator('[data-fixture-mark="2"][data-rendered-placement-z="2"]').waitFor();
+    const quarter = await positions();
+    expect(quarter[1]!.x).toBeCloseTo(0, 6);
+    expect(quarter[2]!.x).toBeCloseTo(-2, 6);
+    expect(quarter[2]!.z).toBeCloseTo(0, 6);
+  }, 15_000);
+
+  test("keeps array members unique, known, and id-durable across recompute", async () => {
+    await openFixtures();
+    await page.locator('[data-fixture="1"]').click();
+    await page.locator('[data-fixture="2"]').click({ modifiers: ["Shift"] });
+    await page.locator("[data-revert]").click();
+    await page.locator("[data-array-id]").fill("dedup");
+    await page.locator("[data-array-kind]").selectOption("line");
+    await page.locator("[data-array-members]").fill("1,1,2,999");
+    await page.locator('[data-array="spacingX"]').fill("5");
+    await page.locator("[data-array-save]").click();
+    await page.locator("[data-array-status]", { hasText: "dedup · 2 members" }).waitFor();
+    await page.locator('[data-fixture-mark="2"][data-rendered-placement-x="5"]').waitFor();
+    await page.locator("[data-array-members]").fill("1");
+    await page.locator("[data-array-save]").click();
+    await page.locator('[data-fixture-mark="2"][data-rendered-placement-x="0"]').waitFor();
+    await page.locator('[data-fixture="2"]').click();
+    await page.locator('[data-placement-field="x"]').fill("42");
+    await page.locator('[data-placement-field="x"]').press("Enter");
+    await page.locator('[data-fixture-mark="2"][data-rendered-placement-x="42"]').waitFor();
+    await page.locator("[data-array-members]").fill("1,2");
+    await page.locator('[data-array="originX"]').fill("1");
+    await page.locator("[data-array-save]").click();
+    await page.locator('[data-fixture-mark="1"][data-rendered-placement-x="1"]').waitFor();
+    expect(
+      await page.locator('[data-fixture-mark="2"]').getAttribute("data-rendered-placement-x"),
+    ).toBe("42");
+    await page.reload({ waitUntil: "domcontentloaded" });
+    await page.locator('html[data-ready="true"]').waitFor();
+    await openFixtures();
+    await page.locator("[data-array-status]", { hasText: "dedup · 2 members" }).waitFor();
+    expect(
+      await page.locator('[data-fixture-mark="1"]').getAttribute("data-rendered-placement-x"),
+    ).toBe("1");
+    expect(
+      await page.locator('[data-fixture-mark="2"]').getAttribute("data-rendered-placement-x"),
+    ).toBe("42");
+  }, 15_000);
+
+  test("drops malformed persisted arrays while keeping valid overrides", async () => {
+    await openFixtures();
+    await page.evaluate(
+      () =>
+        new Promise<void>((resolve, reject) => {
+          const open = indexedDB.open("beamhouse.scene.v1", 1);
+          open.onsuccess = () => {
+            const database = open.result;
+            const transaction = database.transaction("working-scenes", "readwrite");
+            transaction.objectStore("working-scenes").put(
+              {
+                overrides: { 2: { position: [42, 0, 0], rotation: [0, 0, 0] } },
+                views: {},
+                arrays: {
+                  bad: { kind: "radial", memberIds: [1, 2] },
+                  bad2: { kind: "line", memberIds: "nope" },
+                  bad3: null,
+                },
+              },
+              "current",
+            );
+            transaction.oncomplete = () => resolve();
+            transaction.onerror = () =>
+              reject(transaction.error ?? new Error("IndexedDB transaction failed"));
+          };
+          open.onerror = () => reject(open.error ?? new Error("IndexedDB open failed"));
+        }),
+    );
+    await page.reload({ waitUntil: "domcontentloaded" });
+    await page.locator('html[data-ready="true"]').waitFor();
+    await openFixtures();
+    await page.locator("[data-array-status]", { hasText: "No array" }).waitFor();
+    expect(
+      await page.locator('[data-fixture-mark="2"]').getAttribute("data-rendered-placement-x"),
+    ).toBe("42");
+    expect(
+      await page.locator('[data-fixture-mark="1"]').getAttribute("data-rendered-placement-x"),
+    ).toBe("-2.25");
+  }, 15_000);
 });
 
 async function canvasColorSamples(

@@ -40,7 +40,7 @@ export interface Viewport {
   cubes: CubeFixture[];
   strips: TextureStrip[];
   fixtures: EditableFixture[];
-  selectFixture(id: number | null): void;
+  selectFixtures(ids: readonly number[]): void;
   setEditable(editable: boolean): void;
   setGizmoMode(mode: "translate" | "rotate"): void;
   setSnap(step: number | null): void;
@@ -172,6 +172,8 @@ export function createViewport(
           THREE.MathUtils.degToRad(placement.rotation[2]),
         );
         this.marker.dataset.renderedPlacementX = String(placement.position[0]);
+        this.marker.dataset.renderedPlacementZ = String(placement.position[2]);
+        this.marker.dataset.renderedPlacementRy = String(placement.rotation[1]);
       },
       placement() {
         return {
@@ -246,7 +248,11 @@ export function createViewport(
           THREE.MathUtils.degToRad(placement.rotation[2]),
         );
         const marker = stripMarkers[index];
-        if (marker) marker.dataset.renderedPlacementX = String(placement.position[0]);
+        if (marker) {
+          marker.dataset.renderedPlacementX = String(placement.position[0]);
+          marker.dataset.renderedPlacementZ = String(placement.position[2]);
+          marker.dataset.renderedPlacementRy = String(placement.rotation[1]);
+        }
       },
       placement() {
         return placementFor(mesh);
@@ -308,8 +314,11 @@ export function createViewport(
     cubes: fixtures,
     strips,
     fixtures: editableFixtures,
-    selectFixture(id) {
-      selectedFixture = editableFixtures.find((candidate) => candidate.id === id) ?? null;
+    selectFixtures(ids) {
+      selectedFixture =
+        ids.length === 1
+          ? (editableFixtures.find((candidate) => candidate.id === ids[0]) ?? null)
+          : null;
       if (editable && selectedFixture) gizmo.attach(selectedFixture.mesh);
       else gizmo.detach();
     },

@@ -7,7 +7,16 @@ import {
   universesForStrips,
 } from "./reference-rig.ts";
 import { createViewport, type StripProbeMarkers } from "./viewport.ts";
-import { samePlacement, SceneCommands, type Placement } from "./scene.ts";
+import {
+  alignTargets,
+  distributeTargets,
+  rotateTargets,
+  samePlacement,
+  SceneCommands,
+  type ArrayDef,
+  type Pivot,
+  type Placement,
+} from "./scene.ts";
 import "./style.css";
 
 const root = document.querySelector<HTMLElement>("#app");
@@ -77,6 +86,43 @@ root.innerHTML = `
           <div class="history-actions"><button type="button" data-undo>Undo</button><button type="button" data-redo>Redo</button></div>
         </div>
       </section>
+      <section class="arrange" aria-label="Arrange selection" data-arrange data-selection-ids="">
+        <div class="health-heading"><b>Arrange</b><output data-selection-count>0</output></div>
+        <p class="editor-note">Shift-click fixtures to multi-select. Align, distribute, rotate, and revert each apply as one undo entry.</p>
+        <div class="history-actions" role="group" aria-label="Align selection"><button type="button" data-arrange-mutation data-align="x">Align X</button><button type="button" data-arrange-mutation data-align="y">Align Y</button><button type="button" data-arrange-mutation data-align="z">Align Z</button></div>
+        <div class="history-actions" role="group" aria-label="Distribute selection"><button type="button" data-arrange-mutation data-distribute="x">Distribute X</button><button type="button" data-arrange-mutation data-distribute="y">Distribute Y</button><button type="button" data-arrange-mutation data-distribute="z">Distribute Z</button></div>
+        <div class="history-actions" role="group" aria-label="Revert selection"><button type="button" data-arrange-mutation data-revert>Revert to array/default</button></div>
+        <div class="rotate-row">
+          <label>rx<input data-arrange-mutation data-rotate="rx" type="number" step="1" value="0"></label>
+          <label>ry<input data-arrange-mutation data-rotate="ry" type="number" step="1" value="0"></label>
+          <label>rz<input data-arrange-mutation data-rotate="rz" type="number" step="1" value="0"></label>
+          <label>pivot<select data-arrange-mutation data-rotate-pivot><option value="own">own</option><option value="shared">shared</option><option value="explicit">explicit</option></select></label>
+          <label>px<input data-arrange-mutation data-pivot="x" type="number" step="0.01" value="0"></label>
+          <label>py<input data-arrange-mutation data-pivot="y" type="number" step="0.01" value="0"></label>
+          <label>pz<input data-arrange-mutation data-pivot="z" type="number" step="0.01" value="0"></label>
+          <button type="button" data-arrange-mutation data-rotate-apply>Rotate selection</button>
+        </div>
+        <div class="array-form">
+          <label>id<input data-arrange-mutation data-array-id placeholder="array id"></label>
+          <label>kind<select data-arrange-mutation data-array-kind><option value="radial">radial</option><option value="line">line</option><option value="grid">grid</option></select></label>
+          <label>members<input data-arrange-mutation data-array-members placeholder="1,2,3"></label>
+          <label>cx<input data-arrange-mutation data-array="centerX" type="number" step="0.01" value="0"></label>
+          <label>cy<input data-arrange-mutation data-array="centerY" type="number" step="0.01" value="3"></label>
+          <label>cz<input data-arrange-mutation data-array="centerZ" type="number" step="0.01" value="0"></label>
+          <label>radius<input data-arrange-mutation data-array="radius" type="number" step="0.01" value="0.75"></label>
+          <label>start<input data-arrange-mutation data-array="startAngle" type="number" step="1" value="0"></label>
+          <label>step<input data-arrange-mutation data-array="stepDeg" type="number" step="1" value="" placeholder="auto"></label>
+          <label>ox<input data-arrange-mutation data-array="originX" type="number" step="0.01" value="0"></label>
+          <label>oy<input data-arrange-mutation data-array="originY" type="number" step="0.01" value="0"></label>
+          <label>oz<input data-arrange-mutation data-array="originZ" type="number" step="0.01" value="0"></label>
+          <label>sx<input data-arrange-mutation data-array="spacingX" type="number" step="0.01" value="1"></label>
+          <label>sy<input data-arrange-mutation data-array="spacingY" type="number" step="0.01" value="0"></label>
+          <label>sz<input data-arrange-mutation data-array="spacingZ" type="number" step="0.01" value="0"></label>
+          <label>cols<input data-arrange-mutation data-array="columns" type="number" step="1" value="2"></label>
+          <button type="button" data-arrange-mutation data-array-save>Save array</button>
+          <output data-array-status>No array</output>
+        </div>
+      </section>
       <section class="camera-views" aria-label="Named camera views">
         <div class="health-heading"><b>Camera views</b></div>
         <div class="camera-save"><input data-camera-mutation data-camera-view-name placeholder="View name"><button type="button" data-camera-mutation data-camera-save>Save view</button></div>
@@ -110,7 +156,7 @@ const stripProbeMarkers: StripProbeMarkers[] = referenceStrips.map((strip) => ({
   start: required(`[data-strip-probe="${strip.id}-start"]`),
   end: required(`[data-strip-probe="${strip.id}-end"]`),
 }));
-let selectedFixture: number | null = null;
+let selectedIds: number[] = [];
 const commands = await SceneCommands.create();
 const viewportApi = createViewport(
   viewport,
@@ -156,9 +202,16 @@ required<HTMLButtonElement>("[data-overlay-close]").addEventListener("click", ()
 });
 
 for (const row of document.querySelectorAll<HTMLElement>("[data-editable-fixture]")) {
-  row.addEventListener("click", () => {
-    selectedFixture = Number(row.dataset.editableFixture);
-    viewportApi.selectFixture(selectedFixture);
+  row.addEventListener("click", (event) => {
+    const id = Number(row.dataset.editableFixture);
+    if (event.shiftKey) {
+      selectedIds = selectedIds.includes(id)
+        ? selectedIds.filter((member) => member !== id)
+        : [...selectedIds, id];
+    } else {
+      selectedIds = [id];
+    }
+    viewportApi.selectFixtures(selectedIds);
     renderPlacementEditor();
   });
 }
@@ -190,6 +243,113 @@ required<HTMLButtonElement>("[data-camera-save]").addEventListener("click", () =
   if (!name) return;
   commands.apply({ kind: "camera.saveView", name, view: viewportApi.cameraView() });
   input.value = "";
+});
+for (const button of document.querySelectorAll<HTMLButtonElement>("[data-align]")) {
+  button.addEventListener("click", () => {
+    if (!commands.isOwner() || selectedIds.length < 2) return;
+    const axis = button.dataset.align;
+    if (axis !== "x" && axis !== "y" && axis !== "z") return;
+    commands.apply({
+      kind: "placement.set",
+      fixtureIds: [...selectedIds],
+      placements: alignTargets(effectivePlacements(), selectedIds, axis),
+    });
+  });
+}
+for (const button of document.querySelectorAll<HTMLButtonElement>("[data-distribute]")) {
+  button.addEventListener("click", () => {
+    if (!commands.isOwner() || selectedIds.length < 2) return;
+    const axis = button.dataset.distribute;
+    if (axis !== "x" && axis !== "y" && axis !== "z") return;
+    commands.apply({
+      kind: "placement.set",
+      fixtureIds: [...selectedIds],
+      placements: distributeTargets(effectivePlacements(), selectedIds, axis),
+    });
+  });
+}
+required<HTMLButtonElement>("[data-revert]").addEventListener("click", () => {
+  if (!commands.isOwner() || selectedIds.length === 0) return;
+  commands.apply({ kind: "placement.clear", fixtureIds: [...selectedIds] });
+});
+required<HTMLButtonElement>("[data-rotate-apply]").addEventListener("click", () => {
+  if (!commands.isOwner() || selectedIds.length === 0) return;
+  const read = (selector: string) => {
+    const value = Number(document.querySelector<HTMLInputElement>(selector)?.value);
+    return Number.isFinite(value) ? value : 0;
+  };
+  const delta: [number, number, number] = [
+    read('[data-rotate="rx"]'),
+    read('[data-rotate="ry"]'),
+    read('[data-rotate="rz"]'),
+  ];
+  if (delta.every((value) => value === 0)) return;
+  const mode = required<HTMLSelectElement>("[data-rotate-pivot]").value;
+  const pivot: Pivot =
+    mode === "explicit"
+      ? {
+          mode,
+          point: [read('[data-pivot="x"]'), read('[data-pivot="y"]'), read('[data-pivot="z"]')],
+        }
+      : { mode: mode === "shared" ? "shared" : "own" };
+  commands.apply({
+    kind: "placement.set",
+    fixtureIds: [...selectedIds],
+    placements: rotateTargets(effectivePlacements(), selectedIds, delta, pivot),
+  });
+});
+required<HTMLButtonElement>("[data-array-save]").addEventListener("click", () => {
+  if (!commands.isOwner()) return;
+  const id = required<HTMLInputElement>("[data-array-id]").value.trim();
+  const kind = required<HTMLSelectElement>("[data-array-kind]").value;
+  const known = new Set(editableFixtures.map((fixture) => fixture.id));
+  const memberIds = [
+    ...new Set(
+      required<HTMLInputElement>("[data-array-members]")
+        .value.split(",")
+        .map((part) => Number(part.trim()))
+        .filter((value) => Number.isInteger(value)),
+    ),
+  ].filter((value) => known.has(value));
+  if (!id || memberIds.length === 0) return;
+  const numeric = (name: string) => {
+    const value = Number(required<HTMLInputElement>(`[data-array="${name}"]`).value);
+    return Number.isFinite(value) ? value : 0;
+  };
+  const tuple = (x: string, y: string, z: string): [number, number, number] => [
+    numeric(x),
+    numeric(y),
+    numeric(z),
+  ];
+  const array: ArrayDef =
+    kind === "line"
+      ? {
+          kind,
+          id,
+          memberIds,
+          origin: tuple("originX", "originY", "originZ"),
+          spacing: tuple("spacingX", "spacingY", "spacingZ"),
+        }
+      : kind === "grid"
+        ? {
+            kind,
+            id,
+            memberIds,
+            origin: tuple("originX", "originY", "originZ"),
+            spacingX: numeric("spacingX"),
+            spacingZ: numeric("spacingZ"),
+            columns: Math.max(1, Math.trunc(numeric("columns"))),
+          }
+        : {
+            kind: "radial",
+            id,
+            memberIds,
+            center: tuple("centerX", "centerY", "centerZ"),
+            radius: numeric("radius"),
+            startAngleDeg: numeric("startAngle"),
+            stepDeg: numeric("stepDeg"),
+          };
+  commands.apply({ kind: "array.set", id, array });
 });
 
 new LiveFeed([1, ...universesForStrips(referenceStrips)], {
@@ -324,9 +484,19 @@ function setFixtureTrust(stale: boolean, contended: boolean): void {
   }
 }
 
+function effectivePlacements(): Map<number, Placement> {
+  const placements = new Map<number, Placement>();
+  for (const fixture of editableFixtures) {
+    const fallback = defaultPlacements.get(fixture.id);
+    if (fallback) placements.set(fixture.id, commands.placement(fixture.id, fallback));
+  }
+  return placements;
+}
+
 function commitNumericPlacement(): void {
-  if (!commands.isOwner() || selectedFixture === null) return;
-  const fixture = editableFixtures.find((candidate) => candidate.id === selectedFixture);
+  const target = selectedIds[0];
+  if (!commands.isOwner() || target === undefined) return;
+  const fixture = editableFixtures.find((candidate) => candidate.id === target);
   if (!fixture) return;
   const current = fixture.placement();
   const read = (field: string, fallback: number) => {
@@ -348,8 +518,8 @@ function commitNumericPlacement(): void {
   if (samePlacement(current, placement)) return;
   commands.apply({
     kind: "placement.set",
-    fixtureIds: [selectedFixture],
-    placements: { [selectedFixture]: placement },
+    fixtureIds: [target],
+    placements: { [target]: placement },
   });
 }
 
@@ -363,7 +533,7 @@ function renderPlacementEditor(): void {
   }
   const controls = required("[data-placement-controls]");
   const empty = required("[data-placement-empty]");
-  const fixture = editableFixtures?.find((candidate) => candidate.id === selectedFixture);
+  const fixture = editableFixtures?.find((candidate) => candidate.id === selectedIds[0]);
   controls.hidden = !fixture;
   empty.hidden = Boolean(fixture);
   if (fixture) {
@@ -382,7 +552,19 @@ function renderPlacementEditor(): void {
       required<HTMLInputElement>(`[data-placement-field="${field}"]`).value = String(value);
     controls.setAttribute("data-placement-x", String(placement.position[0]));
   }
-  required("#selection-status").textContent = fixture ? String(fixture.id) : "none";
+  required("#selection-status").textContent =
+    selectedIds.length === 0 ? "none" : selectedIds.join(",");
+  const arrange = required("[data-arrange]");
+  arrange.dataset.selectionIds = selectedIds.join(",");
+  required("[data-selection-count]").textContent = String(selectedIds.length);
+  for (const row of document.querySelectorAll<HTMLElement>("[data-editable-fixture]")) {
+    row.dataset.selected = String(selectedIds.includes(Number(row.dataset.editableFixture)));
+  }
+  const defined = Object.values(commands.arrays());
+  required("[data-array-status]").textContent =
+    defined.length === 0
+      ? "No array"
+      : defined.map((array) => `${array.id} · ${array.memberIds.length} members`).join(" · ");
   required("#ownership-status").textContent = owner
     ? "owner"
     : commands.ownerName()
@@ -397,6 +579,10 @@ function renderPlacementEditor(): void {
   for (const control of document.querySelectorAll<HTMLInputElement | HTMLButtonElement>(
     "[data-camera-mutation]",
   ))
+    control.disabled = !owner;
+  for (const control of document.querySelectorAll<
+    HTMLInputElement | HTMLSelectElement | HTMLButtonElement
+  >("[data-arrange-mutation]"))
     control.disabled = !owner;
   required("[data-history-count]").textContent = String(commands.historyCount());
   required<HTMLButtonElement>("[data-undo]").disabled = !owner || !commands.canUndo();

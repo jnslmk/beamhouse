@@ -481,3 +481,28 @@ dd {
     display: none;
   }
 }
+.fixtures li[data-selected="true"],
+.strip-list li[data-selected="true"] {
+  box-shadow: inset 2px 0 #8bc9a4;
+}
+.arrange {
+  margin-top: 20px;
+}
+.rotate-row,
+.array-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+  align-items: center;
+}
+.rotate-row label,
+.array-form label {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+.rotate-row input,
+.array-form input {
+  width: 64px;
+}
