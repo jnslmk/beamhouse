@@ -102,9 +102,19 @@ interface HistoryEntry {
   command: SceneCommand;
   before: PersistedScene;
   after: PersistedScene;
+  agent: boolean;
+}
+
+/** One envelope on the control channel in a non-persistent class. Commands arrive as SceneCommand. */
+export interface AgentRequest {
+  class: "command" | "query" | "capture" | "look";
+  name: string;
+  params: Record<string, unknown>;
 }
 
 type ControlMessage =
+  | { op: "request"; requestId: number; request: AgentRequest }
+  | { op: "response"; requestId: number; ok: boolean; result?: unknown; error?: string }
   | { op: "control.owner"; owner: boolean; ownerName: string | null }
   | { op: "control.snapshot.request"; requestId?: number; relinquish?: boolean }
   | { op: "control.snapshot"; scene: unknown; requestId?: number }
@@ -141,6 +151,7 @@ export class SceneCommands {
   #history: HistoryEntry[] = [];
   #cursor = 0;
   #changed: (() => void) | null = null;
+  #requestHandler: ((requestId: number, request: AgentRequest) => void) | null = null;
   #owner = false;
   #ownerName: string | null = null;
   #database: IDBDatabase;
@@ -252,14 +263,24 @@ export class SceneCommands {
     return this.#cursor < this.#history.length;
   }
 
-  history(): { label: string; undone: boolean }[] {
+  history(): { label: string; undone: boolean; agent: boolean }[] {
     return this.#history.map((entry, index) => ({
       label: describeCommand(entry.command),
       undone: index >= this.#cursor,
+      agent: entry.agent,
     }));
   }
 
-  apply(command: SceneCommand): void {
+  /** Only the owning page applies requests; agent commands share the one undo stack, marked. */
+  onRequest(handler: ((requestId: number, request: AgentRequest) => void) | null): void {
+    this.#requestHandler = handler;
+  }
+
+  respond(requestId: number, body: { ok: boolean; result?: unknown; error?: string }): void {
+    this.#send({ op: "response", requestId, ...body });
+  }
+
+  apply(command: SceneCommand, options: { agent?: boolean } = {}): void {
     if (!this.#owner || !isCommandKind(command)) return;
     if (command.kind === "fixture.add" && this.fixtureAddError(command)) return;
     if (command.kind === "definition.set" && this.definitionSetError(command.id, command.value))
@@ -268,7 +289,7 @@ export class SceneCommands {
     const after = apply(command, before);
     if (sameScene(before, after)) return;
     this.#history.splice(this.#cursor);
-    this.#history.push({ command, before, after });
+    this.#history.push({ command, before, after, agent: options.agent ?? false });
     this.#cursor = this.#history.length;
     this.#scene = after;
     void this.#saveAndNotify();
@@ -300,6 +321,13 @@ export class SceneCommands {
     } catch {
       return;
     }
+    if (message.op === "request") {
+      // Queries, captures and looks never touch history; commands apply below in main.ts.
+      if (this.#owner && typeof message.requestId === "number" && isAgentRequest(message.request))
+        this.#requestHandler?.(message.requestId, message.request);
+      return;
+    }
+    if (message.op === "response") return;
     if (message.op === "control.owner") {
       if (!message.owner && (this.#owner || this.#relinquishing)) this.#clearHistory();
       this.#owner = message.owner;
@@ -457,6 +485,21 @@ function apply(command: SceneCommand, scene: PersistedScene): PersistedScene {
   }
   return after;
 }
+function isAgentRequest(value: unknown): value is AgentRequest {
+  if (!value || typeof value !== "object" || !("class" in value) || !("name" in value))
+    return false;
+  const request = value as Record<string, unknown>;
+  return (
+    (request.class === "command" ||
+      request.class === "query" ||
+      request.class === "capture" ||
+      request.class === "look") &&
+    typeof request.name === "string" &&
+    typeof request.params === "object" &&
+    request.params !== null
+  );
+}
+
 function isCommandKind(value: unknown): value is SceneCommand {
   if (!value || typeof value !== "object" || !("kind" in value)) return false;
   return (

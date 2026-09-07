@@ -1423,6 +1423,180 @@ describe("running Beamhouse", () => {
       await staticServer.stop(true);
     }
   }, 60_000);
+  test("drives the STAR-TENT spokes, history, and a feed-stamped capture over MCP without stalling DMX", async () => {
+    await page.locator("#ownership-status", { hasText: "owner" }).waitFor();
+    await openFixtures();
+    const mcp = Bun.spawn(["bun", "bridge/src/mcp.ts"], {
+      cwd: repository,
+      env: { ...process.env, BEAMHOUSE_BRIDGE_URL: `http://127.0.0.1:${httpPort}` },
+      stdin: "pipe",
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const reader = mcp.stdout.getReader();
+    try {
+      const decoder = new TextDecoder();
+      let pending = "";
+      const readLine = async (): Promise<string> => {
+        for (;;) {
+          const newline = pending.indexOf("\n");
+          if (newline >= 0) {
+            const line = pending.slice(0, newline);
+            pending = pending.slice(newline + 1);
+            return line;
+          }
+          const next = await reader.read();
+          if (next.done) throw new Error("mcp server closed stdout");
+          pending += decoder.decode(next.value, { stream: true });
+        }
+      };
+      let rpcId = 1;
+      const rpc = async (method: string, params: unknown): Promise<unknown> => {
+        const id = rpcId++;
+        await mcp.stdin.write(`${JSON.stringify({ jsonrpc: "2.0", id, method, params })}\n`);
+        await mcp.stdin.flush();
+        const response = JSON.parse(await readLine()) as {
+          id: number;
+          result?: unknown;
+          error?: { message: string };
+        };
+        if (response.id !== id) throw new Error("mcp response id mismatch");
+        if (response.error) throw new Error(response.error.message);
+        return response.result;
+      };
+      const toolsCall = async (name: string, args: unknown) => {
+        const result = (await rpc("tools/call", { name, arguments: args })) as {
+          content: { type: string; text?: string; data?: string }[];
+        };
+        return result.content;
+      };
+      const textResult = async (name: string, args: unknown) => {
+        const content = await toolsCall(name, args);
+        if (content[0]?.type !== "text" || !content[0]?.text)
+          throw new Error("expected text content");
+        return JSON.parse(content[0].text) as Record<string, unknown>;
+      };
+      await rpc("initialize", {});
+      const listed = (await rpc("tools/list", {})) as { tools: { name: string }[] };
+      expect(listed.tools.map((tool) => tool.name).sort()).toEqual([
+        "capture",
+        "command",
+        "look",
+        "query",
+      ]);
+      // DMX is flowing before the agent acts.
+      for (let sequence = 201; sequence < 211; sequence += 1)
+        await sendUdp(sacn(sequence, [40, 50, 60]), sacnPort);
+      await levelsBecome([40, 50, 60]);
+      // Arrange the ten STAR-TENT spokes radially through one MCP command.
+      const members = [101, 102, 103, 104, 105, 106, 107, 108, 109, 110];
+      await toolsCall("command", {
+        kind: "array.set",
+        id: "spokes",
+        array: {
+          kind: "radial",
+          memberIds: members,
+          center: [0, 0, 0],
+          radius: 0.75,
+          startAngleDeg: 0,
+          stepDeg: 36,
+        },
+      });
+      await page.locator("[data-array-status]", { hasText: "spokes · 10 members" }).waitFor();
+      const radius = () =>
+        page.evaluate(() =>
+          [101, 102, 103, 104, 105, 106, 107, 108, 109, 110].map((id) => {
+            const marker = document.querySelector(`[data-strip-mark="${id}"]`);
+            return Math.hypot(
+              Number(marker?.getAttribute("data-rendered-placement-x")),
+              Number(marker?.getAttribute("data-rendered-placement-z")),
+            );
+          }),
+        );
+      for (const spoke of await radius()) expect(spoke).toBeCloseTo(0.75, 2);
+      // Rotate alternating members about their own mid-points: positions hold, headings flip.
+      const spokePose = (id: number) =>
+        page.evaluate((spoke) => {
+          const marker = document.querySelector(`[data-strip-mark="${spoke}"]`);
+          return {
+            x: Number(marker?.getAttribute("data-rendered-placement-x")),
+            z: Number(marker?.getAttribute("data-rendered-placement-z")),
+            ry: Number(marker?.getAttribute("data-rendered-placement-ry")),
+          };
+        }, id);
+      const before = await spokePose(102);
+      await toolsCall("command", {
+        kind: "rotate",
+        fixtureIds: [102, 104, 106, 108, 110],
+        delta: [0, 180, 0],
+        pivot: { mode: "own" },
+      });
+      await page.waitForFunction(
+        (previous) => {
+          const marker = document.querySelector('[data-strip-mark="102"]');
+          return (
+            Math.abs(Number(marker?.getAttribute("data-rendered-placement-ry")) - previous) > 1
+          );
+        },
+        before.ry,
+        { polling: 100 },
+      );
+      const after = await spokePose(102);
+      expect(after.x).toBeCloseTo(before.x, 6);
+      expect(after.z).toBeCloseTo(before.z, 6);
+      // Inspect issues and the shared journal; the agent rows are marked.
+      const issues = await textResult("query", { name: "issues.list" });
+      expect(Array.isArray(issues.overlaps)).toBe(true);
+      const history = await textResult("query", { name: "history" });
+      const entries = history.entries as { label: string; agent: boolean }[];
+      expect(entries.length).toBeGreaterThan(0);
+      expect(entries.at(-1)?.agent).toBe(true);
+      await page.locator('[data-overlay-tab="history"]').click();
+      await page.locator('[data-overlay-panel="history"]:not([hidden])').waitFor();
+      await page.locator('[data-history-entry][data-agent="true"]').first().waitFor();
+      await page.locator('[data-overlay-tab="fixtures"]').click();
+      await page.locator('[data-overlay-panel="fixtures"]:not([hidden])').waitFor();
+      // Hold a generated look, keep DMX arriving, then capture against the held feed.
+      const look = await textResult("look", { slots: { 2: new Array(69).fill(128) } });
+      expect(look.feed).toBe("generated");
+      await page.locator('#viewport[data-feed="generated"]').waitFor();
+      for (let sequence = 211; sequence < 221; sequence += 1)
+        await sendUdp(sacn(sequence, [70, 80, 90]), sacnPort);
+      const captureContent = await toolsCall("capture", { maxEdge: 640, quality: 0.8 });
+      expect(captureContent[0]?.type).toBe("image");
+      expect(captureContent[0]?.data?.length ?? 0).toBeGreaterThan(0);
+      const capture = JSON.parse(captureContent[1]?.text ?? "{}") as {
+        captureId: string;
+        width: number;
+        size: number;
+        downscaled: boolean;
+        feed: string;
+      };
+      expect(capture.feed).toBe("generated");
+      expect(capture.width).toBeLessThanOrEqual(640);
+      expect(capture.size).toBeGreaterThan(0);
+      expect(capture.size).toBeLessThanOrEqual(1000000);
+      expect(capture.downscaled).toBe(true);
+      // The handle is single-fetch: the MCP server consumed it.
+      expect(
+        (await fetch(`http://127.0.0.1:${httpPort}/capture/${capture.captureId}`)).status,
+      ).toBe(404);
+      // DMX reception never stalled.
+      for (let sequence = 221; sequence < 231; sequence += 1)
+        await sendUdp(sacn(sequence, [71, 81, 91]), sacnPort);
+      await levelsBecome([71, 81, 91]);
+      const released = await textResult("look", { clear: true });
+      expect(released.feed).toBe("live");
+    } finally {
+      await reader.cancel().catch(() => undefined);
+      try {
+        mcp.kill("SIGTERM");
+      } catch {
+        // The server may already have exited.
+      }
+      await mcp.exited;
+    }
+  }, 60_000);
 });
 
 async function canvasColorSamples(

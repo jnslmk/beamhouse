@@ -6,6 +6,7 @@ import { Receiver, type Packet } from "sacn";
 import { encodeFrame } from "@beamhouse/wire";
 import { parseArtDmx, parseSacn } from "./protocols.ts";
 import { UniverseStore } from "./universe-store.ts";
+import { createCaptureStore, validateCaptureUpload, type CaptureStore } from "./mcp.ts";
 
 interface ClientData {
   subscriptions: Set<number>;
@@ -50,6 +51,14 @@ export async function startBridge(config: BridgeConfig): Promise<RunningBridge> 
   let nextTakeoverRequestId = 1;
   let owner: ControlSocket | null = null;
   let pendingTakeover: PendingTakeover | null = null;
+  // Request envelopes stay opaque: the bridge routes by op and id, never opening them.
+  // Relay ids are minted here so concurrent requesters can never collide on an id.
+  let nextRelayId = 1;
+  const pendingRelay = new Map<
+    number,
+    { requester: ControlSocket; requestId: number; timer: ReturnType<typeof setTimeout> }
+  >();
+  const captures = createCaptureStore();
 
   const sacn = new Receiver({ universes: [], port: config.sacnPort, reuseAddr: true });
   // Receiver's built-in ordering rejects before emitting and cannot report the source.
@@ -90,6 +99,9 @@ export async function startBridge(config: BridgeConfig): Promise<RunningBridge> 
           ? undefined
           : new Response("WebSocket upgrade failed", { status: 400 });
       }
+      if (url.pathname.startsWith("/capture/")) {
+        return handleCapture(request, url.pathname.slice("/capture/".length), captures);
+      }
       return serveApp(request, url, config.appDirectory);
     },
     websocket: {
@@ -107,6 +119,21 @@ export async function startBridge(config: BridgeConfig): Promise<RunningBridge> 
       },
       close(socket) {
         clients.delete(socket);
+        const ownerGone = socket === owner;
+        for (const [relayId, pending] of pendingRelay) {
+          if (pending.requester !== socket && !ownerGone) continue;
+          clearTimeout(pending.timer);
+          pendingRelay.delete(relayId);
+          if (pending.requester !== socket)
+            pending.requester.send(
+              JSON.stringify({
+                op: "response",
+                requestId: pending.requestId,
+                ok: false,
+                error: "owning page disconnected",
+              }),
+            );
+        }
         if (socket === owner) releaseOwner();
         else if (socket === pendingTakeover?.candidate) cancelTakeover();
         reconcileMemberships();
@@ -166,13 +193,72 @@ export async function startBridge(config: BridgeConfig): Promise<RunningBridge> 
   }
 
   function handleControl(socket: ControlSocket, message: string): boolean {
-    let value: { op?: unknown; requestId?: unknown; scene?: unknown; follow?: unknown };
+    let value: {
+      op?: unknown;
+      requestId?: unknown;
+      request?: unknown;
+      ok?: unknown;
+      result?: unknown;
+      error?: unknown;
+      scene?: unknown;
+      follow?: unknown;
+    };
     try {
       const parsed: unknown = JSON.parse(message);
       if (!parsed || typeof parsed !== "object") return false;
       value = parsed;
     } catch {
       return false;
+    }
+    if (value.op === "request") {
+      if (socket.data.controlId === null || typeof value.requestId !== "number") return true;
+      if (!owner) {
+        socket.send(
+          JSON.stringify({
+            op: "response",
+            requestId: value.requestId,
+            ok: false,
+            error: "no owning page connected",
+          }),
+        );
+        return true;
+      }
+      const callerRequestId = value.requestId;
+      const requester = socket;
+      const relayId = nextRelayId++;
+      const timer = setTimeout(() => {
+        if (pendingRelay.delete(relayId))
+          requester.send(
+            JSON.stringify({
+              op: "response",
+              requestId: callerRequestId,
+              ok: false,
+              error: "request timed out waiting for the owning page",
+            }),
+          );
+      }, 15_000);
+      pendingRelay.set(relayId, { requester, requestId: callerRequestId, timer });
+      owner.send(JSON.stringify({ op: "request", requestId: relayId, request: value.request }));
+      return true;
+    }
+    if (value.op === "response") {
+      if (socket !== owner || typeof value.requestId !== "number") return true;
+      const relayId = value.requestId;
+      const pending = pendingRelay.get(relayId);
+      if (pending) {
+        clearTimeout(pending.timer);
+        pendingRelay.delete(relayId);
+        pending.requester.send(
+          JSON.stringify({
+            op: "response",
+            requestId: pending.requestId,
+            ok: value.ok === true,
+            result: value.result,
+            error: value.error,
+          }),
+        );
+      }
+      return true;
     }
     if (value.op === "control.join") {
       if (socket.data.controlId === null) socket.data.controlId = nextControlId++;
@@ -289,6 +375,41 @@ export async function startBridge(config: BridgeConfig): Promise<RunningBridge> 
       await new Promise<void>((done) => sacn.close(done));
     },
   };
+}
+
+async function handleCapture(
+  request: Request,
+  id: string,
+  captures: CaptureStore,
+): Promise<Response> {
+  if (!/^[A-Za-z0-9_-]{1,128}$/.test(id)) return new Response("unknown capture", { status: 404 });
+  if (request.method === "POST") {
+    const upload = validateCaptureUpload({
+      feed: request.headers.get("x-capture-feed"),
+      width: request.headers.get("x-capture-width"),
+      height: request.headers.get("x-capture-height"),
+      downscaled: request.headers.get("x-capture-downscaled"),
+    });
+    if ("error" in upload) return new Response(upload.error, { status: 400 });
+    const bytes = new Uint8Array(await request.arrayBuffer());
+    const stored = captures.put(id, { bytes, ...upload });
+    if (!stored.ok) return new Response(stored.error, { status: 413 });
+    return new Response("stored", { status: 201 });
+  }
+  if (request.method === "GET") {
+    const entry = captures.take(id);
+    if (!entry) return new Response("unknown or expired capture", { status: 404 });
+    return new Response(entry.bytes, {
+      headers: {
+        "content-type": "image/jpeg",
+        "x-capture-feed": entry.feed,
+        "x-capture-width": String(entry.width),
+        "x-capture-height": String(entry.height),
+        "x-capture-downscaled": String(entry.downscaled),
+      },
+    });
+  }
+  return new Response("method not allowed", { status: 405 });
 }
 
 function parseSubscription(message: string): Set<number> | null {

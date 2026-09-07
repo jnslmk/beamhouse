@@ -36,6 +36,13 @@ export interface StripProbeMarkers {
   end: HTMLElement;
 }
 
+export interface CaptureResult {
+  bytes: Uint8Array;
+  width: number;
+  height: number;
+  downscaled: boolean;
+}
+
 export interface Viewport {
   cubes: CubeFixture[];
   strips: TextureStrip[];
@@ -57,6 +64,8 @@ export interface Viewport {
   }): void;
   /** Frames the rig's content box at meet: the landscape viewer rule (ADR-0032 §4). */
   frameContentBox(points: readonly (readonly [number, number, number])[]): void;
+  /** Command-driven readback inside one frame; the reply states what was captured. */
+  capture(maxEdge?: number, quality?: number): Promise<CaptureResult>;
 }
 
 export function createViewport(
@@ -475,6 +484,46 @@ export function createViewport(
       }
     },
     setSceneFixtures,
+    capture(maxEdge = 1280, quality = 0.8) {
+      return new Promise<CaptureResult>((resolve, reject) => {
+        // No preserveDrawingBuffer tax: render and read back in the same frame.
+        requestAnimationFrame(() => {
+          renderer.render(scene, camera);
+          const source = renderer.domElement;
+          const scale =
+            Math.max(source.width, source.height) > maxEdge
+              ? maxEdge / Math.max(source.width, source.height)
+              : 1;
+          const width = Math.max(1, Math.round(source.width * scale));
+          const height = Math.max(1, Math.round(source.height * scale));
+          const done = (blob: Blob | null) => {
+            if (!blob) {
+              reject(new Error("capture produced no bytes"));
+              return;
+            }
+            blob.arrayBuffer().then(
+              (buffer) =>
+                resolve({ bytes: new Uint8Array(buffer), width, height, downscaled: scale < 1 }),
+              () => reject(new Error("capture could not be read")),
+            );
+          };
+          if (scale >= 1) {
+            source.toBlob(done, "image/jpeg", quality);
+            return;
+          }
+          const copy = document.createElement("canvas");
+          copy.width = width;
+          copy.height = height;
+          const context = copy.getContext("2d");
+          if (!context) {
+            reject(new Error("capture could not downscale"));
+            return;
+          }
+          context.drawImage(source, 0, 0, width, height);
+          copy.toBlob(done, "image/jpeg", quality);
+        });
+      });
+    },
   };
 }
 

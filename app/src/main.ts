@@ -27,9 +27,11 @@ import {
   type BreakAddress,
   type LocalFixture,
   type Pivot,
+  type AgentRequest,
   type Placement,
   type SceneCommand,
 } from "./scene.ts";
+import { GeneratedFeed, type FeedId } from "./look.ts";
 import "./style.css";
 
 const root = document.querySelector<HTMLElement>("#app");
@@ -246,6 +248,9 @@ const fixtureRows = [...document.querySelectorAll<HTMLElement>("[data-fixture]")
 const receivedUniverses = new Set<number>();
 const latestFrames = new Map<number, Uint8Array>();
 let latestHealth: UniversesMessage | null = null;
+// The generated look enters above the same resolution seam as live frames.
+const generated = new GeneratedFeed();
+let activeFeed: FeedId = "live";
 let lastTrustKey = "";
 let liveFeed: LiveFeed | null = null;
 
@@ -262,6 +267,9 @@ commands.onChanged(() => {
   if (!viewerSnapshot) syncSceneFixtures();
   renderPlacementEditor();
 });
+// The owning page applies control-channel requests; followers never see them.
+commands.onRequest((requestId, request) => void handleAgentRequest(requestId, request));
+required("#viewport").dataset.feed = resolvingFeed();
 renderPlacementEditor();
 
 if (!viewerSnapshot) {
@@ -518,17 +526,17 @@ if (!viewerSnapshot) {
       for (const [index, strip] of strips.entries()) {
         const definition = referenceStrips[index];
         if (definition && !(holdActive && heldIds.has(definition.id))) {
-          const resolved = resolveColor(textureBytesForStrip(definition, latestFrames));
+          const resolved = resolveColor(textureBytesForStrip(definition, effectiveFrames()));
           strip.setPixels(renderMode === "intensity" ? intensityPixels(resolved) : resolved);
         }
       }
       const first = referenceStrips[0]
-        ? textureBytesForStrip(referenceStrips[0], latestFrames)
+        ? textureBytesForStrip(referenceStrips[0], effectiveFrames())
         : null;
       const subscriptionElement = required("[data-local-error]");
       subscriptionElement.dataset.subscribed = liveFeed?.subscribed().join(",") ?? "";
       const last = referenceStrips.at(-1)
-        ? textureBytesForStrip(referenceStrips.at(-1)!, latestFrames)
+        ? textureBytesForStrip(referenceStrips.at(-1)!, effectiveFrames())
         : null;
       if (first && last) {
         const readback = required("[data-strip-readback]");
@@ -538,9 +546,10 @@ if (!viewerSnapshot) {
       }
       const universe = universes.find((candidate) => candidate.universe === 1);
       if (!universe) return;
+      const resolvedSlots = effectiveFrames().get(1) ?? universe.slots;
       cubes.forEach((cube, index) => {
         if (holdActive && heldIds.has(cube.id)) return;
-        const level = universe.slots[cube.address - 1] ?? 0;
+        const level = resolvedSlots[cube.address - 1] ?? 0;
         cube.setLevel(level);
         const row = fixtureRows[index];
         if (!row) return;
@@ -969,7 +978,7 @@ function localFixtureLevels(): Map<number, number> {
           : null;
     let level = 0;
     for (const address of fixture.addresses) {
-      const slots = latestFrames.get(address.universe);
+      const slots = effectiveFrames().get(address.universe);
       if (!slots) continue;
       const footprint = stripFootprint ?? address.footprint;
       for (const value of slots.subarray(address.address - 1, address.address - 1 + footprint))
@@ -1095,7 +1104,7 @@ function renderPlacementEditor(): void {
       : entries
           .map(
             (entry) =>
-              `<li data-history-entry data-undone="${entry.undone}">${escapeHtml(entry.label)}</li>`,
+              `<li data-history-entry data-undone="${entry.undone}" data-agent="${entry.agent}">${entry.agent ? "agent · " : ""}${escapeHtml(entry.label)}</li>`,
           )
           .join("");
   required<HTMLButtonElement>("[data-undo]").disabled = !owner || !commands.canUndo();
@@ -1150,6 +1159,437 @@ function selectFixture(id: number, additive: boolean): void {
   if (viewerActive)
     required("#selection-status").textContent =
       selectedIds.length === 0 ? "none" : `SEL ${selectedIds.length}`;
+}
+
+/** Frames resolve from the generated look when one is held, else from live DMX. */
+function effectiveFrames(): ReadonlyMap<number, Uint8Array> {
+  return activeFeed === "generated" && generated.hasFrame() ? generated.frame() : latestFrames;
+}
+
+function resolvingFeed(): FeedId {
+  return activeFeed === "generated" && generated.hasFrame() ? "generated" : "live";
+}
+
+/** The owning page applies control-channel requests through its existing seams. */
+async function handleAgentRequest(requestId: number, request: AgentRequest): Promise<void> {
+  try {
+    switch (request.class) {
+      case "command":
+        commands.respond(requestId, {
+          ok: true,
+          result: applyAgentCommand(request.name, request.params),
+        });
+        return;
+      case "query":
+        commands.respond(requestId, {
+          ok: true,
+          result: answerAgentQuery(request.name, request.params),
+        });
+        return;
+      case "look":
+        commands.respond(requestId, { ok: true, result: applyAgentLook(request.params) });
+        return;
+      case "capture":
+        commands.respond(requestId, { ok: true, result: await captureAgentView(request.params) });
+        return;
+      default:
+        commands.respond(requestId, { ok: false, error: `unknown request class` });
+    }
+  } catch (error) {
+    commands.respond(requestId, {
+      ok: false,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
+/** Commands carry explicit ids and exact values; all land in the shared undo stack, marked. */
+function applyAgentCommand(name: string, params: Record<string, unknown>): unknown {
+  if (name === "rotate") {
+    const fixtureIds = exactIds(params.fixtureIds, "rotate");
+    const delta = exactTriple(params.delta, "rotate");
+    const pivot = exactPivot(params.pivot);
+    const placements = rotateTargets(effectivePlacements(), fixtureIds, delta, pivot);
+    commands.apply({ kind: "placement.set", fixtureIds, placements }, { agent: true });
+    return { applied: fixtureIds, history: commands.historyCount() };
+  }
+  if (name === "placement.set") {
+    const fixtureIds = exactIds(params.fixtureIds, "placement.set");
+    const raw = params.placements;
+    if (!raw || typeof raw !== "object") throw new Error("placement.set needs exact placements");
+    const placements: Record<string, Placement> = {};
+    for (const id of fixtureIds) {
+      const placement = (raw as Record<string, unknown>)[String(id)];
+      if (!placement || typeof placement !== "object")
+        throw new Error(`placement.set needs exact values for fixture ${id}`);
+      const { position, rotation } = placement as Record<string, unknown>;
+      placements[String(id)] = {
+        position: exactTriple(position, "placement.set"),
+        rotation: exactTriple(rotation, "placement.set"),
+      };
+    }
+    commands.apply({ kind: "placement.set", fixtureIds, placements }, { agent: true });
+    return { applied: fixtureIds, history: commands.historyCount() };
+  }
+  if (name === "placement.clear") {
+    const fixtureIds = exactIds(params.fixtureIds, "placement.clear");
+    commands.apply({ kind: "placement.clear", fixtureIds }, { agent: true });
+    return { applied: fixtureIds, history: commands.historyCount() };
+  }
+  if (name === "array.set") {
+    if (typeof params.id !== "string" || params.id.length === 0)
+      throw new Error("array.set needs an id");
+    if (!params.array || typeof params.array !== "object")
+      throw new Error("array.set needs an array");
+    const staged = exactArray(params.array as Record<string, unknown>);
+    commands.apply(
+      { kind: "array.set", id: params.id, array: { ...staged, id: params.id } },
+      { agent: true },
+    );
+    return { applied: params.id, history: commands.historyCount() };
+  }
+  if (name === "camera.saveView") {
+    if (typeof params.name !== "string" || params.name.length === 0)
+      throw new Error("camera.saveView needs a name");
+    const view = params.view;
+    if (!view || typeof view !== "object") throw new Error("camera.saveView needs a view");
+    const { position, target } = view as Record<string, unknown>;
+    commands.apply(
+      {
+        kind: "camera.saveView",
+        name: params.name,
+        view: {
+          position: exactTriple(position, "camera.saveView"),
+          target: exactTriple(target, "camera.saveView"),
+        },
+      },
+      { agent: true },
+    );
+    return { applied: params.name, history: commands.historyCount() };
+  }
+  if (name === "fixture.add") {
+    const raw = params.fixture;
+    if (!raw || typeof raw !== "object") throw new Error("fixture.add needs a fixture");
+    const candidate = raw as Record<string, unknown>;
+    if (!Number.isInteger(candidate.id) || (candidate.id as number) >= 0)
+      throw new Error("fixture.add needs a new negative fixture id");
+    if (typeof candidate.definition !== "string" || candidate.definition.length === 0)
+      throw new Error("fixture.add needs a definition id");
+    if (typeof candidate.mode !== "string") throw new Error("fixture.add needs a mode");
+    if (!Array.isArray(candidate.addresses)) throw new Error("fixture.add needs addresses");
+    const placement = params.placement;
+    if (!placement || typeof placement !== "object")
+      throw new Error("fixture.add needs an exact placement");
+    const { position, rotation } = placement as Record<string, unknown>;
+    const command: Extract<SceneCommand, { kind: "fixture.add" }> = {
+      kind: "fixture.add",
+      fixture: {
+        id: candidate.id as number,
+        definition: candidate.definition,
+        mode: candidate.mode,
+        addresses: candidate.addresses.map((address) => exactBreak(address)),
+      },
+      placement: {
+        position: exactTriple(position, "fixture.add"),
+        rotation: exactTriple(rotation, "fixture.add"),
+      },
+    };
+    if (params.definition !== undefined) {
+      const inline = params.definition;
+      if (!inline || typeof inline !== "object")
+        throw new Error("fixture.add needs a definition object");
+      const { id, value } = inline as Record<string, unknown>;
+      if (typeof id !== "string" || id.length === 0 || !value || typeof value !== "object")
+        throw new Error("fixture.add needs a definition id and value");
+      command.definition = { id, value: value as BhsDefinition };
+    }
+    const rejection = commands.fixtureAddError(command);
+    if (rejection) throw new Error(rejection);
+    commands.apply(command, { agent: true });
+    return { history: commands.historyCount() };
+  }
+  if (name === "definition.set") {
+    if (typeof params.id !== "string" || !params.id.startsWith("bhs:"))
+      throw new Error("definition.set needs a bhs: id");
+    if (!params.value || typeof params.value !== "object")
+      throw new Error("definition.set needs a value");
+    const rejection = commands.definitionSetError(params.id, params.value);
+    if (rejection) throw new Error(rejection);
+    commands.apply(
+      { kind: "definition.set", id: params.id, value: params.value as BhsDefinition },
+      { agent: true },
+    );
+    return { history: commands.historyCount() };
+  }
+  throw new Error(`unknown command ${name}`);
+}
+
+function exactIds(value: unknown, name: string): number[] {
+  if (!Array.isArray(value) || value.length === 0 || !value.every((id) => Number.isInteger(id)))
+    throw new Error(`${name} needs non-empty integer fixture ids`);
+  return value as number[];
+}
+
+function exactTriple(value: unknown, name: string): [number, number, number] {
+  if (!Array.isArray(value) || value.length !== 3 || !value.every((n) => Number.isFinite(n)))
+    throw new Error(`${name} needs exact numeric triples`);
+  return value as [number, number, number];
+}
+
+/** Arrays carry exact values like every command: the resolver has no defaults to inherit. */
+function exactArray(value: Record<string, unknown>): ArrayDef {
+  const memberIds = exactIds(value.memberIds, "array.set");
+  if (value.kind === "radial") {
+    const center = value.center;
+    const radius = Number(value.radius);
+    const startAngleDeg = Number(value.startAngleDeg);
+    const stepDeg = Number(value.stepDeg);
+    if (!Array.isArray(center) || center.length !== 3 || !center.every((n) => Number.isFinite(n)))
+      throw new Error("array.set needs an exact radial center");
+    if (![radius, startAngleDeg, stepDeg].every((n) => Number.isFinite(n)))
+      throw new Error("array.set needs exact radial radius, startAngleDeg, and stepDeg");
+    return {
+      kind: "radial",
+      id: "",
+      memberIds,
+      center: center as [number, number, number],
+      radius,
+      startAngleDeg,
+      stepDeg,
+    };
+  }
+  if (value.kind === "line") {
+    const origin = value.origin;
+    const spacing = value.spacing;
+    if (!Array.isArray(origin) || !Array.isArray(spacing))
+      throw new Error("array.set needs an exact line origin and spacing");
+    return {
+      kind: "line",
+      id: "",
+      memberIds,
+      origin: exactTriple(origin, "array.set"),
+      spacing: exactTriple(spacing, "array.set"),
+    };
+  }
+  if (value.kind === "grid") {
+    const spacingX = Number(value.spacingX);
+    const spacingZ = Number(value.spacingZ);
+    const columns = Number(value.columns);
+    if (![spacingX, spacingZ, columns].every((n) => Number.isFinite(n)))
+      throw new Error("array.set needs exact grid spacingX, spacingZ, and columns");
+    return {
+      kind: "grid",
+      id: "",
+      memberIds,
+      origin: exactTriple(value.origin, "array.set"),
+      spacingX,
+      spacingZ,
+      columns: Math.max(1, Math.trunc(columns)),
+    };
+  }
+  throw new Error("array.set needs kind radial, line, or grid with explicit geometry");
+}
+
+function exactBreak(value: unknown): BreakAddress {
+  if (!value || typeof value !== "object")
+    throw new Error("fixture.add needs exact break addresses");
+  const address = value as Record<string, unknown>;
+  const universe = Number(address.universe);
+  const slot = Number(address.address);
+  const footprint = Number(address.footprint);
+  if (!Number.isInteger(universe) || universe < 1 || universe > 63999)
+    throw new Error("fixture.add needs break universes 1-63999");
+  if (!Number.isInteger(slot) || slot < 1 || slot > 512)
+    throw new Error("fixture.add needs break addresses 1-512");
+  if (!Number.isInteger(footprint) || footprint < 1)
+    throw new Error("fixture.add needs positive break footprints");
+  return { universe, address: slot, footprint };
+}
+
+function exactPivot(value: unknown): Pivot {
+  if (!value || typeof value !== "object") throw new Error("rotate needs a pivot");
+  const pivot = value as Record<string, unknown>;
+  if (pivot.mode === "own" || pivot.mode === "shared") return { mode: pivot.mode };
+  if (pivot.mode === "explicit")
+    return { mode: "explicit", point: exactTriple(pivot.point, "rotate") };
+  throw new Error("rotate needs a pivot with mode own, shared, or explicit");
+}
+
+/** Queries read and move cursors; none mutate the persistent scene or earn undo entries. */
+function answerAgentQuery(name: string, params: Record<string, unknown>): unknown {
+  switch (name) {
+    case "rig.list":
+      return {
+        feed: resolvingFeed(),
+        referenceStrips: referenceStrips.map((strip) => ({
+          id: strip.id,
+          pixels: strip.pixels,
+          addresses: strip.addresses,
+          placement: strip.placement,
+        })),
+        sceneFixtures: commands.fixtures().map((fixture) => ({
+          ...fixture,
+          placement: commands.placement(fixture.id, { position: [0, 0, 0], rotation: [0, 0, 0] }),
+          marks: breakTrust(fixture.addresses),
+        })),
+        arrays: commands.arrays(),
+        views: Object.keys(commands.views()),
+      };
+    case "fixture.get": {
+      if (!Number.isInteger(params.id)) throw new Error("fixture.get needs an integer id");
+      const scene = commands.fixtures().find((fixture) => fixture.id === params.id);
+      if (scene)
+        return {
+          ...scene,
+          placement: commands.placement(scene.id, { position: [0, 0, 0], rotation: [0, 0, 0] }),
+          level: localFixtureLevels().get(scene.id) ?? 0,
+          marks: breakTrust(scene.addresses),
+        };
+      const strip = referenceStrips.find((candidate) => candidate.id === params.id);
+      if (strip) return { ...strip, level: 0, marks: { stale: false, contended: false } };
+      throw new Error(`unknown fixture ${String(params.id)}`);
+    }
+    case "issues.list": {
+      const overlaps = patchOverlaps(commands.fixtures());
+      return {
+        overlaps: [...overlaps.entries()].map(([slot, ids]) => ({ slot, fixtures: [...ids] })),
+        fixtures: commands
+          .fixtures()
+          .map((fixture) => ({ id: fixture.id, marks: breakTrust(fixture.addresses) })),
+      };
+    }
+    case "universes.list":
+      return {
+        health: latestHealth,
+        subscribed: liveFeed?.subscribed() ?? [],
+        received: [...receivedUniverses],
+      };
+    case "history":
+      return {
+        entries: commands.history(),
+        canUndo: commands.canUndo(),
+        canRedo: commands.canRedo(),
+      };
+    case "measurements":
+      return {
+        feed: resolvingFeed(),
+        levels: Object.fromEntries(localFixtureLevels()),
+        universes: latestHealth?.universes ?? [],
+      };
+    case "camera.get":
+      return viewportApi.cameraView();
+    case "camera.set": {
+      const view = params.view;
+      if (!view || typeof view !== "object") throw new Error("camera.set needs a view");
+      const { position, target } = view as Record<string, unknown>;
+      const next = {
+        position: exactTriple(position, "camera.set"),
+        target: exactTriple(target, "camera.set"),
+      };
+      viewportApi.setCameraView(next);
+      return next;
+    }
+    case "select": {
+      if (
+        params.ids !== undefined &&
+        (!Array.isArray(params.ids) || !params.ids.every((id) => Number.isInteger(id)))
+      )
+        throw new Error("select needs an integer id array");
+      const ids = Array.isArray(params.ids) ? (params.ids as number[]) : [];
+      selectedIds = [...new Set(ids)];
+      if (holdActive) pinHold();
+      viewportApi.selectFixtures(selectedIds);
+      renderPlacementEditor();
+      return { selected: selectedIds };
+    }
+    case "hold": {
+      if (typeof params.on !== "boolean") throw new Error("hold needs a boolean on");
+      holdActive = params.on;
+      heldIds.clear();
+      if (holdActive) {
+        const ids = Array.isArray(params.ids) ? params.ids : selectedIds;
+        for (const id of ids) if (Number.isInteger(id)) heldIds.add(id as number);
+      }
+      required("#hold-status").textContent = holdActive ? "on" : "off";
+      required("[data-hold-toggle]").setAttribute("aria-pressed", String(holdActive));
+      return { hold: holdActive, held: [...heldIds] };
+    }
+    case "undo":
+      commands.undo();
+      return { canUndo: commands.canUndo(), canRedo: commands.canRedo() };
+    case "redo":
+      commands.redo();
+      return { canUndo: commands.canUndo(), canRedo: commands.canRedo() };
+    default:
+      throw new Error(`unknown query ${name}`);
+  }
+}
+
+/** A look sets the generated frame and holds it above the resolution seam. */
+function applyAgentLook(params: Record<string, unknown>): unknown {
+  if (params.clear === true || params.feed === "live") {
+    generated.clear();
+    activeFeed = "live";
+  } else {
+    const slots = params.slots;
+    if (!slots || typeof slots !== "object") throw new Error("look needs slots or clear");
+    generated.setFrame(slots as Record<string, number[]>);
+    activeFeed = "generated";
+  }
+  required("#viewport").dataset.feed = resolvingFeed();
+  paintGeneratedLevels();
+  return { feed: resolvingFeed() };
+}
+
+function paintGeneratedLevels(): void {
+  const frames = effectiveFrames();
+  const levels = localFixtureLevels();
+  if (holdActive) for (const id of heldIds) levels.delete(id);
+  viewportApi.setSceneFixtureLevels(levels);
+  for (const [index, strip] of strips.entries()) {
+    const definition = referenceStrips[index];
+    if (definition && !(holdActive && heldIds.has(definition.id))) {
+      const resolved = resolveColor(textureBytesForStrip(definition, frames));
+      strip.setPixels(renderMode === "intensity" ? intensityPixels(resolved) : resolved);
+    }
+  }
+}
+
+/** Captures are handles: bytes go to the bridge over HTTP, the reply states the rest. */
+async function captureAgentView(params: Record<string, unknown>): Promise<unknown> {
+  const maxEdge = params.maxEdge === undefined ? 1280 : Number(params.maxEdge);
+  const quality = params.quality === undefined ? 0.8 : Number(params.quality);
+  if (!Number.isFinite(maxEdge) || maxEdge < 16 || maxEdge > 4096)
+    throw new Error("maxEdge must be between 16 and 4096");
+  if (!Number.isFinite(quality) || quality < 0.1 || quality > 1)
+    throw new Error("quality must be between 0.1 and 1");
+  const shot = await viewportApi.capture(maxEdge, quality);
+  // Mirrors the bridge's hard cap: over-cap is an error naming the size, never truncated output.
+  if (shot.bytes.byteLength > 1000000)
+    throw new Error(`capture is ${shot.bytes.byteLength} bytes, over the 1000000 byte cap`);
+  const captureId = crypto.randomUUID();
+  const feed = resolvingFeed();
+  const stored = await fetch(`/capture/${captureId}`, {
+    method: "POST",
+    headers: {
+      "content-type": "image/jpeg",
+      "x-capture-feed": feed,
+      "x-capture-width": String(shot.width),
+      "x-capture-height": String(shot.height),
+      "x-capture-downscaled": String(shot.downscaled),
+    },
+    body: shot.bytes.slice().buffer,
+  });
+  if (stored.status === 413) throw new Error(await stored.text());
+  if (!stored.ok) throw new Error(`capture store refused the upload (${stored.status})`);
+  return {
+    captureId,
+    width: shot.width,
+    height: shot.height,
+    size: shot.bytes.byteLength,
+    downscaled: shot.downscaled,
+    feed,
+  };
 }
 
 function resolveShareReference(id: string): BhsDefinition | null {
