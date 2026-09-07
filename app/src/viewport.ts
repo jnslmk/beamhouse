@@ -2,6 +2,7 @@ import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { TransformControls } from "three/addons/controls/TransformControls.js";
 import { resolvedReferenceDefinition, type LinearRGB, type StripFixture } from "./reference-rig.ts";
+import { staticsFor, type FixtureState, type FixtureStatics } from "./resolve.ts";
 import { samePlacement, type BhsDefinition, type LocalFixture, type Placement } from "./scene.ts";
 
 export interface EditableFixture {
@@ -59,6 +60,8 @@ export interface Viewport {
   /** Third-party definition preview: referenced mesh when present, proxy primitive otherwise. */
   showGdtfFixture(definition: BhsDefinition, mesh: THREE.Object3D | null): void;
   setSceneFixtureLevels(levels: ReadonlyMap<number, number>): void;
+  /** Total resolution through one seam: pan, tilt, zoom, colour, dimmer and shutter. */
+  setSceneFixtureStates(states: ReadonlyMap<number, FixtureState>): void;
   cameraView(): { position: [number, number, number]; target: [number, number, number] };
   setCameraView(view: {
     position: [number, number, number];
@@ -296,6 +299,47 @@ export function createViewport(
   ];
   const localFixtures = new Map<number, RenderedFixture>();
   const localMaterials = new Map<number, THREE.MeshStandardMaterial>();
+  interface LocalBeam {
+    cone: THREE.Mesh;
+    glow: THREE.MeshBasicMaterial;
+    angle: number;
+  }
+  const localBeams = new Map<number, LocalBeam>();
+  interface LocalTexels {
+    texture: THREE.DataTexture;
+    pixels: Float32Array;
+    count: number;
+  }
+  const localTexels = new Map<number, LocalTexels>();
+  const buildStaticsMesh = (id: number, statics: FixtureStatics): THREE.Mesh => {
+    const size = statics.size;
+    const count =
+      statics.layout.kind === "discrete"
+        ? statics.layout.positions.length
+        : statics.layout.kind === "tiled"
+          ? statics.layout.count
+          : 0;
+    if (count > 1) {
+      const pixels = new Float32Array(count * 4);
+      const texture = new THREE.DataTexture(pixels, count, 1, THREE.RGBAFormat, THREE.FloatType);
+      texture.colorSpace = THREE.LinearSRGBColorSpace;
+      texture.magFilter = THREE.LinearFilter;
+      texture.minFilter = THREE.LinearFilter;
+      texture.generateMipmaps = false;
+      const material = new THREE.MeshStandardMaterial({
+        map: texture,
+        emissiveMap: texture,
+        emissive: 0xffffff,
+        roughness: 0.35,
+      });
+      localTexels.set(id, { texture, pixels, count });
+      return new THREE.Mesh(new THREE.BoxGeometry(size[0], size[1], size[2]), material);
+    }
+    return new THREE.Mesh(
+      new THREE.BoxGeometry(size[0], size[1], size[2]),
+      new THREE.MeshStandardMaterial({ color: 0x86817c, metalness: 0.08, roughness: 0.7 }),
+    );
+  };
   let gdtfPreview: THREE.Object3D | null = null;
   let gdtfPreviewOwned = false;
   const showGdtfFixture = (definition: BhsDefinition, mesh: THREE.Object3D | null) => {
@@ -319,13 +363,26 @@ export function createViewport(
       scene.remove(fixture.mesh);
       disposeObject(fixture.mesh);
       localMaterials.delete(fixture.id);
+      const beam = localBeams.get(fixture.id);
+      if (beam) {
+        scene.remove(beam.cone);
+        beam.cone.geometry.dispose();
+        beam.glow.dispose();
+        localBeams.delete(fixture.id);
+      }
+      localTexels.get(fixture.id)?.texture.dispose();
+      localTexels.delete(fixture.id);
       const index = editableFixtures.indexOf(fixture);
       if (index >= 0) editableFixtures.splice(index, 1);
     }
     localFixtures.clear();
     for (const fixture of nextFixtures) {
-      const mesh = localFixtureMesh(definitions[fixture.definition], fixture.definition);
+      const statics = staticsFor(fixture.definition, fixture.mode);
+      const mesh = statics
+        ? buildStaticsMesh(fixture.id, statics)
+        : localFixtureMesh(definitions[fixture.definition], fixture.definition);
       mesh.position.set(0, 0.5, 0);
+      mesh.userData.baseRotation = [0, 0, 0];
       scene.add(mesh);
       const rendered: RenderedFixture = {
         id: fixture.id,
@@ -337,6 +394,7 @@ export function createViewport(
             THREE.MathUtils.degToRad(placement.rotation[1]),
             THREE.MathUtils.degToRad(placement.rotation[2]),
           );
+          mesh.userData.baseRotation = [...placement.rotation];
         },
         placement() {
           return placementFor(mesh);
@@ -347,6 +405,84 @@ export function createViewport(
         localMaterials.set(fixture.id, mesh.material);
       editableFixtures.push(rendered);
     }
+  };
+  const setSceneFixtureStates = (states: ReadonlyMap<number, FixtureState>) => {
+    let cones = 0;
+    for (const [id, rendered] of localFixtures) {
+      const state = states.get(id);
+      if (!state) continue;
+      const mesh = rendered.mesh;
+      const base = (mesh.userData.baseRotation ?? [0, 0, 0]) as [number, number, number];
+      mesh.rotation.set(
+        THREE.MathUtils.degToRad(base[0] + state.tiltDeg),
+        THREE.MathUtils.degToRad(base[1] + state.panDeg),
+        THREE.MathUtils.degToRad(base[2]),
+      );
+      const material = localMaterials.get(id);
+      const textured = localTexels.has(id);
+      if (material && !textured) {
+        material.wireframe = state.unbound || state.beam.kind === "marker";
+        if (state.unbound) {
+          material.emissive.set(0xd537f2);
+          material.emissiveIntensity = 0.7;
+        } else if (state.beam.kind === "marker") {
+          material.emissive.set(0xffb340);
+          material.emissiveIntensity = 0.7;
+        } else {
+          material.emissive.setRGB(state.color[0] ?? 0, state.color[1] ?? 0, state.color[2] ?? 0);
+          material.emissiveIntensity = state.level * 2.8;
+        }
+      } else if (material) {
+        material.wireframe = state.unbound || state.beam.kind === "marker";
+        if (state.unbound) material.emissive.set(0xd537f2);
+        else if (state.beam.kind === "marker") material.emissive.set(0xffb340);
+        else material.emissive.set(0xffffff);
+        material.emissiveIntensity = state.unbound || state.beam.kind === "marker" ? 0.7 : 1;
+      }
+      const texels = localTexels.get(id);
+      if (texels) {
+        // Unbound and marker states carry no pixels: upload black so no stale
+        // frame survives behind the wireframe cue.
+        for (let index = 0; index < texels.count; index += 1) {
+          texels.pixels[index * 4] = state.pixels?.[index * 3] ?? 0;
+          texels.pixels[index * 4 + 1] = state.pixels?.[index * 3 + 1] ?? 0;
+          texels.pixels[index * 4 + 2] = state.pixels?.[index * 3 + 2] ?? 0;
+          texels.pixels[index * 4 + 3] = 1;
+        }
+        texels.texture.needsUpdate = true;
+      }
+      const beam = localBeams.get(id);
+      if (state.beam.kind === "cone" && state.level > 0.001) {
+        let entry = beam;
+        if (!entry) {
+          const glow = new THREE.MeshBasicMaterial({
+            transparent: true,
+            opacity: 0,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false,
+            side: THREE.DoubleSide,
+            fog: false,
+          });
+          const cone = new THREE.Mesh(coneGeometry(state.beam.angleDeg), glow);
+          scene.add(cone);
+          entry = { cone, glow, angle: state.beam.angleDeg };
+          localBeams.set(id, entry);
+        } else if (Math.abs(entry.angle - state.beam.angleDeg) > 0.25) {
+          entry.cone.geometry.dispose();
+          entry.cone.geometry = coneGeometry(state.beam.angleDeg);
+          entry.angle = state.beam.angleDeg;
+        }
+        entry.cone.visible = true;
+        entry.cone.position.copy(mesh.position);
+        entry.cone.quaternion.copy(mesh.quaternion);
+        entry.glow.color.setRGB(state.color[0] ?? 0, state.color[1] ?? 0, state.color[2] ?? 0);
+        entry.glow.opacity = 0.05 + state.level * 0.22;
+        cones += 1;
+      } else if (beam) {
+        beam.cone.visible = false;
+      }
+    }
+    host.dataset.fixtureCones = String(cones);
   };
 
   const picker = new THREE.Raycaster();
@@ -488,11 +624,13 @@ export function createViewport(
     },
     setSceneFixtureLevels(levels) {
       for (const [id, material] of localMaterials) {
+        if (!levels.has(id)) continue;
         const level = (levels.get(id) ?? 0) / 255;
         material.emissive.setRGB(level, level, level);
         material.emissiveIntensity = level;
       }
     },
+    setSceneFixtureStates,
     setSceneFixtures,
     showGdtfFixture,
     capture(maxEdge = 1280, quality = 0.8) {
@@ -547,6 +685,15 @@ function disposeObject(object: THREE.Object3D): void {
     for (const material of Array.isArray(materials) ? materials : [materials])
       if (material instanceof THREE.Material) material.dispose();
   });
+}
+/** Volumetric cone: apex at the fixture origin, opening along local +Z. */
+function coneGeometry(angleDeg: number): THREE.ConeGeometry {
+  const height = 4;
+  const radius = Math.max(0.01, Math.tan(THREE.MathUtils.degToRad(angleDeg) / 2) * height);
+  const geometry = new THREE.ConeGeometry(radius, height, 24, 1, true);
+  geometry.rotateX(-Math.PI / 2);
+  geometry.translate(0, 0, height / 2);
+  return geometry;
 }
 
 function localFixtureMesh(definition: BhsDefinition | undefined, definitionId: string): THREE.Mesh {

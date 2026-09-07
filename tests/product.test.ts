@@ -1631,7 +1631,369 @@ describe("running Beamhouse", () => {
       await mcp.exited;
     }
   }, 60_000);
+  test("resolves total attributes from a committed mover through the live viewport", async () => {
+    await openFixtures();
+    const moverId = await injectGdtf("GLP@impression 90 RGB@v1.gdtf");
+    expect(moverId).toBe("gdtf:9C7854E1-32D5-4DE9-BB8E-6D121F27CF48");
+    await addLocalFixture(moverId, "Normal", 7, 1, 14);
+    const mover = page.locator('[data-local-fixture][data-mode="Normal"]', { hasText: moverId });
+    await mover.waitFor();
+    // Pan/tilt at zero scale, full red, shutter open, full dimmer.
+    await sendUdp(sacn(1, [0, 0, 0, 0, 0, 255, 0, 0, 255, 255, 0, 0, 0, 0], 0, 7), sacnPort);
+    await page.waitForFunction(
+      () =>
+        document
+          .querySelector('[data-local-fixture][data-mode="Normal"]')
+          ?.getAttribute("data-local-level") === "255",
+    );
+    expect(await mover.getAttribute("data-pan")).toBe("-330.0");
+    expect(await mover.getAttribute("data-tilt")).toBe("-150.0");
+    expect(await mover.getAttribute("data-color")).toBe("255,0,0");
+    expect(await mover.getAttribute("data-local-level")).toBe("255");
+    expect(await mover.getAttribute("data-beam")).toBe("cone 10.0");
+    expect(
+      Number(await page.locator("#viewport").getAttribute("data-fixture-cones")),
+    ).toBeGreaterThanOrEqual(1);
+    // A closed shutter gates the render without touching the colour.
+    await sendUdp(sacn(2, [0, 0, 0, 0, 0, 255, 0, 0, 0, 255, 0, 0, 0, 0], 0, 7), sacnPort);
+    await page.waitForFunction(
+      () =>
+        document
+          .querySelector('[data-local-fixture][data-mode="Normal"]')
+          ?.getAttribute("data-local-level") === "0",
+    );
+    expect(await mover.getAttribute("data-color")).toBe("255,0,0");
+    // A named but unavailable mode leaves the placed fixture visibly unbound.
+    await addLocalFixture(moverId, "Nope", 7, 20, 14);
+    const unbound = page.locator('[data-local-fixture][data-mode="Nope"]');
+    await unbound.waitFor();
+    await page.waitForFunction(
+      () =>
+        document
+          .querySelector('[data-local-fixture][data-mode="Nope"]')
+          ?.getAttribute("data-marks")
+          ?.includes("unbound mode") ?? false,
+    );
+    const unboundId = await unbound.getAttribute("data-local-fixture");
+    await page.locator('[data-chip-tab="issues"]').first().click();
+    await page.locator('[data-overlay-panel="issues"]:not([hidden])').waitFor();
+    await page.locator(`[data-issue="mode:${unboundId}"]`).waitFor();
+  }, 30_000);
+  test("drives white points, tungsten drift, OFL and third-party zoom through the viewport", async () => {
+    await openFixtures();
+    const parId = await injectGdtf("Beamhouse@generic PAR38@v1.gdtf");
+    expect(parId).toBe("gdtf:FFC1C66D-905A-47AB-87DB-5FCEEF121B1A");
+    await addLocalFixture(parId, "Dimmer", 8, 1, 1);
+    const par = page.locator('[data-local-fixture][data-mode="Dimmer"]', { hasText: parId });
+    await par.waitFor();
+    const profileId = await injectGdtf("Beamhouse@generic profile@v1.gdtf");
+    await addLocalFixture(profileId, "Dimmer", 8, 2, 1);
+    const profile = page.locator('[data-local-fixture][data-mode="Dimmer"]', {
+      hasText: profileId,
+    });
+    await profile.waitFor();
+    await page.evaluate((fixture: unknown) => {
+      const hook = (window as unknown as Record<string, unknown>)["__beamhouseRegisterOfl"] as (
+        id: string,
+        definition: unknown,
+      ) => { definition: string };
+      return hook("ofl:test:product-bar", fixture);
+    }, PRODUCT_BAR);
+    await addLocalFixture("ofl:test:product-bar", "6px RGB", 8, 10, 18);
+    const bar = page.locator('[data-local-fixture][data-mode="6px RGB"]');
+    await bar.waitFor();
+    const moverId = await injectThirdPartyMover();
+    await addLocalFixture(moverId, "Mover", 8, 30, 9);
+    const mover = page.locator('[data-local-fixture][data-mode="Mover"]');
+    await mover.waitFor();
+    const frame38 = (patch: Record<number, number>): number[] => {
+      const slots = new Array<number>(38).fill(0);
+      for (const [slot, value] of Object.entries(patch)) slots[Number(slot) - 1] = value;
+      return slots;
+    };
+    // Tungsten at ~10%: warm drift on a declared cone, no colour channels involved.
+    await sendUdp(sacn(1, frame38({ 1: 26 }), 0, 8), sacnPort);
+    const parIdNumber = Number(await par.getAttribute("data-local-fixture"));
+    await page.waitForFunction(
+      (fixtureId: number) =>
+        document
+          .querySelector(`[data-local-fixture="${fixtureId}"]`)
+          ?.getAttribute("data-local-level") === "26",
+      parIdNumber,
+    );
+    const warm = (await par.getAttribute("data-color"))?.split(",").map(Number) ?? [];
+    expect(warm[0] ?? 0).toBeGreaterThan(200);
+    expect((warm[0] ?? 0) - (warm[2] ?? 0)).toBeGreaterThan(150);
+    expect(await par.getAttribute("data-beam")).toBe("cone 60.0");
+    expect(await par.getAttribute("data-local-level")).toBe("26");
+    // The hang override steers the profile barrel past its static declaration.
+    const profileIdNumber = Number(await profile.getAttribute("data-local-fixture"));
+    await page.evaluate((fixtureId: number) => {
+      const hook = (window as unknown as Record<string, unknown>)["__beamhouseZoomOverride"] as (
+        id: number,
+        degrees: number | null,
+      ) => void;
+      hook(fixtureId, 30);
+    }, profileIdNumber);
+    await sendUdp(sacn(2, frame38({ 1: 26, 2: 255 }), 0, 8), sacnPort);
+    await page.waitForFunction(
+      (fixtureId: number) =>
+        document.querySelector(`[data-local-fixture="${fixtureId}"]`)?.getAttribute("data-zoom") ===
+        "30.0",
+      profileIdNumber,
+    );
+    // The OFL matrix tiles its declared body from the same frame space.
+    await sendUdp(sacn(3, frame38({ 1: 26, 2: 255, 10: 255, 16: 255, 22: 255 }), 0, 8), sacnPort);
+    await page.waitForFunction(
+      () =>
+        document
+          .querySelector('[data-local-fixture][data-mode="6px RGB"]')
+          ?.getAttribute("data-color") === "255,255,255",
+    );
+    expect(await bar.getAttribute("data-color")).toBe("255,255,255");
+    expect(await bar.getAttribute("data-beam")).toBe("glow 0.0");
+    // Third-party shape, X4 oracle numbers: DMX 0 pans to +311 through the product.
+    await sendUdp(
+      sacn(
+        4,
+        frame38({
+          1: 26,
+          2: 255,
+          10: 255,
+          16: 255,
+          22: 255,
+          30: 0,
+          31: 0,
+          32: 0,
+          33: 128,
+          34: 255,
+          35: 0,
+          36: 0,
+          37: 255,
+          38: 255,
+        }),
+        0,
+        8,
+      ),
+      sacnPort,
+    );
+    await page.waitForFunction(
+      () =>
+        document
+          .querySelector('[data-local-fixture][data-mode="Mover"]')
+          ?.getAttribute("data-zoom") === "28.4",
+    );
+    expect(await mover.getAttribute("data-tilt")).toBe("121.0");
+    expect(await mover.getAttribute("data-zoom")).toBe("28.4");
+    expect(await mover.getAttribute("data-beam")).toBe("cone 28.4");
+    // A textured strip with a missing mode marks unbound instead of guessing texels.
+    const spokeId = await injectGdtf("Beamhouse@WLED STAR-TENT Spoke 23px@v1.gdtf");
+    await addLocalFixture(spokeId, "Missing", 8, 40, 69);
+    await page.waitForFunction(
+      () =>
+        document.querySelector(
+          '[data-local-fixture][data-mode="Missing"][data-marks*="unbound"]',
+        ) !== null,
+    );
+  }, 30_000);
 });
+async function injectGdtf(filename: string): Promise<string> {
+  const base64 = Buffer.from(
+    readFileSync(resolve(repository, "definitions/authored", filename)),
+  ).toString("base64");
+  const loaded = await page.evaluate((payload: string) => {
+    const hook = (window as unknown as Record<string, unknown>)["__beamhouseLoadGdtf"] as (
+      archive: string,
+    ) => Promise<{ definition: string; source: string }>;
+    return hook(payload);
+  }, base64);
+  return loaded.definition;
+}
+
+async function addLocalFixture(
+  definition: string,
+  mode: string,
+  universe: number,
+  address: number,
+  footprint: number,
+): Promise<void> {
+  await page.locator("[data-local-definition-source]").selectOption("existing");
+  await page.locator("[data-local-definition]").fill(definition);
+  await page.locator("[data-local-mode]").fill(mode);
+  await page.locator("[data-local-universe]").fill(String(universe));
+  await page.locator("[data-local-address]").fill(String(address));
+  await page.locator("[data-local-footprint]").fill(String(footprint));
+  await page.locator("[data-local-breaks]").fill("");
+  await page.locator("[data-local-add]").click();
+}
+
+const PRODUCT_BAR = {
+  name: "Product Bar 6px",
+  physical: { dimensions: { width: 1200, height: 100, depth: 50 } },
+  matrix: { pixelCount: [6, 1, 1] },
+  templateChannels: {
+    "Red $pixelKey": {
+      capability: {
+        type: "ColorIntensity",
+        color: "Red",
+        brightnessStart: "off",
+        brightnessEnd: "bright",
+      },
+    },
+    "Green $pixelKey": {
+      capability: {
+        type: "ColorIntensity",
+        color: "Green",
+        brightnessStart: "off",
+        brightnessEnd: "bright",
+      },
+    },
+    "Blue $pixelKey": {
+      capability: {
+        type: "ColorIntensity",
+        color: "Blue",
+        brightnessStart: "off",
+        brightnessEnd: "bright",
+      },
+    },
+  },
+  modes: [{ name: "6px RGB", channels: ["Red $pixelKey", "Green $pixelKey", "Blue $pixelKey"] }],
+};
+
+const MOVER_XML = [
+  '<?xml version="1.0" encoding="UTF-8"?>',
+  '<GDTF DataVersion="1.2">',
+  '  <FixtureType FixtureTypeID="third-party-x4-shape" Manufacturer="Third Party" Name="x4-shape">',
+  "    <AttributeDefinitions><Attributes>",
+  '      <Attribute Name="Pan" PhysicalUnit="Angle"/>',
+  '      <Attribute Name="Tilt" PhysicalUnit="Angle"/>',
+  '      <Attribute Name="Zoom" PhysicalUnit="Angle"/>',
+  '      <Attribute Name="ColorAdd_R" PhysicalUnit="ColorComponent"/>',
+  '      <Attribute Name="ColorAdd_G" PhysicalUnit="ColorComponent"/>',
+  '      <Attribute Name="ColorAdd_B" PhysicalUnit="ColorComponent"/>',
+  '      <Attribute Name="Dimmer" PhysicalUnit="None"/>',
+  '      <Attribute Name="Shutter1" PhysicalUnit="None"/>',
+  "    </Attributes></AttributeDefinitions>",
+  "    <Models>",
+  '      <Model Name="Body" PrimitiveType="Cube" Length="0.2" Width="0.2" Height="0.2" File=""/>',
+  '      <Model Name="Lens" PrimitiveType="Cylinder" Length="0.1" Width="0.1" Height="0.02" File=""/>',
+  "    </Models>",
+  "    <Geometries>",
+  '      <Geometry Model="Body" Name="Base" Position="{1,0,0,0}{0,1,0,0}{0,0,1,0}{0,0,0,1}">',
+  '        <Beam BeamAngle="25" FieldAngle="25" BeamType="Wash" LampType="LED" ColorTemperature="5600" Model="Lens" Name="Beam" Position="{1,0,0,0}{0,1,0,0}{0,0,1,0}{0,0,0,1}"/>',
+  "      </Geometry>",
+  "    </Geometries>",
+  "    <DMXModes><DMXMode Geometry=",
+  '"Base" Name="Mover"><DMXChannels>',
+  '      <DMXChannel DMXBreak="1" Geometry="Base" Offset="1,2">',
+  '        <LogicalChannel Attribute="Pan">',
+  '          <ChannelFunction Attribute="Pan" Name="Pan" DMXFrom="0/2" PhysicalFrom="311" PhysicalTo="-311"/>',
+  "        </LogicalChannel>",
+  "      </DMXChannel>",
+  '      <DMXChannel DMXBreak="1" Geometry="Base" Offset="3">',
+  '        <LogicalChannel Attribute="Tilt">',
+  '          <ChannelFunction Attribute="Tilt" Name="Tilt" DMXFrom="0/1" PhysicalFrom="121" PhysicalTo="-121"/>',
+  "        </LogicalChannel>",
+  "      </DMXChannel>",
+  '      <DMXChannel DMXBreak="1" Geometry="Base" Offset="4">',
+  '        <LogicalChannel Attribute="Zoom">',
+  '          <ChannelFunction Attribute="Zoom" Name="Zoom" DMXFrom="0/1" PhysicalFrom="50" PhysicalTo="7"/>',
+  "        </LogicalChannel>",
+  "      </DMXChannel>",
+  '      <DMXChannel DMXBreak="1" Geometry="Base" Offset="5">',
+  '        <LogicalChannel Attribute="ColorAdd_R">',
+  '          <ChannelFunction Attribute="ColorAdd_R" Name="Red" DMXFrom="0/1" PhysicalFrom="0" PhysicalTo="1"/>',
+  "        </LogicalChannel>",
+  "      </DMXChannel>",
+  '      <DMXChannel DMXBreak="1" Geometry="Base" Offset="6">',
+  '        <LogicalChannel Attribute="ColorAdd_G">',
+  '          <ChannelFunction Attribute="ColorAdd_G" Name="Green" DMXFrom="0/1" PhysicalFrom="0" PhysicalTo="1"/>',
+  "        </LogicalChannel>",
+  "      </DMXChannel>",
+  '      <DMXChannel DMXBreak="1" Geometry="Base" Offset="7">',
+  '        <LogicalChannel Attribute="ColorAdd_B">',
+  '          <ChannelFunction Attribute="ColorAdd_B" Name="Blue" DMXFrom="0/1" PhysicalFrom="0" PhysicalTo="1"/>',
+  "        </LogicalChannel>",
+  "      </DMXChannel>",
+  '      <DMXChannel DMXBreak="1" Geometry="Base" Offset="8">',
+  '        <LogicalChannel Attribute="Dimmer">',
+  '          <ChannelFunction Attribute="Dimmer" Name="Dimmer" DMXFrom="0/1" PhysicalFrom="0" PhysicalTo="1"/>',
+  "        </LogicalChannel>",
+  "      </DMXChannel>",
+  '      <DMXChannel DMXBreak="1" Geometry="Base" Offset="9">',
+  '        <LogicalChannel Attribute="Shutter1">',
+  '          <ChannelFunction Attribute="Shutter1" Name="Closed" DMXFrom="0/1" PhysicalFrom="0" PhysicalTo="0"/>',
+  '          <ChannelFunction Attribute="Shutter1" Name="Open" DMXFrom="224/1" PhysicalFrom="1" PhysicalTo="1"/>',
+  "        </LogicalChannel>",
+  "      </DMXChannel>",
+  "    </DMXChannels></DMXMode></DMXModes>",
+  "    <Revisions/>",
+  "  </FixtureType>",
+  "</GDTF>",
+].join("\n");
+
+async function injectThirdPartyMover(): Promise<string> {
+  const base64 = Buffer.from(
+    storedZip("description.xml", new TextEncoder().encode(MOVER_XML)),
+  ).toString("base64");
+  const loaded = await page.evaluate((payload: string) => {
+    const hook = (window as unknown as Record<string, unknown>)["__beamhouseLoadGdtf"] as (
+      archive: string,
+    ) => Promise<{ definition: string; source: string }>;
+    return hook(payload);
+  }, base64);
+  return loaded.definition;
+}
+
+const CRC_TABLE: readonly number[] = (() => {
+  const table = new Array<number>(256);
+  for (let value = 0; value < 256; value += 1) {
+    let entry = value;
+    for (let round = 0; round < 8; round += 1)
+      entry = entry & 1 ? 0xedb88320 ^ (entry >>> 1) : entry >>> 1;
+    table[value] = entry >>> 0;
+  }
+  return table;
+})();
+
+/** Minimal stored (uncompressed) zip: dependency-free GDTF bytes for product proof. */
+function storedZip(name: string, data: Uint8Array): Uint8Array {
+  let crc = 0xffffffff;
+  for (const byte of data) crc = (CRC_TABLE[(crc ^ byte) & 0xff] ?? 0) ^ (crc >>> 8);
+  const checksum = (crc ^ 0xffffffff) >>> 0;
+  const nameBytes = new TextEncoder().encode(name);
+  const local = new DataView(new ArrayBuffer(30));
+  local.setUint32(0, 0x04034b50, true);
+  local.setUint16(4, 20, true);
+  local.setUint16(8, 0, true);
+  local.setUint32(14, checksum, true);
+  local.setUint32(18, data.length, true);
+  local.setUint32(22, data.length, true);
+  local.setUint16(26, nameBytes.length, true);
+  const central = new DataView(new ArrayBuffer(46));
+  central.setUint32(0, 0x02014b50, true);
+  central.setUint16(4, 20, true);
+  central.setUint16(6, 20, true);
+  central.setUint32(16, checksum, true);
+  central.setUint32(20, data.length, true);
+  central.setUint32(24, data.length, true);
+  central.setUint16(28, nameBytes.length, true);
+  central.setUint32(42, 0, true);
+  const end = new DataView(new ArrayBuffer(22));
+  end.setUint32(0, 0x06054b50, true);
+  end.setUint16(8, 1, true);
+  end.setUint16(10, 1, true);
+  end.setUint32(12, 46 + nameBytes.length, true);
+  end.setUint32(16, 30 + nameBytes.length + data.length, true);
+  const out = new Uint8Array(30 + nameBytes.length + data.length + 46 + nameBytes.length + 22);
+  out.set(new Uint8Array(local.buffer), 0);
+  out.set(nameBytes, 30);
+  out.set(data, 30 + nameBytes.length);
+  out.set(new Uint8Array(central.buffer), 30 + nameBytes.length + data.length);
+  out.set(nameBytes, 30 + nameBytes.length + data.length + 46);
+  out.set(new Uint8Array(end.buffer), 30 + nameBytes.length + data.length + 46 + nameBytes.length);
+  return out;
+}
 
 async function canvasColorSamples(
   page: Page,

@@ -11,6 +11,16 @@ import {
   universesForStrips,
   type LinearRGB,
 } from "./reference-rig.ts";
+import {
+  hasDefinition,
+  hasMode,
+  mintLinearRGB,
+  registerGdtf,
+  registerOfl,
+  resolveFixture,
+  staticsFor,
+  type FixtureState,
+} from "./resolve.ts";
 import { createViewport, type StripProbeMarkers } from "./viewport.ts";
 import {
   decodeShareFragment,
@@ -264,6 +274,7 @@ function findGdtfGeometry(
 async function loadGdtfPreview(base64: string): Promise<{ definition: string; source: string }> {
   const bytes = Uint8Array.from(atob(base64), (char) => char.charCodeAt(0));
   const definition = parseGdtf(bytes);
+  registerGdtf(`gdtf:${definition.fixtureTypeId}`, definition);
   const root =
     (definition.modes[0]
       ? findGdtfGeometry(definition.geometries, definition.modes[0].geometry)
@@ -304,9 +315,21 @@ async function loadGdtfPreview(base64: string): Promise<{ definition: string; so
 declare global {
   interface Window {
     __beamhouseLoadGdtf: typeof loadGdtfPreview;
+    __beamhouseRegisterOfl: (id: string, fixture: unknown) => { definition: string };
+    __beamhouseZoomOverride: (id: number, degrees: number | null) => void;
   }
 }
 window.__beamhouseLoadGdtf = loadGdtfPreview;
+window.__beamhouseRegisterOfl = (id: string, fixture: unknown) => {
+  registerOfl(id, fixture);
+  return { definition: id };
+};
+window.__beamhouseZoomOverride = (id: number, degrees: number | null) => {
+  // A non-finite hang value is no value: it clears rather than poisoning resolve.
+  if (degrees === null || typeof degrees !== "number" || !Number.isFinite(degrees))
+    zoomOverrides.delete(id);
+  else zoomOverrides.set(id, degrees);
+};
 const fixtureRows = [...document.querySelectorAll<HTMLElement>("[data-fixture]")];
 const receivedUniverses = new Set<number>();
 const latestFrames = new Map<number, Uint8Array>();
@@ -579,13 +602,29 @@ if (!viewerSnapshot) {
         receivedUniverses.add(universe.universe);
         latestFrames.set(universe.universe, universe.slots);
       }
-      const levels = localFixtureLevels();
-      if (holdActive) for (const id of heldIds) levels.delete(id);
-      viewportApi.setSceneFixtureLevels(levels);
+      const { levels, states } = applyLocalResolution();
       for (const [id, level] of levels)
         document
           .querySelector<HTMLElement>(`[data-local-fixture="${CSS.escape(String(id))}"]`)
           ?.setAttribute("data-local-level", String(level));
+      for (const [id, state] of states) {
+        const row = document.querySelector<HTMLElement>(
+          `[data-local-fixture="${CSS.escape(String(id))}"]`,
+        );
+        if (!row) continue;
+        row.setAttribute("data-local-level", String(Math.round(state.level * 255)));
+        row.setAttribute("data-state", state.status);
+        row.setAttribute("data-pan", state.panDeg.toFixed(1));
+        row.setAttribute("data-tilt", state.tiltDeg.toFixed(1));
+        row.setAttribute("data-zoom", state.zoomDeg === null ? "" : state.zoomDeg.toFixed(1));
+        row.setAttribute(
+          "data-color",
+          [state.color[0] ?? 0, state.color[1] ?? 0, state.color[2] ?? 0]
+            .map((channel) => Math.round(channel * 255))
+            .join(","),
+        );
+        row.setAttribute("data-beam", `${state.beam.kind} ${state.beam.angleDeg.toFixed(1)}`);
+      }
       for (const [index, strip] of strips.entries()) {
         const definition = referenceStrips[index];
         if (definition && !(holdActive && heldIds.has(definition.id))) {
@@ -771,6 +810,18 @@ function renderSceneFixtures(fixtures: readonly LocalFixture[]): void {
       !resolvedReferenceDefinition(fixture.definition)
     )
       marks.push("unresolved definition");
+    if (
+      fixture.addresses.length > 0 &&
+      fixture.mode.length > 0 &&
+      hasDefinition(fixture.definition) &&
+      !hasMode(fixture.definition, fixture.mode)
+    )
+      marks.push("unbound mode");
+    if (
+      hasDefinition(fixture.definition) &&
+      staticsFor(fixture.definition, fixture.mode)?.layout.kind === "marker"
+    )
+      marks.push("marker · no declared extent");
     return marks;
   };
   const item = (fixture: LocalFixture) => {
@@ -900,6 +951,15 @@ function renderIssues(fixtures: readonly LocalFixture[], overlaps: Map<number, S
     )
       rows.push(
         `<li data-issue="unresolved:${fixture.id}">Fixture ${fixture.id} · ${escapeHtml(fixture.definition)} has no resolved definition and renders a placeholder</li>`,
+      );
+    if (
+      fixture.addresses.length > 0 &&
+      fixture.mode.length > 0 &&
+      hasDefinition(fixture.definition) &&
+      !hasMode(fixture.definition, fixture.mode)
+    )
+      rows.push(
+        `<li data-issue="mode:${fixture.id}">Fixture ${fixture.id} · mode "${escapeHtml(fixture.mode)}" is unavailable and the fixture renders unbound</li>`,
       );
   }
   required("[data-issues]").innerHTML =
@@ -1050,6 +1110,45 @@ function localFixtureLevels(): Map<number, number> {
     if (fixture.addresses.length > 0) levels.set(fixture.id, level);
   }
   return levels;
+}
+/** Per-fixture hang values for Zoom channels with no wire (ADR-0037 decision 7). */
+const zoomOverrides = new Map<number, number>();
+
+function localFixtureStates(): Map<number, FixtureState> {
+  const states = new Map<number, FixtureState>();
+  const frames = effectiveFrames();
+  for (const fixture of commands.fixtures()) {
+    if (!hasDefinition(fixture.definition) || fixture.addresses.length === 0) continue;
+    const zoomDeg = zoomOverrides.get(fixture.id);
+    states.set(
+      fixture.id,
+      resolveFixture(
+        fixture.definition,
+        fixture.mode,
+        (universe, slot) => frames.get(universe)?.[slot - 1],
+        fixture.addresses,
+        zoomDeg === undefined ? undefined : { zoomDeg },
+      ),
+    );
+  }
+  return states;
+}
+function applyLocalResolution(): {
+  levels: Map<number, number>;
+  states: Map<number, FixtureState>;
+} {
+  const levels = localFixtureLevels();
+  const states = localFixtureStates();
+  if (holdActive)
+    for (const id of heldIds) {
+      levels.delete(id);
+      states.delete(id);
+    }
+  // Registered fixtures resolve through the states seam; the levels map keeps the rest.
+  for (const id of states.keys()) levels.delete(id);
+  viewportApi.setSceneFixtureLevels(levels);
+  viewportApi.setSceneFixtureStates(states);
+  return { levels, states };
 }
 
 function effectivePlacements(): Map<number, Placement> {
@@ -1606,9 +1705,7 @@ function applyAgentLook(params: Record<string, unknown>): unknown {
 
 function paintGeneratedLevels(): void {
   const frames = effectiveFrames();
-  const levels = localFixtureLevels();
-  if (holdActive) for (const id of heldIds) levels.delete(id);
-  viewportApi.setSceneFixtureLevels(levels);
+  applyLocalResolution();
   for (const [index, strip] of strips.entries()) {
     const definition = referenceStrips[index];
     if (definition && !(holdActive && heldIds.has(definition.id))) {
@@ -1800,7 +1897,7 @@ function intensityPixels(resolved: LinearRGB): LinearRGB {
     out[index + 1] = peak;
     out[index + 2] = peak;
   }
-  return out as LinearRGB;
+  return mintLinearRGB(out);
 }
 
 function trustLabel(stale: boolean, contended: boolean): string {

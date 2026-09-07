@@ -1,3 +1,5 @@
+import { mintLinearRGB, type LinearRGB } from "./resolve.ts";
+export type { LinearRGB };
 export interface BreakAddress {
   universe: number;
   slot: number;
@@ -25,9 +27,6 @@ export interface StripPlacement {
   radialAngle: number;
   reversed: boolean;
 }
-
-export type LinearRGB = Float32Array & { readonly __linearRgb: unique symbol };
-
 const PIXELS_PER_SPOKE = 23;
 const SLOTS_PER_PIXEL = 3;
 const SPOKE_DEFINITION: ResolvedStripDefinition = {
@@ -106,10 +105,10 @@ export function textureBytesForStrip(
 
 // ASSUMES: ColorAdd_* values are proportional to radiance (ADR-0008).
 export function resolveColor(bytes: Uint8Array): LinearRGB {
+  // ColorAdd_* is the v1 linear-radiance assumption; no inverse transfer curve is applied.
   const linear = new Float32Array(bytes.length);
   for (let index = 0; index < bytes.length; index += 1) {
-    // ColorAdd_* is the v1 linear-radiance assumption; no inverse transfer curve is applied.
     linear[index] = (bytes[index] ?? 0) / 255;
   }
-  return linear as LinearRGB;
+  return mintLinearRGB(linear);
 }
