@@ -420,16 +420,28 @@ async function maybeIngestPatch(): Promise<void> {
   if (hadIssue) renderSceneFixtures(visibleFixtures());
 }
 
-/** Mizer names flow through the same registry; unknown library ids remain explicit issues. */
-function rejectReferenceFixtureIds(fixtures: readonly { id: number }[]): void {
-  const id = fixtures.find((fixture) => referenceFixtureIds.has(fixture.id))?.id;
-  if (id !== undefined) throw new Error(`fixture id ${id} is reserved by the reference rig`);
+/**
+ * An ingested entry may legally carry a reference-rig id: it shadows the
+ * same-id reference entry (commands win in the visible merge) and says so
+ * out loud — a collision is a mark, never a parse failure.
+ */
+function markReferenceShadows<T extends { id: number; marks?: string[] }>(
+  entries: readonly T[],
+): T[] {
+  return entries.map((entry) =>
+    referenceFixtureIds.has(entry.id)
+      ? {
+          ...entry,
+          marks: [...(entry.marks ?? []), `shadows the reference rig fixture ${entry.id}`],
+        }
+      : entry,
+  );
 }
 
+/** Mizer names flow through the same registry; unknown library ids remain explicit issues. */
 function resolveMizerPatch(patch: Patch): Patch {
-  rejectReferenceFixtureIds(patch.fixtures);
   return {
-    fixtures: patch.fixtures.map((fixture) => {
+    fixtures: markReferenceShadows(patch.fixtures).map((fixture) => {
       const resolved =
         !!commands.definitions()[fixture.definition] ||
         !!resolvedReferenceDefinition(fixture.definition) ||
@@ -448,9 +460,15 @@ async function ingestMvrBytes(bytes: Uint8Array, label: string): Promise<boolean
   patchIssue = null;
   try {
     const ingest = await parseMvr(bytes);
-    rejectReferenceFixtureIds([...ingest.patch.fixtures, ...ingest.objects]);
     for (const { id, definition } of ingest.definitions) registerGdtf(id, definition);
-    commands.ingestMvr(ingest, label);
+    commands.ingestMvr(
+      {
+        ...ingest,
+        patch: { fixtures: markReferenceShadows(ingest.patch.fixtures) },
+        objects: markReferenceShadows(ingest.objects),
+      },
+      label,
+    );
     // An unchanged re-ingest notifies nothing; still repaint a cleared issue row.
     if (hadIssue) renderSceneFixtures(visibleFixtures());
     return true;
