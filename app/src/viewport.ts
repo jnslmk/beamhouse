@@ -1,7 +1,15 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { TransformControls } from "three/addons/controls/TransformControls.js";
-import { resolvedReferenceDefinition, type LinearRGB, type StripFixture } from "./reference-rig.ts";
+import {
+  deckFrameH,
+  deckLegH,
+  deckTopH,
+  resolvedReferenceDefinition,
+  stageDeckDefinitionId,
+  type LinearRGB,
+  type StripFixture,
+} from "./reference-rig.ts";
 import {
   BEAM_FRAG,
   BEAM_LENGTH_FALLOFF_K,
@@ -66,6 +74,8 @@ export interface Viewport {
   cubes: CubeFixture[];
   strips: TextureStrip[];
   fixtures: EditableFixture[];
+  /** Vendored stage mesh: swaps live fixtures now and templates every later sync. */
+  defineStageMesh(definitionId: string, template: THREE.Object3D): void;
   selectFixtures(ids: readonly number[]): void;
   setEditable(editable: boolean): void;
   setRenderMode(mode: "live" | "intensity"): void;
@@ -321,6 +331,10 @@ export function createViewport(
     }),
   ];
   const localFixtures = new Map<number, RenderedFixture>();
+  // Vendored GLB templates by definition id: clones share geometry, and every
+  // later setSceneFixtures re-clones, so async loads survive re-ingest.
+  const stageMeshTemplates = new Map<string, THREE.Object3D>();
+  const localDefinitions = new Map<number, string>();
   const localMaterials = new Map<number, THREE.MeshStandardMaterial>();
   interface LocalBeam {
     cone: THREE.Mesh<THREE.ConeGeometry, THREE.ShaderMaterial>;
@@ -348,7 +362,7 @@ export function createViewport(
   const localTexels = new Map<number, LocalTexels>();
   const localStripLengths = new Map<number, number>();
   const localMarkers = new Map<number, HTMLElement>();
-  const buildStaticsMesh = (id: number, statics: FixtureStatics): THREE.Mesh => {
+  const buildStaticsMesh = (id: number, statics: FixtureStatics): THREE.Object3D => {
     const size = statics.size;
     const count =
       statics.layout.kind === "discrete"
@@ -381,9 +395,9 @@ export function createViewport(
     id: number,
     definition: BhsDefinition | undefined,
     definitionId: string,
-  ): THREE.Mesh => {
+  ): THREE.Object3D => {
     const mesh = localFixtureMesh(definition, definitionId);
-    if (definition?.kind !== "strip") return mesh;
+    if (definition?.kind !== "strip" || !(mesh instanceof THREE.Mesh)) return mesh;
     const pixels = new Float32Array(definition.pixels * 4);
     const texture = new THREE.DataTexture(
       pixels,
@@ -448,11 +462,16 @@ export function createViewport(
     localFixtures.clear();
     localStripLengths.clear();
     localMarkers.clear();
+    localDefinitions.clear();
     for (const fixture of nextFixtures) {
-      const statics = staticsFor(fixture.definition, fixture.mode);
-      const mesh = statics
-        ? buildStaticsMesh(fixture.id, statics)
-        : buildSceneMesh(fixture.id, definitions[fixture.definition], fixture.definition);
+      const template = stageMeshTemplates.get(fixture.definition);
+      const statics = template ? null : staticsFor(fixture.definition, fixture.mode);
+      // ponytail: template clones share geometry; only unaddressed stage objects use them.
+      const mesh =
+        template?.clone() ??
+        (statics
+          ? buildStaticsMesh(fixture.id, statics)
+          : buildSceneMesh(fixture.id, definitions[fixture.definition], fixture.definition));
       mesh.position.set(0, 0.5, 0);
       mesh.userData.baseRotation = [0, 0, 0];
       scene.add(mesh);
@@ -485,6 +504,7 @@ export function createViewport(
           return placementFor(mesh);
         },
       };
+      localDefinitions.set(fixture.id, fixture.definition);
       if (editableFixtures.length < markers.length)
         localMarkers.set(fixture.id, markers[editableFixtures.length]!);
       localFixtures.set(fixture.id, rendered);
@@ -494,11 +514,26 @@ export function createViewport(
           radiusM: statics.radiusM ?? 0,
           soft: statics.softEdge,
         });
-      if (mesh.material instanceof THREE.MeshStandardMaterial)
+      if (mesh instanceof THREE.Mesh && mesh.material instanceof THREE.MeshStandardMaterial)
         localMaterials.set(fixture.id, mesh.material);
       editableFixtures.push(rendered);
     }
   };
+  const defineStageMesh = (definitionId: string, template: THREE.Object3D): void => {
+    stageMeshTemplates.set(definitionId, template);
+    for (const [id, rendered] of localFixtures) {
+      if (localDefinitions.get(id) !== definitionId) continue;
+      const current = rendered.mesh;
+      const placement = placementFor(current);
+      const next = template.clone();
+      scene.remove(current);
+      disposeObject(current);
+      scene.add(next);
+      rendered.mesh = next;
+      rendered.setPlacement(placement);
+    }
+  };
+
   const setSceneFixtureStates = (states: ReadonlyMap<number, FixtureState>) => {
     let cones = 0;
     let pools = 0;
@@ -798,6 +833,7 @@ export function createViewport(
     },
     setSceneFixtureStates,
     setSceneFixtures,
+    defineStageMesh,
     showGdtfFixture,
     setAtmosphere(density, lengthM) {
       beamDensity = density;
@@ -949,7 +985,36 @@ function setPoolUniforms(material: THREE.ShaderMaterial, state: FixtureState, ed
   (material.uniforms["uEdge"] as THREE.IUniform<number>).value = edge;
 }
 
-function localFixtureMesh(definition: BhsDefinition | undefined, definitionId: string): THREE.Mesh {
+/** BÜTEC 2x1 m deck: alu frame + wood top on four legs, origin at the floor. */
+function buildDeckMesh(): THREE.Group {
+  const group = new THREE.Group();
+  const alu = new THREE.MeshStandardMaterial({ color: 0x8a8f94, metalness: 0.6, roughness: 0.45 });
+  const wood = new THREE.MeshStandardMaterial({ color: 0x9a7b4f, roughness: 0.85 });
+  const legGeometry = new THREE.BoxGeometry(0.05, deckLegH, 0.05);
+  for (const [x, z] of [
+    [-0.4, -0.9],
+    [0.4, -0.9],
+    [-0.4, 0.9],
+    [0.4, 0.9],
+  ] as const) {
+    const leg = new THREE.Mesh(legGeometry, alu);
+    leg.position.set(x, deckLegH / 2, z);
+    group.add(leg);
+  }
+  const frame = new THREE.Mesh(new THREE.BoxGeometry(1, deckFrameH, 2), alu);
+  frame.position.y = deckLegH + deckFrameH / 2;
+  group.add(frame);
+  const top = new THREE.Mesh(new THREE.BoxGeometry(1, deckTopH, 2), wood);
+  top.position.y = deckLegH + deckFrameH + deckTopH / 2;
+  group.add(top);
+  return group;
+}
+
+function localFixtureMesh(
+  definition: BhsDefinition | undefined,
+  definitionId: string,
+): THREE.Object3D {
+  if (definitionId === stageDeckDefinitionId) return buildDeckMesh();
   const material = new THREE.MeshStandardMaterial({
     color: 0x86817c,
     metalness: 0.08,

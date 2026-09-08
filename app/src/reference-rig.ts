@@ -83,17 +83,22 @@ export const referenceStrips: readonly StripFixture[] = Array.from({ length: 10 
   };
 });
 
-const REFERENCE_CUBE_DEFINITION = "bhs:reference-cube";
 const REFERENCE_STRIP_DEFINITION = "bhs:reference-strip";
+/** Hung house rig: authored tungsten conventionals, one dimmer channel each. */
+export const par38DefinitionId = "gdtf:FFC1C66D-905A-47AB-87DB-5FCEEF121B1A";
+export const practicalDefinitionId = "gdtf:AD8F1059-A90D-4477-85EB-FD93C185D1B3";
+export const profileDefinitionId = "gdtf:1081DF90-2D92-493F-B1F7-7B7D90B778CD";
+const HOUSE_MODE = "Dimmer";
+/** Stage set: BÜTEC 2x1 m decks (rotated: 1 m across x, 2 m deep), 0.6 m legs. */
+export const deckLegH = 0.6;
+export const deckFrameH = 0.09;
+export const deckTopH = 0.022;
+export const deckTopY = deckLegH + deckFrameH + deckTopH;
+export const stageDeckDefinitionId = "bhs:buetex-deck";
+export const stageTrussDefinitionId = "bhs:truss-2m";
+export const stageSingerDefinitionId = "bhs:singer";
 
 export const referenceSceneDefinitions: Readonly<Record<string, BhsDefinition>> = {
-  [REFERENCE_CUBE_DEFINITION]: {
-    kind: "primitive",
-    primitive: "Cube",
-    width: 1.35,
-    depth: 1.35,
-    height: 1.35,
-  },
   [REFERENCE_STRIP_DEFINITION]: {
     kind: "strip",
     pixels: PIXELS_PER_SPOKE,
@@ -101,19 +106,50 @@ export const referenceSceneDefinitions: Readonly<Record<string, BhsDefinition>> 
     channelsPerPixel: SLOTS_PER_PIXEL,
     primitive: "Cube",
   },
+  // Overall extents only: the deck builds slab + legs, truss/singer load GLBs.
+  [stageDeckDefinitionId]: {
+    kind: "primitive",
+    primitive: "Cube",
+    width: 1,
+    depth: 2,
+    height: deckTopY,
+  },
+  [stageTrussDefinitionId]: {
+    kind: "primitive",
+    primitive: "Cube",
+    width: 0.22,
+    depth: 2,
+    height: 0.22,
+  },
+  [stageSingerDefinitionId]: {
+    kind: "primitive",
+    primitive: "Cube",
+    width: 0.7,
+    depth: 0.7,
+    height: 1.7,
+  },
 };
 
-/** The reference rig's public identity is the same fixture shape as every ingested fixture. */
-const referenceCubes: readonly LocalFixture[] = [1, 2, 3].map((id) => ({
+const hungConventional = (id: number, definition: string): LocalFixture => ({
   id,
-  definition: REFERENCE_CUBE_DEFINITION,
-  mode: "default",
+  definition,
+  mode: HOUSE_MODE,
   addresses: [{ universe: 1, address: id, footprint: 1 }],
-}));
+});
+
+/** A scene object is a fixture with an empty mode and no addresses. */
+const stageObject = (id: number, definition: string): LocalFixture => ({
+  id,
+  definition,
+  mode: "",
+  addresses: [],
+});
 
 /** The reference rig's public identity is the same fixture shape as every ingested fixture. */
 export const referenceSceneFixtures: readonly LocalFixture[] = [
-  ...referenceCubes,
+  hungConventional(1, par38DefinitionId),
+  hungConventional(2, profileDefinitionId),
+  hungConventional(3, practicalDefinitionId),
   ...referenceStrips.map((strip) => ({
     id: strip.id,
     definition: REFERENCE_STRIP_DEFINITION,
@@ -124,19 +160,16 @@ export const referenceSceneFixtures: readonly LocalFixture[] = [
       footprint: address.pixels * SLOTS_PER_PIXEL,
     })),
   })),
+  ...[201, 202, 203, 204, 205].map((id) => stageObject(id, stageDeckDefinitionId)),
+  ...[206, 207, 208, 209, 210, 211, 212].map((id) => stageObject(id, stageTrussDefinitionId)),
+  stageObject(213, stageSingerDefinitionId),
 ];
 
+// Beam fires along local +Z: hung placements yaw toward stage, then pitch down.
 export const referenceScenePlacements: ReadonlyMap<number, Placement> = new Map([
-  ...referenceCubes.map(
-    (fixture) =>
-      [
-        fixture.id,
-        {
-          position: [(fixture.id - 2) * 2.25, 0.7, 0],
-          rotation: [(-0.08 * 180) / Math.PI, 45, 0],
-        },
-      ] as [number, Placement],
-  ),
+  [1, { position: [-2, 3.8, -1.5], rotation: [48, 45, 0] }],
+  [2, { position: [0, 3.8, -1.5], rotation: [57, 0, 0] }],
+  [3, { position: [-1.5, deckTopY, -0.5], rotation: [0, 0, 0] }],
   ...referenceStrips.map(
     (strip) =>
       [
@@ -147,6 +180,23 @@ export const referenceScenePlacements: ReadonlyMap<number, Placement> = new Map(
         },
       ] as [number, Placement],
   ),
+  ...[201, 202, 203, 204, 205].map(
+    (id, index) =>
+      [id, { position: [-2 + index, 0, 0], rotation: [0, 0, 0] }] as [number, Placement],
+  ),
+  // Truss long axis is z: uprights pitch 90° to stand, span yaws 90° to lie along x.
+  ...[
+    [206, [-3, 1, -1.5], [90, 0, 0]],
+    [207, [-3, 3, -1.5], [90, 0, 0]],
+    [208, [3, 1, -1.5], [90, 0, 0]],
+    [209, [3, 3, -1.5], [90, 0, 0]],
+    [210, [-2, 4, -1.5], [0, 90, 0]],
+    [211, [0, 4, -1.5], [0, 90, 0]],
+    [212, [2, 4, -1.5], [0, 90, 0]],
+  ].map(
+    ([id, position, rotation]) => [id, { position, rotation }] as unknown as [number, Placement],
+  ),
+  [213, { position: [0.5, deckTopY, 0.3], rotation: [0, 0, 0] }],
 ]);
 
 export function universesForStrips(strips: readonly StripFixture[]): number[] {

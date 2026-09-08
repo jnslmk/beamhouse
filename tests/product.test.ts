@@ -178,7 +178,7 @@ describe("running Beamhouse", () => {
     expect(await page.locator("[data-history-count]").textContent()).toBe("1");
 
     await page.locator("[data-undo]").click();
-    await page.locator('[data-placement-x="-2.25"]').waitFor();
+    await page.locator('[data-placement-x="-2"]').waitFor();
     expect(await page.locator("[data-history-count]").textContent()).toBe("1");
     await page.locator("[data-redo]").click();
     await page.locator('[data-placement-x="2.4"]').waitFor();
@@ -561,13 +561,13 @@ describe("running Beamhouse", () => {
     await page.locator('[data-fixture="2"]').click({ modifiers: ["Shift"] });
     await page.locator('[data-fixture="3"]').click({ modifiers: ["Shift"] });
     await page.locator("[data-revert]").click();
-    await page.locator('[data-fixture-mark="1"][data-rendered-placement-x="-2.25"]').waitFor();
-    await page.locator("[data-array-id]").fill("cubes-line");
+    await page.locator('[data-fixture-mark="1"][data-rendered-placement-x="-2"]').waitFor();
+    await page.locator("[data-array-id]").fill("house-line");
     await page.locator("[data-array-kind]").selectOption("line");
     await page.locator("[data-array-members]").fill("1,2,3");
     await page.locator('[data-array="spacingX"]').fill("2");
     await page.locator("[data-array-save]").click();
-    await page.locator("[data-array-status]", { hasText: "cubes-line · 3 members" }).waitFor();
+    await page.locator("[data-array-status]", { hasText: "house-line · 3 members" }).waitFor();
     await page.locator('[data-fixture-mark="3"][data-rendered-placement-x="4"]').waitFor();
     await page.locator('[data-array="spacingX"]').fill("3");
     await page.locator("[data-array-save]").click();
@@ -962,7 +962,7 @@ describe("running Beamhouse", () => {
     ).toBe("42");
     expect(
       await page.locator('[data-fixture-mark="1"]').getAttribute("data-rendered-placement-x"),
-    ).toBe("-2.25");
+    ).toBe("-2");
   }, 15_000);
   test("adds addressed local fixtures and addressless scene objects through one persistent fixture model", async () => {
     page.once("dialog", (dialog) => void dialog.accept());
@@ -2080,7 +2080,7 @@ describe("running Beamhouse", () => {
       await patchPage.locator('[data-local-fixture="22"] [data-break="1.020"]').waitFor();
       await expectPatchContribution(patchPage, 22);
 
-      // Reference-rig ids (cubes 1-3, spokes 101-110) are legal: each ingested
+      // Reference-rig ids (house fixtures 1-3, spokes 101-110) are legal: each ingested
       // fixture shadows the same-id reference entry (commands win) and the
       // collision surfaces as a mark and an issue row, never a parse failure.
       writeFileSync(
@@ -2222,7 +2222,7 @@ describe("running Beamhouse", () => {
       await mvrPage.locator('[data-issue="mvr:40:0"]').waitFor();
 
       // A dropped MVR whose fixture and object ids collide with the reference
-      // rig (cube 1, spoke 101) ingests: the same-id reference entries are
+      // rig (house fixture 1, spoke 101) ingests: the same-id reference entries are
       // shadowed and the collisions surface as marks, never a parse failure.
       const shadowed = Buffer.from(shadowMvrBytes()).toString("base64");
       await mvrPage.evaluate((payload: string) => {
@@ -2699,7 +2699,7 @@ function dropMvrBytes(): Uint8Array {
   });
 }
 
-/** Colliding ids: a fixture on reference cube 1 and a scene object on spoke 101. */
+/** Colliding ids: a fixture on reference fixture 1 and a scene object on spoke 101. */
 function shadowMvrBytes(): Uint8Array {
   const channel = (offset: string, dmxBreak: number): string =>
     `<DMXChannel Geometry="Body" Offset="${offset}" DMXBreak="${dmxBreak}"><LogicalChannel Attribute="Dimmer"><ChannelFunction Name="Dim" DMXFrom="0/1" PhysicalFrom="0" PhysicalTo="1" Default="0/1"/></LogicalChannel></DMXChannel>`;

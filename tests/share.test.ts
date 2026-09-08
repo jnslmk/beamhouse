@@ -1,4 +1,7 @@
 import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import { parseGdtf } from "../packages/gdtf-ts/src/index.ts";
 import {
   buildSharePayload,
   decodeShareFragment,
@@ -8,7 +11,12 @@ import {
   snapshotScene,
   type ShareBuildInput,
 } from "../app/src/share.ts";
-import { clearDefinitions, registerOfl, shareDefinition } from "../app/src/resolve.ts";
+import {
+  clearDefinitions,
+  registerGdtf,
+  registerOfl,
+  shareDefinition,
+} from "../app/src/resolve.ts";
 import {
   referenceSceneDefinitions,
   referenceSceneFixtures,
@@ -136,11 +144,25 @@ describe("share snapshot codec", () => {
   });
 
   test("reference fixtures use the same fixture and definition records as a share", () => {
+    // Mirrors production boot: the hung house rig resolves from registered authored GDTFs.
+    const repository = resolve(import.meta.dir, "..");
+    for (const filename of [
+      "Beamhouse@generic PAR38@v1.gdtf",
+      "Beamhouse@generic E27 practical@v1.gdtf",
+      "Beamhouse@generic profile@v1.gdtf",
+    ]) {
+      const definition = parseGdtf(
+        new Uint8Array(readFileSync(resolve(repository, "definitions/authored", filename))),
+      );
+      registerGdtf(`gdtf:${definition.fixtureTypeId}`, definition);
+    }
     const built = buildSharePayload({
       fixtures: referenceSceneFixtures,
       definitions: referenceSceneDefinitions,
       placements: referenceScenePlacements,
+      resolveReference: shareDefinition,
     });
+    clearDefinitions();
     expect(built.dropped).toEqual([]);
     expect(new Set(referenceSceneFixtures.map((fixture) => fixture.id)).size).toBe(
       referenceSceneFixtures.length,

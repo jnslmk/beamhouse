@@ -1,6 +1,6 @@
 import type { UniverseFrame, UniverseHealth, UniversesMessage } from "@beamhouse/wire";
 import { parseGdtf, proxyPrimitive, type GdtfGeometryNode } from "gdtf-ts";
-import type { Object3D } from "three";
+import { Box3, Group, Vector3, type Object3D } from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { LiveFeed } from "./live-feed.ts";
 import {
@@ -9,8 +9,16 @@ import {
   referenceScenePlacements,
   referenceStrips,
   resolvedReferenceDefinition,
+  stageSingerDefinitionId,
+  stageTrussDefinitionId,
   universesForStrips,
 } from "./reference-rig.ts";
+// Vendored stage inputs: boot GDTF copies of definitions/authored plus CC0/CC-BY GLBs.
+import par38GdtfUrl from "./stage/Beamhouse@generic PAR38@v1.gdtf?url";
+import practicalGdtfUrl from "./stage/Beamhouse@generic E27 practical@v1.gdtf?url";
+import profileGdtfUrl from "./stage/Beamhouse@generic profile@v1.gdtf?url";
+import singerGlbUrl from "./stage/singer.glb?url";
+import trussGlbUrl from "./stage/truss.glb?url";
 import {
   hasDefinition,
   hasMode,
@@ -100,7 +108,7 @@ root.innerHTML = `
       </nav>
       <section data-overlay-panel="fixtures">
       <div class="panel-heading">
-        <div><span class="eyebrow">Reference patch</span><h1>Live cubes</h1></div>
+        <div><span class="eyebrow">Reference patch</span><h1>House rig</h1></div>
         <span class="live-dot" aria-hidden="true"></span>
       </div>
       <p class="lede">Universe 1 · slots 1–3. Every accepted packet is drawn last-writer-wins.</p>
@@ -110,7 +118,7 @@ root.innerHTML = `
             (address) => `
               <li data-fixture="${address}" data-editable-fixture="${address}" data-level="0">
                 <span class="swatch swatch-${address}"></span>
-                <span><b>Cube ${address}</b><small>1.${String(address).padStart(3, "0")}</small></span>
+                <span><b>House ${address}</b><small>1.${String(address).padStart(3, "0")}</small></span>
                 <output>0</output>
               </li>`,
           )
@@ -477,6 +485,50 @@ async function ingestMvrBytes(bytes: Uint8Array, label: string): Promise<boolean
     renderSceneFixtures(visibleFixtures());
     return false;
   }
+}
+
+async function registerHouseDefinitions(): Promise<void> {
+  for (const url of [par38GdtfUrl, practicalGdtfUrl, profileGdtfUrl]) {
+    try {
+      const bytes = new Uint8Array(await (await fetch(url)).arrayBuffer());
+      const definition = parseGdtf(bytes);
+      registerGdtf(`gdtf:${definition.fixtureTypeId}`, definition);
+    } catch {
+      // Unresolved-definition marks carry the failure visibly; never a blank rig.
+    }
+  }
+}
+
+/** Vendored GLB to meters: truss spans 2 m, the singer stands 1.7 m, feet on y=0. */
+async function loadStageMesh(
+  url: string,
+  targetM: number,
+  vertical: boolean,
+): Promise<Group | null> {
+  try {
+    const bytes = await (await fetch(url)).arrayBuffer();
+    const root = (await new GLTFLoader().parseAsync(bytes, "")).scene;
+    const size = new Box3().setFromObject(root).getSize(new Vector3());
+    const span = vertical ? size.y : Math.max(size.x, size.z);
+    if (!(span > 0)) return null;
+    const inner = new Group();
+    inner.add(root);
+    inner.scale.setScalar(targetM / span);
+    inner.position.y -= new Box3().setFromObject(inner).min.y;
+    const outer = new Group();
+    outer.add(inner);
+    return outer;
+  } catch {
+    return null;
+  }
+}
+
+await registerHouseDefinitions();
+for (const [definitionId, mesh] of [
+  [stageTrussDefinitionId, await loadStageMesh(trussGlbUrl, 2, false)],
+  [stageSingerDefinitionId, await loadStageMesh(singerGlbUrl, 1.7, true)],
+] as const) {
+  if (mesh) viewportApi.defineStageMesh(definitionId, mesh);
 }
 
 syncSceneFixtures();
