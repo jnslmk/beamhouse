@@ -219,7 +219,7 @@ export function createViewport(
 
   const floor = new THREE.Mesh(
     new THREE.PlaneGeometry(30, 30),
-    new THREE.MeshStandardMaterial({ color: 0x181716, roughness: 0.92 }),
+    new THREE.MeshStandardMaterial({ color: 0x1e1b18, roughness: 0.9 }),
   );
   floor.rotation.x = -Math.PI / 2;
   scene.add(floor);
@@ -227,6 +227,16 @@ export function createViewport(
   const grid = new THREE.GridHelper(30, 30, 0x4a4743, 0x292724);
   grid.position.y = 0.003;
   scene.add(grid);
+
+  // Spoke-hub occluder: the ten star arms converge exactly at (0, 3, 0), so
+  // their emissive roots stack into one blob. A small dark puck caps the
+  // convergence — a physical mount hub the lines terminate into (slice-4).
+  const hubCap = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.11, 0.11, 0.08, 24),
+    new THREE.MeshStandardMaterial({ color: 0x121110, metalness: 0, roughness: 0.9 }),
+  );
+  hubCap.position.set(0, 3, 0);
+  scene.add(hubCap);
 
   const colors = builtInReference ? [0xffa52f, 0x49a4ff, 0xf05baa] : [];
   const activeStripFixtures = builtInReference ? stripFixtures : [];
