@@ -10,6 +10,12 @@ export interface PatchFixture {
   definition: string;
   mode: string;
   addresses: { universe: number; address: number; footprint: number }[];
+  /** MVR UUID reconciliation hint: persisted, never identity (ADR-0020). */
+  uuid?: string;
+  /** GDTF Revision Text hint: persisted, never resolved on (ADR-0030). */
+  revision?: string;
+  /** Additive provenance marks the Issues surface renders verbatim. */
+  marks?: string[];
 }
 
 export interface Patch {

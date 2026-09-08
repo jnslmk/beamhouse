@@ -1879,6 +1879,109 @@ describe("running Beamhouse", () => {
       rmSync(watchDir, { recursive: true, force: true });
     }
   }, 30_000);
+  test("ingests the committed MVR and dropped bytes without a third-party tool", async () => {
+    const build = Bun.spawnSync(["bun", "run", "build"], {
+      cwd: repository,
+      stdout: "ignore",
+      stderr: "pipe",
+    });
+    if (!build.success) throw new Error(build.stderr.toString());
+    const watchDir = mkdtempSync(join(tmpdir(), "beamhouse-mvr-"));
+    const watchHttp = await freeTcpPort();
+    const watchSacn = await freeUdpPort();
+    const watchArtnet = await freeUdpPort();
+    const mvrBridge = Bun.spawn(["bun", "src/main.ts"], {
+      cwd: resolve(repository, "bridge"),
+      env: {
+        ...process.env,
+        BEAMHOUSE_HOST: "127.0.0.1",
+        BEAMHOUSE_PORT: String(watchHttp),
+        BEAMHOUSE_SACN_PORT: String(watchSacn),
+        BEAMHOUSE_ARTNET_PORT: String(watchArtnet),
+        BEAMHOUSE_WATCH_DIR: watchDir,
+      },
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const mvrPage = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+    try {
+      await waitUntilReachable(`http://127.0.0.1:${watchHttp}`, mvrBridge);
+      await mvrPage.goto(`http://127.0.0.1:${watchHttp}`, { waitUntil: "domcontentloaded" });
+      await mvrPage.locator('html[data-ready="true"]').waitFor();
+      await mvrPage.locator("#ownership-status", { hasText: "owner" }).waitFor();
+      // The seeded override for id 2 must survive the ingest below.
+      await seedWorkingScene(mvrPage);
+      await mvrPage.reload({ waitUntil: "domcontentloaded" });
+      await mvrPage.locator('html[data-ready="true"]').waitFor();
+
+      // The committed representative MVR loads off the watched path.
+      writeFileSync(
+        resolve(watchDir, "rig.mvr"),
+        readFileSync(resolve(repository, "tests/fixtures/beamhouse-representative.mvr")),
+      );
+      await openFixturesOn(mvrPage);
+      await mvrPage.locator('[data-local-fixture="1"]').waitFor();
+      await mvrPage.locator('[data-local-fixture="12"]').waitFor();
+      await mvrPage.locator('[data-local-fixture="1000"][data-marks*="synthesized id"]').waitFor();
+      await mvrPage.locator('[data-local-fixture="2"][data-marks*="extension repaired"]').waitFor();
+      await mvrPage
+        .locator('[data-local-fixture="1"][data-uuid="aaaaaaaa-0000-4000-8000-000000000001"]')
+        .waitFor();
+      await mvrPage.locator('[data-local-fixture="1"][data-revision]').waitFor();
+      // The MVR starting placement lands in metres; the seeded override wins.
+      await mvrPage.locator('[data-local-fixture="1"]').click();
+      await mvrPage.locator('[data-placement-x="2.4"]').waitFor();
+      await mvrPage.locator('[data-local-fixture="2"]').click();
+      await mvrPage.locator('[data-placement-x="7.5"]').waitFor();
+      // Objects keep their positive ladder ids in the Objects filter.
+      await mvrPage.locator('[data-overlay-tab="objects"]').click();
+      await mvrPage.locator('[data-scene-objects] [data-local-fixture="6"]').waitFor();
+      await mvrPage.locator('[data-scene-objects] [data-local-fixture="11"]').waitFor();
+      // Every repair is an Issues row: 7 provenance rows plus 6 unresolved-definition rows.
+      await mvrPage.locator('[data-overlay-tab="issues"]').click();
+      await expectCount(mvrPage.locator('[data-issue^="mvr:"]'), 7);
+      await expectCount(mvrPage.locator("[data-issue]"), 13);
+      await mvrPage.locator('[data-issue="mvr:3:1"][data-issue]').waitFor();
+      await mvrPage.locator('[data-overlay-tab="fixtures"]').click();
+      await expectPatchContribution(mvrPage);
+
+      // Dropped bytes reach the same parser and replace the patch wholesale.
+      const dropped = Buffer.from(dropMvrBytes()).toString("base64");
+      await mvrPage.evaluate((payload: string) => {
+        const bytes = Uint8Array.from(atob(payload), (char) => char.charCodeAt(0));
+        const file = new File([bytes], "drop.mvr");
+        const transfer = new DataTransfer();
+        transfer.items.add(file);
+        document.dispatchEvent(
+          new DragEvent("drop", { bubbles: true, cancelable: true, dataTransfer: transfer }),
+        );
+      }, dropped);
+      await mvrPage.locator('[data-overlay-tab="fixtures"]').click();
+      await mvrPage.locator('[data-local-fixture="40"][data-mode="Nope"]').waitFor();
+      await mvrPage
+        .locator('[data-local-fixture="40"][data-marks*="without a DMX binding"]')
+        .waitFor();
+      await mvrPage.locator('[data-local-fixture="1"]').waitFor({ state: "detached" });
+      await mvrPage.locator('[data-local-fixture="6"]').waitFor({ state: "detached" });
+      await mvrPage.locator('[data-overlay-tab="issues"]').click();
+      await mvrPage.locator('[data-issue="mvr:40:0"]').waitFor();
+
+      expect(await mvrPage.locator("#feed-status").getAttribute("data-status")).toBe("live");
+      await mvrPage.locator("#ownership-status", { hasText: "owner" }).waitFor();
+    } finally {
+      await mvrPage.close();
+      mvrBridge.kill("SIGTERM");
+      const exited = await Promise.race([
+        mvrBridge.exited.then(() => true),
+        Bun.sleep(5_000).then(() => false),
+      ]);
+      if (!exited) {
+        mvrBridge.kill("SIGKILL");
+        await mvrBridge.exited;
+      }
+      rmSync(watchDir, { recursive: true, force: true });
+    }
+  }, 60_000);
 });
 async function injectGdtf(filename: string): Promise<string> {
   const base64 = Buffer.from(
@@ -2076,6 +2179,78 @@ function storedZip(name: string, data: Uint8Array): Uint8Array {
   out.set(nameBytes, 30 + nameBytes.length + data.length + 46);
   out.set(new Uint8Array(end.buffer), 30 + nameBytes.length + data.length + 46 + nameBytes.length);
   return out;
+}
+
+/** Minimal multi-file stored zip for drop-path MVR bytes. */
+function mvrZipFiles(files: Record<string, Uint8Array>): Uint8Array {
+  const chunks: Uint8Array[] = [];
+  const central: Uint8Array[] = [];
+  let offset = 0;
+  for (const [name, data] of Object.entries(files)) {
+    const nameBytes = new TextEncoder().encode(name);
+    let crc = 0xffffffff;
+    for (const byte of data) crc = (CRC_TABLE[(crc ^ byte) & 0xff] ?? 0) ^ (crc >>> 8);
+    const checksum = (crc ^ 0xffffffff) >>> 0;
+    const local = new DataView(new ArrayBuffer(30));
+    local.setUint32(0, 0x04034b50, true);
+    local.setUint16(4, 20, true);
+    local.setUint16(8, 0, true);
+    local.setUint32(14, checksum, true);
+    local.setUint32(18, data.length, true);
+    local.setUint32(22, data.length, true);
+    local.setUint16(26, nameBytes.length, true);
+    chunks.push(new Uint8Array(local.buffer), nameBytes, data);
+    const entry = new DataView(new ArrayBuffer(46));
+    entry.setUint32(0, 0x02014b50, true);
+    entry.setUint16(4, 20, true);
+    entry.setUint16(6, 20, true);
+    entry.setUint16(8, 0, true);
+    entry.setUint16(10, 0, true);
+    entry.setUint32(16, checksum, true);
+    entry.setUint32(20, data.length, true);
+    entry.setUint32(24, data.length, true);
+    entry.setUint16(28, nameBytes.length, true);
+    entry.setUint32(42, offset, true);
+    central.push(new Uint8Array(entry.buffer), nameBytes);
+    offset += 30 + nameBytes.length + data.length;
+  }
+  const directorySize = central.reduce((sum, part) => sum + part.length, 0);
+  const end = new DataView(new ArrayBuffer(22));
+  end.setUint32(0, 0x06054b50, true);
+  end.setUint16(8, Object.keys(files).length, true);
+  end.setUint16(10, Object.keys(files).length, true);
+  end.setUint32(12, directorySize, true);
+  end.setUint32(16, offset, true);
+  const out = new Uint8Array(offset + directorySize + 22);
+  let cursor = 0;
+  for (const part of [...chunks, ...central, new Uint8Array(end.buffer)]) {
+    out.set(part, cursor);
+    cursor += part.length;
+  }
+  return out;
+}
+
+/** Dropped bytes with a genuine mode mismatch: two modes, neither named. */
+function dropMvrBytes(): Uint8Array {
+  const channel = (offset: string, dmxBreak: number): string =>
+    `<DMXChannel Geometry="Body" Offset="${offset}" DMXBreak="${dmxBreak}"><LogicalChannel Attribute="Dimmer"><ChannelFunction Name="Dim" DMXFrom="0/1" PhysicalFrom="0" PhysicalTo="1" Default="0/1"/></LogicalChannel></DMXChannel>`;
+  const gdtf =
+    `<GDTF DataVersion="1.2"><FixtureType FixtureTypeID="DDDDDDDD-0000-4000-8000-000000000000" Manufacturer="Test" Name="Drop">` +
+    `<Revisions><Revision Text="drop-rev"/></Revisions>` +
+    `<AttributeDefinitions><ActivationGroups/><FeatureGroups/><Attributes><Attribute Name="Dimmer" PhysicalUnit="Percent"/></Attributes></AttributeDefinitions>` +
+    `<DMXModes><DMXMode Name="Alpha" Geometry="Body"><DMXChannels>${channel("1", 1)}</DMXChannels></DMXMode>` +
+    `<DMXMode Name="Beta" Geometry="Body"><DMXChannels>${channel("1", 1)}${channel("2", 2)}</DMXChannels></DMXMode></DMXModes>` +
+    `</FixtureType></GDTF>`;
+  const scene =
+    `<GeneralSceneDescription verMajor="1" verMinor="6"><Layers>` +
+    `<Layer uuid="44444444-4444-4444-8444-444444444444" name="Drop"><ChildList>` +
+    `<Fixture uuid="55555555-5555-4555-8555-555555555555" name="Dropped"><Matrix>1 0 0 0 1 0 0 0 1 1000 0 0</Matrix>` +
+    `<GDTFSpec value="drop.gdtf"/><GDTFMode value="Nope"/><FixtureIDNumeric value="40"/>` +
+    `<Addresses><Address Break="1">4.4</Address></Addresses></Fixture></ChildList></Layer></Layers></GeneralSceneDescription>`;
+  return mvrZipFiles({
+    "GeneralSceneDescription.xml": new TextEncoder().encode(scene),
+    "drop.gdtf": mvrZipFiles({ "description.xml": new TextEncoder().encode(gdtf) }),
+  });
 }
 
 async function canvasColorSamples(

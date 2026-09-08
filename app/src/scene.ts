@@ -1,3 +1,4 @@
+import type { MvrIngest } from "./mvr.ts";
 import type { Patch, PatchFixture } from "./patch.ts";
 
 export interface Placement {
@@ -46,6 +47,12 @@ export interface LocalFixture {
   definition: string;
   mode: string;
   addresses: BreakAddress[];
+  /** MVR UUID reconciliation hint: persisted, never identity (ADR-0020). */
+  uuid?: string;
+  /** GDTF Revision Text hint: persisted, never resolved on (ADR-0030). */
+  revision?: string;
+  /** Additive provenance marks the Issues surface renders verbatim. */
+  marks?: string[];
 }
 
 export interface PersistedScene {
@@ -245,6 +252,14 @@ export class SceneCommands {
   ingestPatch(patch: Patch, path: string): void {
     if (!this.#owner) return;
     const after = applyPatchIngest(this.#scene, patch, path);
+    if (sameScene(this.#scene, after)) return;
+    this.#scene = after;
+    void this.#saveAndNotify();
+  }
+  /** MVR ingests replace patch plus MVR-borne objects and seed placements; id-keyed overrides, arrays, local fixtures, views and hints survive. Never earns history. */
+  ingestMvr(ingest: MvrIngest, path: string): void {
+    if (!this.#owner) return;
+    const after = applyMvrIngest(this.#scene, ingest, path);
     if (sameScene(this.#scene, after)) return;
     this.#scene = after;
     void this.#saveAndNotify();
@@ -742,7 +757,13 @@ export function normalize(value: unknown): PersistedScene {
   if (scene.patch && typeof scene.patch === "object") {
     for (const [id, fixture] of Object.entries(scene.patch)) {
       if (isPatchFixture(fixture) && String(fixture.id) === id)
-        patch[id] = { ...fixture, addresses: fixture.addresses.map((address) => ({ ...address })) };
+        patch[id] = {
+          id: fixture.id,
+          definition: fixture.definition,
+          mode: fixture.mode,
+          addresses: fixture.addresses.map((address) => ({ ...address })),
+          ...provenanceOf(fixture),
+        };
     }
   }
   for (const id of Object.keys(definitions)) {
@@ -781,16 +802,38 @@ function normalizeLocalFixture(
     definition: fixture.definition,
     mode: fixture.mode,
     addresses: fixture.addresses,
+    ...provenanceOf(fixture),
   };
+}
+
+// Validated provenance survives normalize; anything else is dropped so a
+// malformed persisted mark can never break the Issues surface.
+function provenanceOf(fixture: Partial<LocalFixture & PatchFixture>): {
+  uuid?: string;
+  revision?: string;
+  marks?: string[];
+} {
+  const provenance: { uuid?: string; revision?: string; marks?: string[] } = {};
+  if (typeof fixture.uuid === "string" && fixture.uuid.length > 0) provenance.uuid = fixture.uuid;
+  if (typeof fixture.revision === "string" && fixture.revision.length > 0)
+    provenance.revision = fixture.revision;
+  if (
+    Array.isArray(fixture.marks) &&
+    fixture.marks.every((mark): mark is string => typeof mark === "string")
+  )
+    provenance.marks = [...fixture.marks];
+  return provenance;
 }
 
 function isLocalFixture(value: unknown): value is LocalFixture {
   if (!value || typeof value !== "object") return false;
   const fixture = value as Partial<LocalFixture>;
+  // Any integer id validates here: commands still mint negative ids only
+  // (fixtureAddError), while positive ids are MVR-borne objects that keep
+  // their ladder ids (ADR-0035 decision 6).
   return (
     typeof fixture.id === "number" &&
     Number.isInteger(fixture.id) &&
-    fixture.id < 0 &&
     typeof fixture.definition === "string" &&
     fixture.definition.length > 0 &&
     typeof fixture.mode === "string" &&
@@ -832,6 +875,44 @@ export function applyPatchIngest(
       ...fixture,
       addresses: fixture.addresses.map((address) => ({ ...address })),
     };
+  return after;
+}
+/**
+ * MVR re-ingest: the patch record and source path replace wholesale, MVR-borne
+ * objects (positive ids, which commands can never mint) replace wholesale,
+ * and MVR placements seed id-keyed overrides without touching existing ones.
+ * Local fixtures, arrays, views, definitions, and hints survive.
+ */
+export function applyMvrIngest(
+  scene: PersistedScene,
+  ingest: MvrIngest,
+  path: string,
+): PersistedScene {
+  const after = clone(scene);
+  after.patchPath = path;
+  after.patch = {};
+  for (const fixture of ingest.patch.fixtures)
+    after.patch[String(fixture.id)] = {
+      ...fixture,
+      addresses: fixture.addresses.map((address) => ({ ...address })),
+      ...(fixture.marks ? { marks: [...fixture.marks] } : {}),
+    };
+  for (const key of Object.keys(after.fixtures)) {
+    if (Number(key) >= 0) delete after.fixtures[key];
+  }
+  for (const object of ingest.objects)
+    after.fixtures[String(object.id)] = {
+      ...object,
+      addresses: [],
+      ...(object.marks ? { marks: [...object.marks] } : {}),
+    };
+  for (const [key, placement] of Object.entries(ingest.placements)) {
+    if (after.overrides[key] === undefined)
+      after.overrides[key] = {
+        position: [...placement.position] as [number, number, number],
+        rotation: [...placement.rotation] as [number, number, number],
+      };
+  }
   return after;
 }
 

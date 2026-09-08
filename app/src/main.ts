@@ -44,6 +44,7 @@ import {
   type Placement,
   type SceneCommand,
 } from "./scene.ts";
+import { parseMvr } from "./mvr.ts";
 import { parseMizerProject } from "./patch.ts";
 import { GeneratedFeed, type FeedId } from "./look.ts";
 import "./style.css";
@@ -227,7 +228,7 @@ root.innerHTML = `
         </div>
       </section>
       <section data-overlay-panel="history" hidden><p class="lede">One stack shared by both front-ends: undo walks it back, redo walks it forward.</p><ol data-history></ol></section>
-      <section data-overlay-panel="issues" hidden><p class="lede">Every issue originates in an ingest; the count rides the Patch chip.</p><ol data-issues><li data-issues-empty>No patch issues in the reference rig.</li></ol></section>
+      <section data-overlay-panel="issues" hidden><p class="lede">Every issue originates in an ingest; the count rides the Patch chip.</p><ol data-issues><li data-issues-empty>No patch issues in the reference rig.</li></ol><div class="array-form"><input type="file" data-mvr-file accept=".mvr" hidden><button type="button" data-mvr-pick>Load MVR file</button><span class="editor-note">A dropped .mvr loads the same way.</span></div></section>
     </aside>
   </section>
 `;
@@ -318,6 +319,7 @@ declare global {
     __beamhouseLoadGdtf: typeof loadGdtfPreview;
     __beamhouseRegisterOfl: (id: string, fixture: unknown) => { definition: string };
     __beamhouseZoomOverride: (id: number, degrees: number | null) => void;
+    __beamhouseIngestMvr: (bytes: Uint8Array, label: string) => Promise<boolean>;
   }
 }
 window.__beamhouseLoadGdtf = loadGdtfPreview;
@@ -331,6 +333,10 @@ window.__beamhouseZoomOverride = (id: number, degrees: number | null) => {
     zoomOverrides.delete(id);
   else zoomOverrides.set(id, degrees);
 };
+// Product-proof seam: the drop handler calls this same function, so driving
+// it with bytes exercises the drop path minus the gesture.
+window.__beamhouseIngestMvr = (bytes: Uint8Array, label: string): Promise<boolean> =>
+  ingestMvrBytes(bytes, label);
 const fixtureRows = [...document.querySelectorAll<HTMLElement>("[data-fixture]")];
 const receivedUniverses = new Set<number>();
 const latestFrames = new Map<number, Uint8Array>();
@@ -368,6 +374,10 @@ async function maybeIngestPatch(): Promise<void> {
     renderSceneFixtures(commands.fixtures());
     return;
   }
+  if (path.toLowerCase().endsWith(".mvr")) {
+    await ingestMvrBytes(bytes, path);
+    return;
+  }
   try {
     commands.ingestPatch(parseMizerProject(bytes), path);
   } catch {
@@ -377,6 +387,23 @@ async function maybeIngestPatch(): Promise<void> {
   }
   // An unchanged re-ingest notifies nothing; still repaint a cleared issue row.
   if (hadIssue) renderSceneFixtures(commands.fixtures());
+}
+/** One-shot MVR bytes from a watched file, the file picker, or a drop: parse, register the archive's own definitions, and ingest. */
+async function ingestMvrBytes(bytes: Uint8Array, label: string): Promise<boolean> {
+  const hadIssue = patchIssue !== null;
+  patchIssue = null;
+  try {
+    const ingest = await parseMvr(bytes);
+    for (const { id, definition } of ingest.definitions) registerGdtf(id, definition);
+    commands.ingestMvr(ingest, label);
+    // An unchanged re-ingest notifies nothing; still repaint a cleared issue row.
+    if (hadIssue) renderSceneFixtures(commands.fixtures());
+    return true;
+  } catch {
+    patchIssue = `MVR ${label} does not parse; keeping the last ingested patch.`;
+    renderSceneFixtures(commands.fixtures());
+    return false;
+  }
 }
 
 syncSceneFixtures();
@@ -434,6 +461,30 @@ required("[data-render-toggle]").addEventListener("click", () => {
   required("[data-render-toggle]").setAttribute("aria-pressed", String(renderMode === "intensity"));
 });
 
+// File-selected and dropped MVR bytes are transports onto the same parser a
+// watched file reaches; delivery never touches the patch contract.
+required<HTMLButtonElement>("[data-mvr-pick]").addEventListener("click", () => {
+  if (!commands.isOwner()) return;
+  required<HTMLInputElement>("[data-mvr-file]").click();
+});
+required<HTMLInputElement>("[data-mvr-file]").addEventListener("change", (event) => {
+  const input = event.currentTarget as HTMLInputElement;
+  const file = input.files?.[0];
+  input.value = "";
+  if (!file || !commands.isOwner()) return;
+  void file.arrayBuffer().then((buffer) => ingestMvrBytes(new Uint8Array(buffer), file.name));
+});
+document.addEventListener("dragover", (event) => {
+  event.preventDefault();
+});
+document.addEventListener("drop", (event) => {
+  const file = [...(event.dataTransfer?.files ?? [])].find((entry) =>
+    entry.name.toLowerCase().endsWith(".mvr"),
+  );
+  if (!file || !commands.isOwner()) return;
+  event.preventDefault();
+  void file.arrayBuffer().then((buffer) => ingestMvrBytes(new Uint8Array(buffer), file.name));
+});
 bindFixtureRows();
 required<HTMLSelectElement>("[data-local-definition-source]").addEventListener("change", () => {
   const inline =
@@ -845,9 +896,13 @@ function renderSceneFixtures(fixtures: readonly LocalFixture[]): void {
     }
     if (commands.isOverridden(fixture.id)) marks.push("overridden");
     if ((overlaps.get(fixture.id)?.size ?? 0) > 0) marks.push("patch overlap");
+    // A definition counts as resolved through any path that renders it: an
+    // inline bhs: entry, the reference rig, or the resolve.ts registry the
+    // MVR ingest registers its archive into.
     if (
       !commands.definitions()[fixture.definition] &&
-      !resolvedReferenceDefinition(fixture.definition)
+      !resolvedReferenceDefinition(fixture.definition) &&
+      !hasDefinition(fixture.definition)
     )
       marks.push("unresolved definition");
     if (
@@ -862,6 +917,9 @@ function renderSceneFixtures(fixtures: readonly LocalFixture[]): void {
       staticsFor(fixture.definition, fixture.mode)?.layout.kind === "marker"
     )
       marks.push("marker · no declared extent");
+    // Ingest provenance renders verbatim: every MVR repair and synthesized id
+    // is a mark here and an Issues row below.
+    if (fixture.marks) marks.push(...fixture.marks);
     return marks;
   };
   const item = (fixture: LocalFixture) => {
@@ -880,10 +938,18 @@ function renderSceneFixtures(fixtures: readonly LocalFixture[]): void {
     const resolvedDetail = resolved ? ` · ${resolved.length} m · ${resolved.footprint} slots` : "";
     const marks = marksFor(fixture);
     const marksDetail = marks.length > 0 ? ` · ${marks.join(" · ")}` : "";
+    const hintDetail =
+      (fixture.uuid ? ` · uuid ${escapeHtml(fixture.uuid.slice(0, 8))}` : "") +
+      (fixture.revision
+        ? ` · rev ${escapeHtml(fixture.revision.length > 32 ? `${fixture.revision.slice(0, 32)}…` : fixture.revision)}`
+        : "");
     const edit = definition
       ? `<button type="button" data-edit-definition="${escapeHtml(fixture.definition)}">Edit definition</button>`
       : "";
-    return `<li role="button" tabindex="0" data-local-fixture="${fixture.id}" data-editable-fixture="${fixture.id}" data-mode="${escapeHtml(fixture.mode)}" data-marks="${escapeHtml(marks.join(" · "))}"${resolved ? ` data-resolved-footprint="${resolved.footprint}" data-resolved-length="${resolved.length}"` : ""}><span><b>${fixture.id} · ${escapeHtml(fixture.definition)}${pixels}</b><small>${detail}${resolvedDetail}${marksDetail}</small></span>${edit}</li>`;
+    const hintAttrs =
+      (fixture.uuid ? ` data-uuid="${escapeHtml(fixture.uuid)}"` : "") +
+      (fixture.revision ? ` data-revision="${escapeHtml(fixture.revision)}"` : "");
+    return `<li role="button" tabindex="0" data-local-fixture="${fixture.id}" data-editable-fixture="${fixture.id}" data-mode="${escapeHtml(fixture.mode)}" data-marks="${escapeHtml(marks.join(" · "))}"${hintAttrs}${resolved ? ` data-resolved-footprint="${resolved.footprint}" data-resolved-length="${resolved.length}"` : ""}><span><b>${fixture.id} · ${escapeHtml(fixture.definition)}${pixels}</b><small>${detail}${resolvedDetail}${marksDetail}${hintDetail}</small></span>${edit}</li>`;
   };
   for (const [kind, list] of [
     ["local-fixtures", fixtures.filter((fixture) => fixture.addresses.length > 0)],
@@ -903,6 +969,8 @@ function renderSceneFixtures(fixtures: readonly LocalFixture[]): void {
             .map((address) => `${address.universe}.${address.address}.${address.footprint}`)
             .join("+"),
           marksFor(fixture).join("+"),
+          fixture.uuid ?? "",
+          fixture.revision ?? "",
         ].join("|");
       })
       .join(";");
@@ -988,7 +1056,8 @@ function renderIssues(fixtures: readonly LocalFixture[], overlaps: Map<number, S
       );
     if (
       !commands.definitions()[fixture.definition] &&
-      !resolvedReferenceDefinition(fixture.definition)
+      !resolvedReferenceDefinition(fixture.definition) &&
+      !hasDefinition(fixture.definition)
     )
       rows.push(
         `<li data-issue="unresolved:${fixture.id}">Fixture ${fixture.id} · ${escapeHtml(fixture.definition)} has no resolved definition and renders a placeholder</li>`,
@@ -1001,6 +1070,10 @@ function renderIssues(fixtures: readonly LocalFixture[], overlaps: Map<number, S
     )
       rows.push(
         `<li data-issue="mode:${fixture.id}">Fixture ${fixture.id} · mode "${escapeHtml(fixture.mode)}" is unavailable and the fixture renders unbound</li>`,
+      );
+    for (const [index, mark] of (fixture.marks ?? []).entries())
+      rows.push(
+        `<li data-issue="mvr:${fixture.id}:${index}">Fixture ${fixture.id} · ${escapeHtml(mark)}</li>`,
       );
   }
   required("[data-issues]").innerHTML =
@@ -1954,5 +2027,7 @@ function required<T extends HTMLElement = HTMLElement>(selector: string): T {
 function escapeHtml(value: string): string {
   const node = document.createElement("span");
   node.textContent = value;
-  return node.innerHTML;
+  // Text nodes never emit a raw quote, but attributes interpolate the same
+  // helper — an unescaped quote would truncate the attribute at first use.
+  return node.innerHTML.replace(/"/g, "&quot;");
 }
