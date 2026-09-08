@@ -1,4 +1,8 @@
 import * as THREE from "three";
+import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
+import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
+import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
+import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { TransformControls } from "three/addons/controls/TransformControls.js";
 import {
@@ -129,6 +133,22 @@ export function createViewport(
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.15;
   host.append(renderer.domElement);
+
+  // Post chain (ADR-0017): RenderPass → UnrealBloomPass → OutputPass into the
+  // composer's default HalfFloat HDR target. OutputPass reads tone mapping +
+  // color space off the renderer, so ACES/sRGB stay renderer settings.
+  // Threshold sits above the 0.32-density haze body so only lens/pool
+  // hotspots bloom; strength stays modest to avoid a whole-scene wash.
+  const composer = new EffectComposer(renderer);
+  composer.addPass(new RenderPass(scene, camera));
+  const bloom = new UnrealBloomPass(
+    new THREE.Vector2(host.clientWidth || 1, host.clientHeight || 1),
+    0.25,
+    0.55,
+    1.0,
+  );
+  composer.addPass(bloom);
+  composer.addPass(new OutputPass());
 
   const controls = new OrbitControls(camera, renderer.domElement);
   controls.enableDamping = true;
@@ -429,6 +449,9 @@ export function createViewport(
       map: texture,
       emissiveMap: texture,
       emissive: 0xffffff,
+      // Grade fallback (one step): pull the spoke hub below the bloom
+      // threshold so the starburst core keeps separation instead of a blob.
+      emissiveIntensity: 0.8,
       roughness: 0.35,
     });
     localTexels.set(id, { texture, pixels, count: definition.pixels });
@@ -685,6 +708,8 @@ export function createViewport(
     camera.aspect = width / height;
     camera.updateProjectionMatrix();
     renderer.setSize(width, height, false);
+    composer.setPixelRatio(Math.min(devicePixelRatio, 2));
+    composer.setSize(width, height);
     // Projection and host pixels changed: projected mark positions are stale.
     markGate.positionsChanged();
   };
@@ -759,7 +784,7 @@ export function createViewport(
     // placement, drag, swap, resize, or layout signal re-opens it. Trust
     // labels bypass this gate.
     if (markGate.takeRewrite()) writeMarkPositions();
-    renderer.render(scene, camera);
+    composer.render();
   });
   return {
     cubes: fixtures,
@@ -872,7 +897,7 @@ export function createViewport(
       return new Promise<CaptureResult>((resolve, reject) => {
         // No preserveDrawingBuffer tax: render and read back in the same frame.
         requestAnimationFrame(() => {
-          renderer.render(scene, camera);
+          composer.render();
           const source = renderer.domElement;
           const scale =
             Math.max(source.width, source.height) > maxEdge
