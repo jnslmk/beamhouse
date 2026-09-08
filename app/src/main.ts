@@ -31,6 +31,7 @@ import {
   type FixtureState,
 } from "./resolve.ts";
 import { createViewport, type StripProbeMarkers } from "./viewport.ts";
+import { FixtureChangeGate } from "./idle-gate.ts";
 import {
   decodeRecordingName,
   decodeShareFragment,
@@ -381,6 +382,8 @@ window.__beamhouseZoomOverride = (id: number, degrees: number | null) => {
   if (degrees === null || typeof degrees !== "number" || !Number.isFinite(degrees))
     zoomOverrides.delete(id);
   else zoomOverrides.set(id, degrees);
+  // A hang value feeds resolution without touching DMX: force a re-resolve.
+  fixtureGate.invalidate(id);
 };
 // Product-proof seam: the drop handler calls this same function, so driving
 // it with bytes exercises the drop path minus the gesture.
@@ -389,6 +392,11 @@ window.__beamhouseIngestMvr = (bytes: Uint8Array, label: string): Promise<boolea
 const receivedUniverses = new Set<number>();
 const latestFrames = new Map<number, Uint8Array>();
 let latestHealth: UniversesMessage | null = null;
+// Idle-frame gate: per-fixture DMX slot bytes since the last rendered frame.
+// Only changed fixtures re-resolve; placement and camera stay separate signals.
+const fixtureGate = new FixtureChangeGate();
+let lastSubscribed = "";
+let lastStripReadback = "";
 // The generated look enters above the same resolution seam as live frames.
 const generated = new GeneratedFeed();
 let activeFeed: FeedId = "live";
@@ -584,6 +592,8 @@ required("[data-hold-toggle]").addEventListener("click", () => {
   holdActive = !holdActive;
   heldIds.clear();
   if (holdActive) for (const id of selectedIds) heldIds.add(id);
+  // Releasing hold must repaint frozen fixtures whose slots never changed.
+  fixtureGate.invalidate();
   required("#hold-status").textContent = holdActive ? "on" : "off";
   required("[data-hold-toggle]").setAttribute("aria-pressed", String(holdActive));
 });
@@ -827,7 +837,7 @@ function paintFeedFrame(universes: UniverseFrame[]): void {
     receivedUniverses.add(universe.universe);
     latestFrames.set(universe.universe, universe.slots);
   }
-  const { levels, states } = applyLocalResolution();
+  const { levels, states, changed } = applyLocalResolution();
   for (const [id, level] of levels) {
     const referenceRow = document.querySelector<HTMLElement>(
       `[data-fixture="${CSS.escape(String(id))}"]`,
@@ -845,6 +855,7 @@ function paintFeedFrame(universes: UniverseFrame[]): void {
     const slots = latestFrames.get(1);
     if (slots)
       for (let id = 1; id <= 3; id += 1) {
+        if (!changed.has(id)) continue;
         const referenceRow = document.querySelector<HTMLElement>(`[data-fixture="${id}"]`);
         if (!referenceRow) continue;
         const level = slots[id - 1] ?? 0;
@@ -855,14 +866,17 @@ function paintFeedFrame(universes: UniverseFrame[]): void {
   }
   if (playbackScene) {
     let index = 1;
-    for (const fixture of playbackScene.fixtures)
+    for (const fixture of playbackScene.fixtures) {
+      const fixtureChanged = changed.has(fixture.id);
       for (const address of fixture.addresses) {
         const slots = effectiveFrames().get(address.universe);
         if (!slots) continue;
-        for (const level of slots.subarray(
-          address.address - 1,
-          address.address - 1 + address.footprint,
-        )) {
+        const span = slots.subarray(address.address - 1, address.address - 1 + address.footprint);
+        if (!fixtureChanged) {
+          index += span.length;
+          continue;
+        }
+        for (const level of span) {
           const referenceRow = document.querySelector<HTMLElement>(`[data-fixture="${index}"]`);
           if (!referenceRow) break;
           referenceRow.dataset.level = String(level);
@@ -871,6 +885,7 @@ function paintFeedFrame(universes: UniverseFrame[]): void {
           index += 1;
         }
       }
+    }
   }
   const stripPixels = sceneStripPixels(
     playbackScene?.fixtures ?? visibleFixtures(),
@@ -898,8 +913,14 @@ function paintFeedFrame(universes: UniverseFrame[]): void {
     row.setAttribute("data-beam", `${state.beam.kind} ${state.beam.angleDeg.toFixed(1)}`);
   }
   const subscriptionElement = required("[data-local-error]");
-  subscriptionElement.dataset.subscribed = liveFeed?.subscribed().join(",") ?? "";
-  if (latestHealth) renderHealth(latestHealth);
+  const subscribed = liveFeed?.subscribed().join(",") ?? "";
+  if (subscribed !== lastSubscribed) {
+    lastSubscribed = subscribed;
+    subscriptionElement.dataset.subscribed = subscribed;
+  }
+  // Health renders once at arrival in the feed handler below: it must appear
+  // promptly even when frames are skip-gated, and the bridge already dedupes
+  // identical payloads — no second render site here.
 }
 function sceneStripPixels(
   fixtures: readonly LocalFixture[],
@@ -932,9 +953,12 @@ function renderStripReadback(pixels: ReadonlyMap<number, Uint8Array>): void {
     last = bytes;
   }
   if (!first || !last) return;
+  const signature = `${first.subarray(0, 3).join(",")}|${last.subarray(-3).join(",")}`;
+  if (signature === lastStripReadback) return;
+  lastStripReadback = signature;
   const readback = required<HTMLElement>("[data-strip-readback]");
-  readback.dataset.stripReadback = `${first.subarray(0, 3).join(",")}|${last.subarray(-3).join(",")}`;
-  readback.textContent = readback.dataset.stripReadback;
+  readback.dataset.stripReadback = signature;
+  readback.textContent = signature;
 }
 
 // Bridge-local playback is the primary surface: a desktop r= link plays the recording
@@ -1078,6 +1102,8 @@ function setFixtureTrust(stale: boolean, contended: boolean): void {
 function syncSceneFixtures(): void {
   const fixtures = visibleFixtures();
   viewportApi.setSceneFixtures(fixtures, visibleDefinitions());
+  // New patch, addresses, or definitions resolve differently on identical slots.
+  fixtureGate.invalidate();
   for (const fixture of fixtures) {
     if (defaultPlacements.has(fixture.id)) continue;
     defaultPlacements.set(
@@ -1431,12 +1457,12 @@ function subscriptionUniverses(fixtures: readonly LocalFixture[]): number[] {
     ...fixtures.flatMap((fixture) => fixture.addresses.map((address) => address.universe)),
   ];
 }
-
-function localFixtureLevels(): Map<number, number> {
+function localFixtureLevels(changed: ReadonlySet<number>): Map<number, number> {
   const levels = new Map<number, number>();
   const fixtures = playbackScene?.fixtures ?? visibleFixtures();
   const definitions = playbackScene?.definitions ?? visibleDefinitions();
   for (const fixture of fixtures) {
+    if (!changed.has(fixture.id)) continue;
     const inline = definitions[fixture.definition];
     const resolved = inline ?? resolvedReferenceDefinition(fixture.definition);
     const stripFootprint =
@@ -1460,10 +1486,11 @@ function localFixtureLevels(): Map<number, number> {
 /** Per-fixture hang values for Zoom channels with no wire (ADR-0037 decision 7). */
 const zoomOverrides = new Map<number, number>();
 
-function localFixtureStates(): Map<number, FixtureState> {
+function localFixtureStates(changed: ReadonlySet<number>): Map<number, FixtureState> {
   const states = new Map<number, FixtureState>();
   const frames = effectiveFrames();
   for (const fixture of playbackScene?.fixtures ?? visibleFixtures()) {
+    if (!changed.has(fixture.id)) continue;
     if (!hasDefinition(fixture.definition) || fixture.addresses.length === 0) continue;
     const zoomDeg = zoomOverrides.get(fixture.id);
     states.set(
@@ -1482,9 +1509,16 @@ function localFixtureStates(): Map<number, FixtureState> {
 function applyLocalResolution(): {
   levels: Map<number, number>;
   states: Map<number, FixtureState>;
+  changed: Set<number>;
 } {
-  const levels = localFixtureLevels();
-  const states = localFixtureStates();
+  // Changed-only updates: slot byte-equality since the last rendered frame.
+  // The viewport appliers already skip ids missing from these maps.
+  const changed = fixtureGate.changed(
+    playbackScene?.fixtures ?? visibleFixtures(),
+    effectiveFrames(),
+  );
+  const levels = localFixtureLevels(changed);
+  const states = localFixtureStates(changed);
   if (holdActive)
     for (const id of heldIds) {
       levels.delete(id);
@@ -1494,7 +1528,7 @@ function applyLocalResolution(): {
   for (const id of states.keys()) levels.delete(id);
   viewportApi.setSceneFixtureLevels(levels);
   viewportApi.setSceneFixtureStates(states);
-  return { levels, states };
+  return { levels, states, changed };
 }
 
 function effectivePlacements(): Map<number, Placement> {
@@ -1954,7 +1988,9 @@ function answerAgentQuery(name: string, params: Record<string, unknown>): unknow
             position: [0, 0, 0],
             rotation: [0, 0, 0],
           },
-          level: localFixtureLevels().get(scene.id) ?? 0,
+          // On-demand query: bypass the idle gate by asking for every fixture.
+          level:
+            localFixtureLevels(new Set(fixtures.map((fixture) => fixture.id))).get(scene.id) ?? 0,
           marks: fixtureMarksFor(scene, patchOverlaps(fixtures)),
         };
       throw new Error(`unknown fixture ${String(params.id)}`);
@@ -1985,7 +2021,11 @@ function answerAgentQuery(name: string, params: Record<string, unknown>): unknow
     case "measurements":
       return {
         feed: resolvingFeed(),
-        levels: Object.fromEntries(localFixtureLevels()),
+        levels: Object.fromEntries(
+          localFixtureLevels(
+            new Set((playbackScene?.fixtures ?? visibleFixtures()).map((fixture) => fixture.id)),
+          ),
+        ),
         universes: latestHealth?.universes ?? [],
       };
     case "camera.get":
@@ -2022,6 +2062,8 @@ function answerAgentQuery(name: string, params: Record<string, unknown>): unknow
         const ids = Array.isArray(params.ids) ? params.ids : selectedIds;
         for (const id of ids) if (Number.isInteger(id)) heldIds.add(id as number);
       }
+      // Releasing hold must repaint frozen fixtures whose slots never changed.
+      fixtureGate.invalidate();
       required("#hold-status").textContent = holdActive ? "on" : "off";
       required("[data-hold-toggle]").setAttribute("aria-pressed", String(holdActive));
       return { hold: holdActive, held: [...heldIds] };
@@ -2255,6 +2297,7 @@ function enterViewerMode(snapshot: ShareSnapshot): void {
   playbackScene = snapshotSceneState;
   const { fixtures, placements } = snapshotSceneState;
   viewportApi.setSceneFixtures(fixtures, snapshotSceneState.definitions);
+  fixtureGate.invalidate();
   // Objects joins the viewer list only when non-empty (ADR-0032 §5).
   if (!fixtures.some((fixture) => fixture.addresses.length === 0))
     document.querySelector<HTMLElement>('[data-overlay-tab="objects"]')!.hidden = true;

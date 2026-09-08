@@ -97,12 +97,18 @@ export class UniverseStore {
     return true;
   }
 
+  /**
+   * Per-client filtering as views over shared bytes, never a re-snapshot:
+   * the returned slot arrays are read-only borrows of store memory. Ingest
+   * replaces (never mutates) them, and the broadcast gate copies what it
+   * retains — so consumers must never write through these references.
+   */
   frames(subscribedUniverses: readonly number[]): UniverseFrame[] {
     const frames: UniverseFrame[] = [];
     for (const universeNumber of sortedUnique(subscribedUniverses)) {
       const slots = this.#universes.get(universeNumber)?.latestSlots;
       if (slots) {
-        frames.push({ universe: universeNumber, slots: slots.slice() });
+        frames.push({ universe: universeNumber, slots });
       }
     }
     return frames;

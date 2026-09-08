@@ -5,6 +5,7 @@ import { basename, resolve, sep } from "node:path";
 import { Receiver, type Packet } from "sacn";
 import { encodeFrame, encodeRecordMember, prefixFrame, RECORD_MEMBER_MS } from "@beamhouse/wire";
 import { parseArtDmx, parseSacn } from "./protocols.ts";
+import { BroadcastGate, groupBySubscription, subscriptionKey } from "./frame-dedup.ts";
 import { UniverseStore } from "./universe-store.ts";
 import { appendFile, writeFile } from "node:fs/promises";
 import type { UniverseFrame } from "@beamhouse/wire";
@@ -155,20 +156,42 @@ export async function startBridge(config: BridgeConfig): Promise<RunningBridge> 
     },
   });
 
+  // Idle-frame gating: one shared immutable encoding per subscription set per
+  // tick, skip-on-identical payloads, heartbeat so quiet never reads as dead.
+  // The recording tee reuses the same gate (without heartbeat: tMs-indexed
+  // playback already distinguishes gaps from loss, so idle stays unrecorded).
+  const broadcastGate = new BroadcastGate();
+  const recordGate = new BroadcastGate();
   const frameTimer = setInterval(() => {
     const tMs = Math.round(performance.now());
-    for (const client of clients) {
-      const frames = store.frames([...client.data.subscriptions]);
-      if (frames.length > 0) client.send(encodeFrame(tMs, frames));
+    const groups = groupBySubscription(
+      [...clients].map((socket) => ({
+        subscriptions: socket.data.subscriptions,
+        send: (bytes: Uint8Array): void => void socket.send(bytes),
+      })),
+    );
+    const snapshots = new Map<string, UniverseFrame[]>();
+    for (const [key, group] of groups) {
+      const frames = store.frames(group.universes);
+      if (frames.length > 0) snapshots.set(key, frames);
     }
-    if (recorder) {
-      // The bridge joins sACN universes per subscription, so the subscription
+    const encoded = new Map<string, Uint8Array>();
+    for (const key of broadcastGate.due(snapshots)) {
+      // Single writer, read-only fan-out: every same-subscription client
+      // receives these exact bytes; handlers must never mutate them.
+      const bytes = encodeFrame(tMs, snapshots.get(key) ?? []);
+      encoded.set(key, bytes);
+      for (const client of groups.get(key)?.clients ?? []) client.send(bytes);
+    }
+    if (recorder && snapshots.size > 0) {
+      // The bridge joins sACN universes per subscription, so the snapshot
       // union is everything it receives; with no clients there is nothing to tee.
-      const wanted = new Set<number>();
-      for (const client of clients) {
-        for (const universe of client.data.subscriptions) wanted.add(universe);
+      const union = mergeSnapshots(snapshots);
+      const unionSubKey = subscriptionKey(union.map((frame) => frame.universe));
+      if (recordGate.due(new Map([[`record:${unionSubKey}`, union]]), false).size > 0) {
+        // Reuse a group encoding when the union matches it: no second encode.
+        recorder.teeEncoded(prefixFrame(encoded.get(unionSubKey) ?? encodeFrame(tMs, union)));
       }
-      if (wanted.size > 0) recorder.tee(tMs, store.frames([...wanted]));
     }
   }, 1000 / 30);
   const healthTimer = setInterval(() => broadcastHealth(true), 1_000);
@@ -402,8 +425,17 @@ export async function startBridge(config: BridgeConfig): Promise<RunningBridge> 
   };
 }
 
+/** Merge per-group snapshots into one sorted union without re-snapshotting. */
+function mergeSnapshots(snapshots: ReadonlyMap<string, UniverseFrame[]>): UniverseFrame[] {
+  const union = new Map<number, UniverseFrame>();
+  for (const frames of snapshots.values()) {
+    for (const frame of frames) union.set(frame.universe, frame);
+  }
+  return [...union.values()].sort((left, right) => left.universe - right.universe);
+}
+
 interface Recorder {
-  tee(tMs: number, frames: UniverseFrame[]): void;
+  teeEncoded(prefixed: Uint8Array): void;
   flush(): Promise<void>;
 }
 
@@ -436,9 +468,9 @@ function createRecorder(path: string): Recorder {
   }
 
   return {
-    tee(tMs, frames) {
-      if (failed || frames.length === 0) return;
-      chunks.push(prefixFrame(encodeFrame(tMs, frames)));
+    teeEncoded(prefixed) {
+      if (failed || prefixed.length === 0) return;
+      chunks.push(prefixed);
       if (Date.now() - memberStart >= RECORD_MEMBER_MS) rotate();
     },
     async flush() {

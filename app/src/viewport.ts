@@ -22,6 +22,7 @@ import {
   poolStretch,
 } from "./beam-shader.ts";
 import { staticsFor, type FixtureState, type FixtureStatics } from "./resolve.ts";
+import { copyLinearPixelsIfChanged, copyRgbBytesIfChanged, MarkGate } from "./idle-gate.ts";
 import {
   SCENE_BEAM_LENGTH_M,
   SCENE_DENSITY,
@@ -134,6 +135,14 @@ export function createViewport(
   controls.target.set(0, 0.35, 0);
   controls.minDistance = 4;
   controls.maxDistance = 18;
+  // Idle-frame mark gate: every input to the mark projection owns a signal —
+  // orbit-controls change, placements, gizmo drags, mesh swaps, resizes.
+  // No pixel-epsilon tuning. Trust labels write directly at their own call
+  // sites and never pass through this gate.
+  const markGate = new MarkGate();
+  controls.addEventListener("change", () => {
+    markGate.cameraChanged();
+  });
   const gizmo = new TransformControls(camera, renderer.domElement);
   gizmo.setSpace("world");
   let snapStep: number | null = 0.25;
@@ -167,6 +176,10 @@ export function createViewport(
     const next = placementFor(selected);
     if (fixture && dragStart && !samePlacement(dragStart, next)) onTransform?.(fixture.id, next);
     dragStart = null;
+  });
+  // Gizmo drags move meshes with no camera change: every movement re-opens the gate.
+  gizmo.addEventListener("objectChange", () => {
+    markGate.positionsChanged();
   });
   window.addEventListener("keydown", (event) => {
     if (event.key !== "Alt") return;
@@ -238,6 +251,8 @@ export function createViewport(
         this.marker.dataset.renderedPlacementX = String(placement.position[0]);
         this.marker.dataset.renderedPlacementZ = String(placement.position[2]);
         this.marker.dataset.renderedPlacementRy = String(placement.rotation[1]);
+        // Meshes moved without the camera: the gate must rewrite marks.
+        markGate.positionsChanged();
       },
       placement() {
         return {
@@ -291,11 +306,9 @@ export function createViewport(
     return {
       id: fixture.id,
       setPixels(nextPixels) {
-        for (let index = 0; index < fixture.pixels; index += 1) {
-          pixels.set(nextPixels.subarray(index * 3, index * 3 + 3), index * 4);
-          pixels[index * 4 + 3] = 1;
-        }
-        texture.needsUpdate = true;
+        // Texel-gated: static looks never re-upload; placement never dirties.
+        if (copyLinearPixelsIfChanged(pixels, fixture.pixels, nextPixels))
+          texture.needsUpdate = true;
       },
       setTrust(stale, contended) {
         const marker = stripMarkers[index];
@@ -317,6 +330,7 @@ export function createViewport(
           marker.dataset.renderedPlacementZ = String(placement.position[2]);
           marker.dataset.renderedPlacementRy = String(placement.rotation[1]);
         }
+        markGate.positionsChanged();
       },
       placement() {
         return placementFor(mesh);
@@ -440,6 +454,8 @@ export function createViewport(
     nextFixtures: readonly LocalFixture[],
     definitions: Readonly<Record<string, BhsDefinition>>,
   ) => {
+    // The mark set itself changed: force one position rewrite through the gate.
+    markGate.positionsChanged();
     for (const fixture of localFixtures.values()) {
       scene.remove(fixture.mesh);
       disposeObject(fixture.mesh);
@@ -499,6 +515,9 @@ export function createViewport(
             stripMarker.dataset.renderedPlacementRy = String(placement.rotation[1]);
           }
           mesh.userData.baseRotation = [...placement.rotation];
+          // Covers placement edits, defineStageMesh swaps (via setPlacement),
+          // and every out-of-band caller: the mesh moved, marks must follow.
+          markGate.positionsChanged();
         },
         placement() {
           return placementFor(mesh);
@@ -571,14 +590,10 @@ export function createViewport(
       const texels = localTexels.get(id);
       if (texels) {
         // Unbound and marker states carry no pixels: upload black so no stale
-        // frame survives behind the wireframe cue.
-        for (let index = 0; index < texels.count; index += 1) {
-          texels.pixels[index * 4] = state.pixels?.[index * 3] ?? 0;
-          texels.pixels[index * 4 + 1] = state.pixels?.[index * 3 + 1] ?? 0;
-          texels.pixels[index * 4 + 2] = state.pixels?.[index * 3 + 2] ?? 0;
-          texels.pixels[index * 4 + 3] = 1;
-        }
-        texels.texture.needsUpdate = true;
+        // frame survives behind the wireframe cue — but only when texel bytes
+        // actually differed, so static looks never churn GPU bandwidth.
+        if (copyLinearPixelsIfChanged(texels.pixels, texels.count, state.pixels))
+          texels.texture.needsUpdate = true;
       }
       const beam = localBeams.get(id);
       const optics = localOptics.get(id) ?? { fieldDeg: null, radiusM: 0, soft: true };
@@ -668,12 +683,15 @@ export function createViewport(
     camera.aspect = width / height;
     camera.updateProjectionMatrix();
     renderer.setSize(width, height, false);
+    // Projection and host pixels changed: projected mark positions are stale.
+    markGate.positionsChanged();
   };
   new ResizeObserver(resize).observe(host);
   resize();
 
-  renderer.setAnimationLoop(() => {
-    controls.update();
+  // All additive screen-space mark projections in one callable: the animation
+  // loop runs it only when the mark gate opens (camera moved or layout changed).
+  const writeMarkPositions = (): void => {
     for (const fixture of fixtures) {
       const position = fixture.mesh.position.clone().project(camera);
       fixture.marker.style.left = `${(position.x * 0.5 + 0.5) * host.clientWidth}px`;
@@ -732,6 +750,13 @@ export function createViewport(
         element.style.top = `${(-endpoint.y * 0.5 + 0.5) * host.clientHeight}px`;
       }
     }
+  };
+  renderer.setAnimationLoop(() => {
+    controls.update();
+    // One gate over every screen-space mark: zero DOM writes until a camera,
+    // placement, drag, swap, resize, or layout signal re-opens it. Trust
+    // labels bypass this gate.
+    if (markGate.takeRewrite()) writeMarkPositions();
     renderer.render(scene, camera);
   });
   return {
@@ -822,13 +847,8 @@ export function createViewport(
       for (const [id, texels] of localTexels) {
         const source = pixels.get(id);
         if (!source) continue;
-        for (let index = 0; index < texels.count; index += 1) {
-          texels.pixels[index * 4] = (source[index * 3] ?? 0) / 255;
-          texels.pixels[index * 4 + 1] = (source[index * 3 + 1] ?? 0) / 255;
-          texels.pixels[index * 4 + 2] = (source[index * 3 + 2] ?? 0) / 255;
-          texels.pixels[index * 4 + 3] = 1;
-        }
-        texels.texture.needsUpdate = true;
+        if (copyRgbBytesIfChanged(texels.pixels, texels.count, source))
+          texels.texture.needsUpdate = true;
       }
     },
     setSceneFixtureStates,
