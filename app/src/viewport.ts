@@ -78,6 +78,7 @@ export interface Viewport {
   /** Third-party definition preview: referenced mesh when present, proxy primitive otherwise. */
   showGdtfFixture(definition: BhsDefinition, mesh: THREE.Object3D | null): void;
   setSceneFixtureLevels(levels: ReadonlyMap<number, number>): void;
+  setSceneFixturePixels(pixels: ReadonlyMap<number, Uint8Array>): void;
   /** Total resolution through one seam: pan, tilt, zoom, colour, dimmer and shutter. */
   setSceneFixtureStates(states: ReadonlyMap<number, FixtureState>): void;
   /** Scene-wide atmosphere fixed points: density uniform + soft beam length. */
@@ -98,9 +99,10 @@ export function createViewport(
   markers: HTMLElement[],
   stripFixtures: readonly StripFixture[],
   stripMarkers: HTMLElement[] = [],
-  stripProbeMarkers: readonly StripProbeMarkers[] = [],
+  stripProbeMarkers: StripProbeMarkers[] = [],
   onTransform?: (id: number, placement: FixturePlacement) => void,
   onSelect?: (id: number, additive: boolean) => void,
+  builtInReference = true,
 ): Viewport {
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0x11100f);
@@ -183,7 +185,8 @@ export function createViewport(
   grid.position.y = 0.003;
   scene.add(grid);
 
-  const colors = [0xffa52f, 0x49a4ff, 0xf05baa];
+  const colors = builtInReference ? [0xffa52f, 0x49a4ff, 0xf05baa] : [];
+  const activeStripFixtures = builtInReference ? stripFixtures : [];
   let renderMode: "live" | "intensity" = "live";
   const fixtures = colors.map((color, index): RenderedCube => {
     const material = new THREE.MeshStandardMaterial({
@@ -240,7 +243,7 @@ export function createViewport(
   });
 
   const stripMeshes: THREE.Mesh[] = [];
-  const strips = stripFixtures.map((fixture, index): TextureStrip => {
+  const strips = activeStripFixtures.map((fixture, index): TextureStrip => {
     const pixels = new Float32Array(fixture.pixels * 4);
     const texture = new THREE.DataTexture(
       pixels,
@@ -343,6 +346,8 @@ export function createViewport(
     count: number;
   }
   const localTexels = new Map<number, LocalTexels>();
+  const localStripLengths = new Map<number, number>();
+  const localMarkers = new Map<number, HTMLElement>();
   const buildStaticsMesh = (id: number, statics: FixtureStatics): THREE.Mesh => {
     const size = statics.size;
     const count =
@@ -371,6 +376,36 @@ export function createViewport(
       new THREE.BoxGeometry(size[0], size[1], size[2]),
       new THREE.MeshStandardMaterial({ color: 0x86817c, metalness: 0.08, roughness: 0.7 }),
     );
+  };
+  const buildSceneMesh = (
+    id: number,
+    definition: BhsDefinition | undefined,
+    definitionId: string,
+  ): THREE.Mesh => {
+    const mesh = localFixtureMesh(definition, definitionId);
+    if (definition?.kind !== "strip") return mesh;
+    const pixels = new Float32Array(definition.pixels * 4);
+    const texture = new THREE.DataTexture(
+      pixels,
+      definition.pixels,
+      1,
+      THREE.RGBAFormat,
+      THREE.FloatType,
+    );
+    texture.colorSpace = THREE.LinearSRGBColorSpace;
+    texture.magFilter = THREE.LinearFilter;
+    texture.minFilter = THREE.LinearFilter;
+    texture.generateMipmaps = false;
+    (mesh.material as THREE.Material).dispose();
+    mesh.material = new THREE.MeshStandardMaterial({
+      map: texture,
+      emissiveMap: texture,
+      emissive: 0xffffff,
+      roughness: 0.35,
+    });
+    localTexels.set(id, { texture, pixels, count: definition.pixels });
+    localStripLengths.set(id, (definition.pixels * definition.pitchMm) / 1000);
+    return mesh;
   };
   let gdtfPreview: THREE.Object3D | null = null;
   let gdtfPreviewOwned = false;
@@ -411,11 +446,13 @@ export function createViewport(
       if (index >= 0) editableFixtures.splice(index, 1);
     }
     localFixtures.clear();
+    localStripLengths.clear();
+    localMarkers.clear();
     for (const fixture of nextFixtures) {
       const statics = staticsFor(fixture.definition, fixture.mode);
       const mesh = statics
         ? buildStaticsMesh(fixture.id, statics)
-        : localFixtureMesh(definitions[fixture.definition], fixture.definition);
+        : buildSceneMesh(fixture.id, definitions[fixture.definition], fixture.definition);
       mesh.position.set(0, 0.5, 0);
       mesh.userData.baseRotation = [0, 0, 0];
       scene.add(mesh);
@@ -429,12 +466,27 @@ export function createViewport(
             THREE.MathUtils.degToRad(placement.rotation[1]),
             THREE.MathUtils.degToRad(placement.rotation[2]),
           );
+          const marker = localMarkers.get(fixture.id);
+          if (marker) {
+            marker.dataset.renderedPlacementX = String(placement.position[0]);
+            marker.dataset.renderedPlacementZ = String(placement.position[2]);
+            marker.dataset.renderedPlacementRy = String(placement.rotation[1]);
+          }
+          const stripIndex = stripFixtures.findIndex((candidate) => candidate.id === fixture.id);
+          const stripMarker = stripMarkers[stripIndex];
+          if (stripMarker) {
+            stripMarker.dataset.renderedPlacementX = String(placement.position[0]);
+            stripMarker.dataset.renderedPlacementZ = String(placement.position[2]);
+            stripMarker.dataset.renderedPlacementRy = String(placement.rotation[1]);
+          }
           mesh.userData.baseRotation = [...placement.rotation];
         },
         placement() {
           return placementFor(mesh);
         },
       };
+      if (editableFixtures.length < markers.length)
+        localMarkers.set(fixture.id, markers[editableFixtures.length]!);
       localFixtures.set(fixture.id, rendered);
       if (statics)
         localOptics.set(fixture.id, {
@@ -592,6 +644,13 @@ export function createViewport(
       fixture.marker.style.left = `${(position.x * 0.5 + 0.5) * host.clientWidth}px`;
       fixture.marker.style.top = `${(-position.y * 0.5 + 0.5) * host.clientHeight}px`;
     }
+    for (const [id, fixture] of localFixtures) {
+      const marker = localMarkers.get(id);
+      if (!marker) continue;
+      const position = fixture.mesh.position.clone().project(camera);
+      marker.style.left = `${(position.x * 0.5 + 0.5) * host.clientWidth}px`;
+      marker.style.top = `${(-position.y * 0.5 + 0.5) * host.clientHeight}px`;
+    }
     for (const [index] of strips.entries()) {
       const marker = stripMarkers[index];
       if (!marker) continue;
@@ -608,6 +667,28 @@ export function createViewport(
         [probe.start, -definition.definition.length / 2],
         [probe.end, definition.definition.length / 2],
       ] as const) {
+        const endpoint = new THREE.Vector3(x, 0, 0)
+          .applyQuaternion(mesh.quaternion)
+          .add(mesh.position)
+          .project(camera);
+        element.style.left = `${(endpoint.x * 0.5 + 0.5) * host.clientWidth}px`;
+        element.style.top = `${(-endpoint.y * 0.5 + 0.5) * host.clientHeight}px`;
+      }
+    }
+    for (const [id, length] of localStripLengths) {
+      const mesh = localFixtures.get(id)?.mesh;
+      if (!mesh) continue;
+      const stripMarker = stripMarkers[stripFixtures.findIndex((candidate) => candidate.id === id)];
+      if (stripMarker) {
+        const position = mesh.position.clone().project(camera);
+        stripMarker.style.left = `${(position.x * 0.5 + 0.5) * host.clientWidth}px`;
+        stripMarker.style.top = `${(-position.y * 0.5 + 0.5) * host.clientHeight}px`;
+      }
+      for (const [element, x] of [
+        [document.querySelector<HTMLElement>(`[data-strip-probe="${id}-start"]`), -length / 2],
+        [document.querySelector<HTMLElement>(`[data-strip-probe="${id}-end"]`), length / 2],
+      ] as const) {
+        if (!element) continue;
         const endpoint = new THREE.Vector3(x, 0, 0)
           .applyQuaternion(mesh.quaternion)
           .add(mesh.position)
@@ -700,6 +781,19 @@ export function createViewport(
         const level = (levels.get(id) ?? 0) / 255;
         material.emissive.setRGB(level, level, level);
         material.emissiveIntensity = level;
+      }
+    },
+    setSceneFixturePixels(pixels) {
+      for (const [id, texels] of localTexels) {
+        const source = pixels.get(id);
+        if (!source) continue;
+        for (let index = 0; index < texels.count; index += 1) {
+          texels.pixels[index * 4] = (source[index * 3] ?? 0) / 255;
+          texels.pixels[index * 4 + 1] = (source[index * 3 + 1] ?? 0) / 255;
+          texels.pixels[index * 4 + 2] = (source[index * 3 + 2] ?? 0) / 255;
+          texels.pixels[index * 4 + 3] = 1;
+        }
+        texels.texture.needsUpdate = true;
       }
     },
     setSceneFixtureStates,

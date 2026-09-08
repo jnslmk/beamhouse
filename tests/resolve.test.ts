@@ -22,8 +22,10 @@ import {
   hasDefinition,
   hasMode,
   MARKER_SIZE,
+  registerDefinitions,
   registerGdtf,
   registerOfl,
+  registeredGdtfDefinitions,
   resolveFixture,
   staticsFor,
   type BreakBase,
@@ -135,6 +137,19 @@ test("the policy set is exactly the eight consumed attributes", () => {
       ATTR.shutter,
     ].sort(),
   );
+});
+
+test("GDTF registrations round-trip through an ownership snapshot payload", () => {
+  clearDefinitions();
+  registerGdtf(GLP, loadAuthored("GLP@impression 90 RGB@v1.gdtf"));
+  const registrations = registeredGdtfDefinitions([GLP, "gdtf:missing"]);
+  const registration = registrations[GLP];
+  if (registration?.kind === "gdtf")
+    expect(registration.definition.models.every((model) => model.glb === null)).toBe(true);
+  expect(Object.keys(registrations)).toEqual([GLP]);
+  clearDefinitions();
+  registerDefinitions(registrations);
+  expect(hasDefinition(GLP)).toBe(true);
 });
 
 test("a mover resolves Pan, Tilt, colour, dimmer and shutter through one seam", () => {

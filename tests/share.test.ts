@@ -8,6 +8,12 @@ import {
   snapshotScene,
   type ShareBuildInput,
 } from "../app/src/share.ts";
+import { clearDefinitions, registerOfl, shareDefinition } from "../app/src/resolve.ts";
+import {
+  referenceSceneDefinitions,
+  referenceSceneFixtures,
+  referenceScenePlacements,
+} from "../app/src/reference-rig.ts";
 import type { BhsDefinition, LocalFixture, Placement } from "../app/src/scene.ts";
 
 const stripDef: BhsDefinition = {
@@ -98,8 +104,50 @@ describe("share snapshot codec", () => {
     const result = await encodeShareSnapshot({ ...input, resolveReference: () => null });
     expect(result.kind).toBe("link");
     if (result.kind !== "link") return;
+    expect(result.dropped).toEqual([-20]);
     const snapshot = await decodeShareFragment(`#${result.fragment}`);
     expect(snapshot?.fixtures.length).toBe(19);
+  });
+
+  test("registered definitions convert to inline share geometry instead of dropping fixtures", () => {
+    clearDefinitions();
+    registerOfl("ofl:test:spot", {
+      name: "Spot",
+      physical: { dimensions: { width: 200, height: 300, depth: 200 } },
+      availableChannels: { Dimmer: { capability: { type: "Intensity" } } },
+      modes: [{ name: "Spot", channels: ["Dimmer"] }],
+    });
+    const built = buildSharePayload({
+      fixtures: [
+        {
+          id: -1,
+          definition: "ofl:test:spot",
+          mode: "Spot",
+          addresses: [{ universe: 1, address: 1, footprint: 1 }],
+        },
+      ],
+      definitions: {},
+      placements: new Map(),
+      resolveReference: shareDefinition,
+    });
+    expect(built.dropped).toEqual([]);
+    expect(built.payload.d).toHaveLength(1);
+    clearDefinitions();
+  });
+
+  test("reference fixtures use the same fixture and definition records as a share", () => {
+    const built = buildSharePayload({
+      fixtures: referenceSceneFixtures,
+      definitions: referenceSceneDefinitions,
+      placements: referenceScenePlacements,
+    });
+    expect(built.dropped).toEqual([]);
+    expect(new Set(referenceSceneFixtures.map((fixture) => fixture.id)).size).toBe(
+      referenceSceneFixtures.length,
+    );
+    expect(built.payload.f.map((fixture) => fixture[0])).toEqual(
+      referenceSceneFixtures.map((fixture) => fixture.id),
+    );
   });
 
   test("an over-budget rig falls back to a .bhs download payload", async () => {

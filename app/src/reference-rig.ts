@@ -1,3 +1,4 @@
+import type { BhsDefinition, LocalFixture, Placement } from "./scene.ts";
 import { mintLinearRGB, type LinearRGB } from "./resolve.ts";
 export type { LinearRGB };
 export interface BreakAddress {
@@ -81,6 +82,72 @@ export const referenceStrips: readonly StripFixture[] = Array.from({ length: 10 
     ],
   };
 });
+
+const REFERENCE_CUBE_DEFINITION = "bhs:reference-cube";
+const REFERENCE_STRIP_DEFINITION = "bhs:reference-strip";
+
+export const referenceSceneDefinitions: Readonly<Record<string, BhsDefinition>> = {
+  [REFERENCE_CUBE_DEFINITION]: {
+    kind: "primitive",
+    primitive: "Cube",
+    width: 1.35,
+    depth: 1.35,
+    height: 1.35,
+  },
+  [REFERENCE_STRIP_DEFINITION]: {
+    kind: "strip",
+    pixels: PIXELS_PER_SPOKE,
+    pitchMm: Math.round((SPOKE_DEFINITION.length * 1000) / PIXELS_PER_SPOKE),
+    channelsPerPixel: SLOTS_PER_PIXEL,
+    primitive: "Cube",
+  },
+};
+
+/** The reference rig's public identity is the same fixture shape as every ingested fixture. */
+const referenceCubes: readonly LocalFixture[] = [1, 2, 3].map((id) => ({
+  id,
+  definition: REFERENCE_CUBE_DEFINITION,
+  mode: "default",
+  addresses: [{ universe: 1, address: id, footprint: 1 }],
+}));
+
+/** The reference rig's public identity is the same fixture shape as every ingested fixture. */
+export const referenceSceneFixtures: readonly LocalFixture[] = [
+  ...referenceCubes,
+  ...referenceStrips.map((strip) => ({
+    id: strip.id,
+    definition: REFERENCE_STRIP_DEFINITION,
+    mode: "default",
+    addresses: strip.addresses.map((address) => ({
+      universe: address.universe,
+      address: address.slot,
+      footprint: address.pixels * SLOTS_PER_PIXEL,
+    })),
+  })),
+];
+
+export const referenceScenePlacements: ReadonlyMap<number, Placement> = new Map([
+  ...referenceCubes.map(
+    (fixture) =>
+      [
+        fixture.id,
+        {
+          position: [(fixture.id - 2) * 2.25, 0.7, 0],
+          rotation: [(-0.08 * 180) / Math.PI, 45, 0],
+        },
+      ] as [number, Placement],
+  ),
+  ...referenceStrips.map(
+    (strip) =>
+      [
+        strip.id,
+        {
+          position: [...strip.placement.position],
+          rotation: [0, (-strip.placement.radialAngle * 180) / Math.PI, 0],
+        },
+      ] as [number, Placement],
+  ),
+]);
 
 export function universesForStrips(strips: readonly StripFixture[]): number[] {
   return [

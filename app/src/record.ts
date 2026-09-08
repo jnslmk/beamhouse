@@ -93,10 +93,17 @@ export class Recording {
     tMs: number,
   ): Promise<{ frame: BrowserFrame; member: number; frames: BrowserFrame[] }> {
     const target = Math.max(0, tMs);
+    let low = 0;
+    let high = this.members.length - 1;
     let member = 0;
-    for (let index = 0; index < this.members.length; index += 1) {
-      if ((await this.memberStart(index)) <= target) member = index;
-      else break;
+    // Member starts are monotonic, so a cold seek decompresses O(log n) starts
+    // plus the selected member instead of scanning every preceding member.
+    while (low <= high) {
+      const index = Math.floor((low + high) / 2);
+      if ((await this.memberStart(index)) <= target) {
+        member = index;
+        low = index + 1;
+      } else high = index - 1;
     }
     const frames = await this.readMember(member);
     let picked = frames[0];

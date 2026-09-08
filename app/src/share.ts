@@ -34,8 +34,8 @@ export interface ShareSnapshot {
 }
 
 export type ShareEncodeResult =
-  | { kind: "link"; fragment: string }
-  | { kind: "file"; filename: string; json: string; fragmentLength: number };
+  | { kind: "link"; fragment: string; dropped: number[] }
+  | { kind: "file"; filename: string; json: string; fragmentLength: number; dropped: number[] };
 
 type ColumnarDef =
   | [kind: "s", pixels: number, pitchMm: number, channels: number, prim: number]
@@ -115,12 +115,13 @@ export function buildSharePayload(input: ShareBuildInput): BuiltSnapshot {
 export async function encodeShareSnapshot(input: ShareBuildInput): Promise<ShareEncodeResult> {
   const { payload, dropped } = buildSharePayload(input);
   const fragment = `s=${toBase64Url(await deflateRaw(new TextEncoder().encode(JSON.stringify(payload))))}`;
-  if (fragment.length <= SHARE_FRAGMENT_BUDGET) return { kind: "link", fragment };
+  if (fragment.length <= SHARE_FRAGMENT_BUDGET) return { kind: "link", fragment, dropped };
   return {
     kind: "file",
     filename: `beamhouse-snapshot-${payload.t}.bhs`,
     json: JSON.stringify({ kind: "beamhouse-share-snapshot", snapshot: payload, dropped }),
     fragmentLength: fragment.length,
+    dropped,
   };
 }
 
@@ -196,11 +197,13 @@ export async function decodeShareFragment(hash: string): Promise<ShareSnapshot |
 }
 
 /** Fixture rows the existing viewport render path consumes directly: no second renderer. */
-export function snapshotScene(snapshot: ShareSnapshot): {
+export interface SnapshotScene {
   definitions: Record<string, BhsDefinition>;
   fixtures: LocalFixture[];
   placements: Map<number, Placement>;
-} {
+}
+
+export function snapshotScene(snapshot: ShareSnapshot): SnapshotScene {
   const definitions: Record<string, BhsDefinition> = {};
   snapshot.definitions.forEach((definition, index) => {
     definitions[`bhs:share-${index}`] = definition;

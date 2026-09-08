@@ -2057,28 +2057,28 @@ describe("running Beamhouse", () => {
       writeFileSync(
         projectFile,
         mizerProject([
-          [1, "First", mover, "Normal", 1, 1],
-          [2, "Second", mover, "Normal", 1, 15],
+          [21, "First", mover, "Normal", 1, 1],
+          [22, "Second", mover, "Normal", 1, 15],
         ]),
       );
       await openFixturesOn(patchPage);
-      await patchPage.locator('[data-local-fixture="1"]').waitFor();
-      await patchPage.locator('[data-local-fixture="2"]').waitFor();
-      await expectPatchContribution(patchPage);
+      await patchPage.locator('[data-local-fixture="21"]').waitFor();
+      await patchPage.locator('[data-local-fixture="22"]').waitFor();
+      await expectPatchContribution(patchPage, 22);
       await patchPage.locator("#feed-status", { hasText: "live" }).waitFor();
 
       writeFileSync(
         projectFile,
         mizerProject([
-          [2, "Second", mover, "Wide", 1, 20],
-          [3, "Third", mover, "Normal", 2, 30],
+          [22, "Second", mover, "Wide", 1, 20],
+          [23, "Third", mover, "Normal", 2, 30],
         ]),
       );
-      await patchPage.locator('[data-local-fixture="1"]').waitFor({ state: "detached" });
-      await patchPage.locator('[data-local-fixture="3"]').waitFor();
-      await patchPage.locator('[data-local-fixture="2"][data-mode="Wide"]').waitFor();
-      await patchPage.locator('[data-local-fixture="2"] [data-break="1.020"]').waitFor();
-      await expectPatchContribution(patchPage);
+      await patchPage.locator('[data-local-fixture="21"]').waitFor({ state: "detached" });
+      await patchPage.locator('[data-local-fixture="23"]').waitFor();
+      await patchPage.locator('[data-local-fixture="22"][data-mode="Wide"]').waitFor();
+      await patchPage.locator('[data-local-fixture="22"] [data-break="1.020"]').waitFor();
+      await expectPatchContribution(patchPage, 22);
 
       expect(await patchPage.locator("#feed-status").getAttribute("data-status")).toBe("live");
       await patchPage.locator("#ownership-status", { hasText: "owner" }).waitFor();
@@ -2127,7 +2127,7 @@ describe("running Beamhouse", () => {
       await mvrPage.goto(`http://127.0.0.1:${watchHttp}`, { waitUntil: "domcontentloaded" });
       await mvrPage.locator('html[data-ready="true"]').waitFor();
       await mvrPage.locator("#ownership-status", { hasText: "owner" }).waitFor();
-      // The seeded override for id 2 must survive the ingest below.
+      // The seeded override for id 22 must survive the ingest below.
       await seedWorkingScene(mvrPage);
       await mvrPage.reload({ waitUntil: "domcontentloaded" });
       await mvrPage.locator('html[data-ready="true"]').waitFor();
@@ -2138,18 +2138,20 @@ describe("running Beamhouse", () => {
         readFileSync(resolve(repository, "tests/fixtures/beamhouse-representative.mvr")),
       );
       await openFixturesOn(mvrPage);
-      await mvrPage.locator('[data-local-fixture="1"]').waitFor();
+      await mvrPage.locator('[data-local-fixture="21"]').waitFor();
       await mvrPage.locator('[data-local-fixture="12"]').waitFor();
       await mvrPage.locator('[data-local-fixture="1000"][data-marks*="synthesized id"]').waitFor();
-      await mvrPage.locator('[data-local-fixture="2"][data-marks*="extension repaired"]').waitFor();
       await mvrPage
-        .locator('[data-local-fixture="1"][data-uuid="aaaaaaaa-0000-4000-8000-000000000001"]')
+        .locator('[data-local-fixture="22"][data-marks*="extension repaired"]')
         .waitFor();
-      await mvrPage.locator('[data-local-fixture="1"][data-revision]').waitFor();
+      await mvrPage
+        .locator('[data-local-fixture="21"][data-uuid="aaaaaaaa-0000-4000-8000-000000000001"]')
+        .waitFor();
+      await mvrPage.locator('[data-local-fixture="21"][data-revision]').waitFor();
       // The MVR starting placement lands in metres; the seeded override wins.
-      await mvrPage.locator('[data-local-fixture="1"]').click();
+      await mvrPage.locator('[data-local-fixture="21"]').click();
       await mvrPage.locator('[data-placement-x="2.4"]').waitFor();
-      await mvrPage.locator('[data-local-fixture="2"]').click();
+      await mvrPage.locator('[data-local-fixture="22"]').click();
       await mvrPage.locator('[data-placement-x="7.5"]').waitFor();
       // Objects keep their positive ladder ids in the Objects filter.
       await mvrPage.locator('[data-overlay-tab="objects"]').click();
@@ -2158,10 +2160,10 @@ describe("running Beamhouse", () => {
       // Every repair is an Issues row: 7 provenance rows plus 6 unresolved-definition rows.
       await mvrPage.locator('[data-overlay-tab="issues"]').click();
       await expectCount(mvrPage.locator('[data-issue^="mvr:"]'), 7);
-      await expectCount(mvrPage.locator("[data-issue]"), 13);
-      await mvrPage.locator('[data-issue="mvr:3:1"][data-issue]').waitFor();
+      await expectCount(mvrPage.locator("[data-issue]"), 16);
+      await mvrPage.locator('[data-issue="mvr:23:1"][data-issue]').waitFor();
       await mvrPage.locator('[data-overlay-tab="fixtures"]').click();
-      await expectPatchContribution(mvrPage);
+      await expectPatchContribution(mvrPage, 22);
 
       // Dropped bytes reach the same parser and replace the patch wholesale.
       const dropped = Buffer.from(dropMvrBytes()).toString("base64");
@@ -2895,13 +2897,13 @@ async function seedWorkingScene(target: Page): Promise<void> {
           .objectStore("working-scenes")
           .put(
             {
-              overrides: { 2: { position: [7.5, 0, 0], rotation: [0, 0, 0] } },
+              overrides: { 22: { position: [7.5, 0, 0], rotation: [0, 0, 0] } },
               views: { booth: { position: [0, 2, 6], target: [0, 1, 0] } },
               arrays: {
                 "seed-array": {
                   kind: "radial",
                   id: "seed-array",
-                  memberIds: [2],
+                  memberIds: [22],
                   center: [0, 3, 0],
                   radius: 0.75,
                   startAngleDeg: 0,
@@ -2941,8 +2943,8 @@ async function seedWorkingScene(target: Page): Promise<void> {
   });
 }
 
-async function expectPatchContribution(target: Page): Promise<void> {
-  await target.locator('[data-local-fixture="2"]').click();
+async function expectPatchContribution(target: Page, fixtureId = 22): Promise<void> {
+  await target.locator(`[data-local-fixture="${fixtureId}"]`).click();
   await target.locator('[data-placement-x="7.5"]').waitFor();
   await expectCount(target.locator('[data-local-fixture="-1"]'), 1);
   await target.locator("[data-array-status]", { hasText: "seed-array" }).waitFor();

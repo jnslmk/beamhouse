@@ -1,5 +1,10 @@
 import type { MvrIngest } from "./mvr.ts";
 import type { Patch, PatchFixture } from "./patch.ts";
+import {
+  registerDefinitions,
+  registeredGdtfDefinitions,
+  type RegisteredDefinition,
+} from "./resolve.ts";
 
 export interface Placement {
   position: [number, number, number];
@@ -144,8 +149,17 @@ type ControlMessage =
   | { op: "reload"; path: string }
   | { op: "control.owner"; owner: boolean; ownerName: string | null }
   | { op: "control.snapshot.request"; requestId?: number; relinquish?: boolean }
-  | { op: "control.snapshot"; scene: unknown; requestId?: number }
-  | { op: "control.scene.changed"; scene: unknown };
+  | {
+      op: "control.snapshot";
+      scene: unknown;
+      registrations?: Record<string, RegisteredDefinition>;
+      requestId?: number;
+    }
+  | {
+      op: "control.scene.changed";
+      scene: unknown;
+      registrations?: Record<string, RegisteredDefinition>;
+    };
 
 function describeCommand(command: SceneCommand): string {
   switch (command.kind) {
@@ -408,6 +422,9 @@ export class SceneCommands {
         this.#send({
           op: "control.snapshot",
           scene: this.#scene,
+          registrations: registeredGdtfDefinitions(
+            this.fixtures().map((fixture) => fixture.definition),
+          ),
           ...(message.requestId === undefined ? {} : { requestId: message.requestId }),
         });
       }
@@ -417,6 +434,7 @@ export class SceneCommands {
       (message.op === "control.snapshot" || message.op === "control.scene.changed") &&
       !this.#owner
     ) {
+      if (message.registrations) registerDefinitions(message.registrations);
       this.#scene = normalize(message.scene);
       this.#clearHistory();
       // Followers adopt bridge snapshots in memory; their IndexedDB working scene stays untouched.
@@ -499,7 +517,14 @@ export class SceneCommands {
 
   async #saveAndNotify(): Promise<void> {
     await save(this.#database, this.#scene);
-    if (this.#owner) this.#send({ op: "control.scene.changed", scene: this.#scene });
+    if (this.#owner)
+      this.#send({
+        op: "control.scene.changed",
+        scene: this.#scene,
+        registrations: registeredGdtfDefinitions(
+          this.fixtures().map((fixture) => fixture.definition),
+        ),
+      });
     this.#notify();
   }
 }

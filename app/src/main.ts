@@ -4,20 +4,20 @@ import type { Object3D } from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { LiveFeed } from "./live-feed.ts";
 import {
+  referenceSceneDefinitions,
+  referenceSceneFixtures,
+  referenceScenePlacements,
   referenceStrips,
   resolvedReferenceDefinition,
-  resolveColor,
-  textureBytesForStrip,
   universesForStrips,
-  type LinearRGB,
 } from "./reference-rig.ts";
 import {
   hasDefinition,
   hasMode,
-  mintLinearRGB,
   registerGdtf,
   registerOfl,
   resolveFixture,
+  shareDefinition,
   staticsFor,
   type FixtureState,
 } from "./resolve.ts";
@@ -31,6 +31,7 @@ import {
   recordingUrl,
   snapshotScene,
   type ShareSnapshot,
+  type SnapshotScene,
 } from "./share.ts";
 import {
   alignTargets,
@@ -48,7 +49,7 @@ import {
   type SceneCommand,
 } from "./scene.ts";
 import { parseMvr } from "./mvr.ts";
-import { parseMizerProject } from "./patch.ts";
+import { parseMizerProject, type Patch } from "./patch.ts";
 import { GeneratedFeed, type FeedId } from "./look.ts";
 import { formatTransportTime, RecordPlayer } from "./record.ts";
 import "./style.css";
@@ -209,7 +210,6 @@ root.innerHTML = `
         <div class="health-heading"><b>STAR-TENT strips</b><span>texture-backed</span></div>
         <ol class="strip-list">
           ${referenceStrips.map((strip) => `<li data-texture-strip="${strip.id}" data-editable-fixture="${strip.id}">Spoke ${strip.id} · 23 px</li>`).join("")}
-        </ol>
         <output class="strip-readback" data-strip-readback="">Waiting for universes 2 · 3</output>
       </section>
       </section>
@@ -258,6 +258,25 @@ let renderMode: "live" | "intensity" = "live";
 const heldIds = new Set<number>();
 let editingDefinition: string | null = null;
 const commands = await SceneCommands.create({ control: viewerSnapshot === null });
+let playbackScene: SnapshotScene | null = null;
+
+function visibleFixtures(): LocalFixture[] {
+  const fixtures = new Map(referenceSceneFixtures.map((fixture) => [fixture.id, fixture]));
+  for (const fixture of commands.fixtures()) fixtures.set(fixture.id, fixture);
+  return [...fixtures.values()];
+}
+
+function visibleDefinitions(): Record<string, BhsDefinition> {
+  return { ...referenceSceneDefinitions, ...commands.definitions() };
+}
+
+function visiblePlacements(): Map<number, Placement> {
+  const placements = new Map(referenceScenePlacements);
+  for (const [id, placement] of effectivePlacements()) placements.set(id, placement);
+  return placements;
+}
+
+const referenceFixtureIds = new Set(referenceSceneFixtures.map((fixture) => fixture.id));
 const viewportApi = createViewport(
   viewport,
   fixtureMarks,
@@ -267,8 +286,9 @@ const viewportApi = createViewport(
   (id, placement) =>
     commands.apply({ kind: "placement.set", fixtureIds: [id], placements: { [id]: placement } }),
   (id, additive) => selectFixture(id, additive),
+  false,
 );
-const { cubes, strips, fixtures: editableFixtures } = viewportApi;
+const { fixtures: editableFixtures } = viewportApi;
 // Stored atmosphere fixed points drive the beam shader; no default lives here.
 viewportApi.setAtmosphere(commands.atmosphere().density, commands.atmosphere().beamLengthM);
 // Beamhouse-side convergence: gdtf-ts owns bytes → definition, this layer owns
@@ -349,7 +369,6 @@ window.__beamhouseZoomOverride = (id: number, degrees: number | null) => {
 // it with bytes exercises the drop path minus the gesture.
 window.__beamhouseIngestMvr = (bytes: Uint8Array, label: string): Promise<boolean> =>
   ingestMvrBytes(bytes, label);
-const fixtureRows = [...document.querySelectorAll<HTMLElement>("[data-fixture]")];
 const receivedUniverses = new Set<number>();
 const latestFrames = new Map<number, Uint8Array>();
 let latestHealth: UniversesMessage | null = null;
@@ -383,7 +402,7 @@ async function maybeIngestPatch(): Promise<void> {
     bytes = new Uint8Array(await response.arrayBuffer());
   } catch {
     patchIssue = `Patch ${path} is unreachable; keeping the last ingested patch.`;
-    renderSceneFixtures(commands.fixtures());
+    renderSceneFixtures(visibleFixtures());
     return;
   }
   if (path.toLowerCase().endsWith(".mvr")) {
@@ -391,14 +410,37 @@ async function maybeIngestPatch(): Promise<void> {
     return;
   }
   try {
-    commands.ingestPatch(parseMizerProject(bytes), path);
+    commands.ingestPatch(resolveMizerPatch(parseMizerProject(bytes)), path);
   } catch {
     patchIssue = `Patch ${path} does not parse; keeping the last ingested patch.`;
-    renderSceneFixtures(commands.fixtures());
+    renderSceneFixtures(visibleFixtures());
     return;
   }
   // An unchanged re-ingest notifies nothing; still repaint a cleared issue row.
-  if (hadIssue) renderSceneFixtures(commands.fixtures());
+  if (hadIssue) renderSceneFixtures(visibleFixtures());
+}
+
+/** Mizer names flow through the same registry; unknown library ids remain explicit issues. */
+function rejectReferenceFixtureIds(fixtures: readonly { id: number }[]): void {
+  const id = fixtures.find((fixture) => referenceFixtureIds.has(fixture.id))?.id;
+  if (id !== undefined) throw new Error(`fixture id ${id} is reserved by the reference rig`);
+}
+
+function resolveMizerPatch(patch: Patch): Patch {
+  rejectReferenceFixtureIds(patch.fixtures);
+  return {
+    fixtures: patch.fixtures.map((fixture) => {
+      const resolved =
+        !!commands.definitions()[fixture.definition] ||
+        !!resolvedReferenceDefinition(fixture.definition) ||
+        hasDefinition(fixture.definition);
+      if (resolved) return fixture;
+      return {
+        ...fixture,
+        marks: [...(fixture.marks ?? []), "unresolved definition"],
+      };
+    }),
+  };
 }
 /** One-shot MVR bytes from a watched file, the file picker, or a drop: parse, register the archive's own definitions, and ingest. */
 async function ingestMvrBytes(bytes: Uint8Array, label: string): Promise<boolean> {
@@ -406,14 +448,15 @@ async function ingestMvrBytes(bytes: Uint8Array, label: string): Promise<boolean
   patchIssue = null;
   try {
     const ingest = await parseMvr(bytes);
+    rejectReferenceFixtureIds([...ingest.patch.fixtures, ...ingest.objects]);
     for (const { id, definition } of ingest.definitions) registerGdtf(id, definition);
     commands.ingestMvr(ingest, label);
     // An unchanged re-ingest notifies nothing; still repaint a cleared issue row.
-    if (hadIssue) renderSceneFixtures(commands.fixtures());
+    if (hadIssue) renderSceneFixtures(visibleFixtures());
     return true;
   } catch {
     patchIssue = `MVR ${label} does not parse; keeping the last ingested patch.`;
-    renderSceneFixtures(commands.fixtures());
+    renderSceneFixtures(visibleFixtures());
     return false;
   }
 }
@@ -706,10 +749,56 @@ function paintFeedFrame(universes: UniverseFrame[]): void {
     latestFrames.set(universe.universe, universe.slots);
   }
   const { levels, states } = applyLocalResolution();
-  for (const [id, level] of levels)
+  for (const [id, level] of levels) {
+    const referenceRow = document.querySelector<HTMLElement>(
+      `[data-fixture="${CSS.escape(String(id))}"]`,
+    );
+    if (referenceRow) {
+      referenceRow.dataset.level = String(level);
+      const output = referenceRow.querySelector("output");
+      if (output) output.textContent = String(level);
+    }
     document
       .querySelector<HTMLElement>(`[data-local-fixture="${CSS.escape(String(id))}"]`)
       ?.setAttribute("data-local-level", String(level));
+  }
+  if (!playbackScene) {
+    const slots = latestFrames.get(1);
+    if (slots)
+      for (let id = 1; id <= 3; id += 1) {
+        const referenceRow = document.querySelector<HTMLElement>(`[data-fixture="${id}"]`);
+        if (!referenceRow) continue;
+        const level = slots[id - 1] ?? 0;
+        referenceRow.dataset.level = String(level);
+        const output = referenceRow.querySelector("output");
+        if (output) output.textContent = String(level);
+      }
+  }
+  if (playbackScene) {
+    let index = 1;
+    for (const fixture of playbackScene.fixtures)
+      for (const address of fixture.addresses) {
+        const slots = effectiveFrames().get(address.universe);
+        if (!slots) continue;
+        for (const level of slots.subarray(
+          address.address - 1,
+          address.address - 1 + address.footprint,
+        )) {
+          const referenceRow = document.querySelector<HTMLElement>(`[data-fixture="${index}"]`);
+          if (!referenceRow) break;
+          referenceRow.dataset.level = String(level);
+          const output = referenceRow.querySelector("output");
+          if (output) output.textContent = String(level);
+          index += 1;
+        }
+      }
+  }
+  const stripPixels = sceneStripPixels(
+    playbackScene?.fixtures ?? visibleFixtures(),
+    playbackScene?.definitions ?? visibleDefinitions(),
+  );
+  viewportApi.setSceneFixturePixels(stripPixels);
+  renderStripReadback(stripPixels);
   for (const [id, state] of states) {
     const row = document.querySelector<HTMLElement>(
       `[data-local-fixture="${CSS.escape(String(id))}"]`,
@@ -724,45 +813,49 @@ function paintFeedFrame(universes: UniverseFrame[]): void {
       "data-color",
       [state.color[0] ?? 0, state.color[1] ?? 0, state.color[2] ?? 0]
         .map((channel) => Math.round(channel * 255))
+
         .join(","),
     );
     row.setAttribute("data-beam", `${state.beam.kind} ${state.beam.angleDeg.toFixed(1)}`);
   }
-  for (const [index, strip] of strips.entries()) {
-    const definition = referenceStrips[index];
-    if (definition && !(holdActive && heldIds.has(definition.id))) {
-      const resolved = resolveColor(textureBytesForStrip(definition, effectiveFrames()));
-      strip.setPixels(renderMode === "intensity" ? intensityPixels(resolved) : resolved);
-    }
-  }
-  const first = referenceStrips[0]
-    ? textureBytesForStrip(referenceStrips[0], effectiveFrames())
-    : null;
   const subscriptionElement = required("[data-local-error]");
   subscriptionElement.dataset.subscribed = liveFeed?.subscribed().join(",") ?? "";
-  const last = referenceStrips.at(-1)
-    ? textureBytesForStrip(referenceStrips.at(-1)!, effectiveFrames())
-    : null;
-  if (first && last) {
-    const readback = required("[data-strip-readback]");
-    const value = `${first.slice(0, 3).join(",")}|${last.slice(-3).join(",")}`;
-    readback.dataset.stripReadback = value;
-    readback.textContent = `Pixel gradient · ${value.replace("|", " → ")}`;
-  }
-  const universe = universes.find((candidate) => candidate.universe === 1);
-  if (!universe) return;
-  const resolvedSlots = effectiveFrames().get(1) ?? universe.slots;
-  cubes.forEach((cube, index) => {
-    if (holdActive && heldIds.has(cube.id)) return;
-    const level = resolvedSlots[cube.address - 1] ?? 0;
-    cube.setLevel(level);
-    const row = fixtureRows[index];
-    if (!row) return;
-    row.dataset.level = String(level);
-    const output = row.querySelector("output");
-    if (output) output.textContent = String(level);
-  });
   if (latestHealth) renderHealth(latestHealth);
+}
+function sceneStripPixels(
+  fixtures: readonly LocalFixture[],
+  definitions: Readonly<Record<string, BhsDefinition>>,
+): Map<number, Uint8Array> {
+  const pixels = new Map<number, Uint8Array>();
+  for (const fixture of fixtures) {
+    const definition = definitions[fixture.definition];
+    if (definition?.kind !== "strip") continue;
+    const bytes = new Uint8Array(definition.pixels * definition.channelsPerPixel);
+    let offset = 0;
+    for (const address of fixture.addresses) {
+      const slots = effectiveFrames().get(address.universe);
+      if (!slots) continue;
+      const length = Math.min(address.footprint, bytes.length - offset);
+      bytes.set(slots.subarray(address.address - 1, address.address - 1 + length), offset);
+      offset += length;
+      if (offset === bytes.length) break;
+    }
+    pixels.set(fixture.id, bytes);
+  }
+  return pixels;
+}
+
+function renderStripReadback(pixels: ReadonlyMap<number, Uint8Array>): void {
+  let first: Uint8Array | undefined;
+  let last: Uint8Array | undefined;
+  for (const bytes of pixels.values()) {
+    first ??= bytes;
+    last = bytes;
+  }
+  if (!first || !last) return;
+  const readback = required<HTMLElement>("[data-strip-readback]");
+  readback.dataset.stripReadback = `${first.subarray(0, 3).join(",")}|${last.subarray(-3).join(",")}`;
+  readback.textContent = readback.dataset.stripReadback;
 }
 
 // Bridge-local playback is the primary surface: a desktop r= link plays the recording
@@ -773,7 +866,7 @@ if (!viewerSnapshot && recordingParam) {
   if (desktopRecorded) required("#feed-status").textContent = "recorded";
 }
 if (!viewerSnapshot && !desktopRecorded) {
-  liveFeed = new LiveFeed(subscriptionUniverses(commands.fixtures()), {
+  liveFeed = new LiveFeed(subscriptionUniverses(visibleFixtures()), {
     frame(universes) {
       paintFeedFrame(universes);
     },
@@ -835,7 +928,7 @@ function renderHealth(message: UniversesMessage): void {
     .join(";");
   if (trustKey !== lastTrustKey) {
     lastTrustKey = trustKey;
-    renderSceneFixtures(commands.fixtures());
+    renderSceneFixtures(visibleFixtures());
   }
 }
 
@@ -856,12 +949,16 @@ function renderStripTrust(message: UniversesMessage): void {
     const contended = universes.some((universe) => (universe?.sources.length ?? 0) > 1);
     const label = trustLabel(stale, contended);
     const item = document.querySelector<HTMLElement>(`[data-texture-strip="${strip.id}"]`);
-    if (!item) continue;
-    item.dataset.stale = String(stale);
-    item.dataset.contended = String(contended);
-    item.textContent = `Spoke ${strip.id} · 23 px${label ? ` · ${label}` : ""}`;
-    const renderedStrip = strips.find((candidate) => candidate.id === strip.id);
-    renderedStrip?.setTrust(stale, contended);
+    if (item) {
+      item.dataset.stale = String(stale);
+      item.dataset.contended = String(contended);
+      item.textContent = `Spoke ${strip.id} · 23 px${label ? ` · ${label}` : ""}`;
+    }
+    const marker = document.querySelector<HTMLElement>(`[data-strip-mark="${strip.id}"]`);
+    if (marker) {
+      marker.textContent = label;
+      marker.dataset.visible = String(label.length > 0);
+    }
   }
 }
 
@@ -900,57 +997,28 @@ function setFixtureTrust(stale: boolean, contended: boolean): void {
 }
 
 function syncSceneFixtures(): void {
-  const fixtures = commands.fixtures();
-  viewportApi.setSceneFixtures(fixtures, commands.definitions());
-  for (const fixture of fixtures)
+  const fixtures = visibleFixtures();
+  viewportApi.setSceneFixtures(fixtures, visibleDefinitions());
+  for (const fixture of fixtures) {
+    if (defaultPlacements.has(fixture.id)) continue;
     defaultPlacements.set(
       fixture.id,
-      defaultPlacements.get(fixture.id) ?? {
+      visiblePlacements().get(fixture.id) ?? {
         position: [0, 0.5, 0],
         rotation: [0, 0, 0],
       },
     );
+  }
+  for (const fixture of editableFixtures) {
+    const fallback = defaultPlacements.get(fixture.id);
+    if (fallback) fixture.setPlacement(commands.placement(fixture.id, fallback));
+  }
   renderSceneFixtures(fixtures);
   viewportApi.selectFixtures(selectedIds);
   liveFeed?.setUniverses(subscriptionUniverses(fixtures));
 }
 function renderSceneFixtures(fixtures: readonly LocalFixture[]): void {
   const overlaps = patchOverlaps(fixtures);
-  const marksFor = (fixture: LocalFixture): string[] => {
-    const marks: string[] = [];
-    if (fixture.addresses.length > 0) {
-      const trust = breakTrust(fixture.addresses);
-      if (trust.contended) marks.push("disputed");
-      if (trust.stale) marks.push("old");
-    }
-    if (commands.isOverridden(fixture.id)) marks.push("overridden");
-    if ((overlaps.get(fixture.id)?.size ?? 0) > 0) marks.push("patch overlap");
-    // A definition counts as resolved through any path that renders it: an
-    // inline bhs: entry, the reference rig, or the resolve.ts registry the
-    // MVR ingest registers its archive into.
-    if (
-      !commands.definitions()[fixture.definition] &&
-      !resolvedReferenceDefinition(fixture.definition) &&
-      !hasDefinition(fixture.definition)
-    )
-      marks.push("unresolved definition");
-    if (
-      fixture.addresses.length > 0 &&
-      fixture.mode.length > 0 &&
-      hasDefinition(fixture.definition) &&
-      !hasMode(fixture.definition, fixture.mode)
-    )
-      marks.push("unbound mode");
-    if (
-      hasDefinition(fixture.definition) &&
-      staticsFor(fixture.definition, fixture.mode)?.layout.kind === "marker"
-    )
-      marks.push("marker · no declared extent");
-    // Ingest provenance renders verbatim: every MVR repair and synthesized id
-    // is a mark here and an Issues row below.
-    if (fixture.marks) marks.push(...fixture.marks);
-    return marks;
-  };
   const item = (fixture: LocalFixture) => {
     const definition = commands.definitions()[fixture.definition];
     const detail =
@@ -965,7 +1033,7 @@ function renderSceneFixtures(fixtures: readonly LocalFixture[]): void {
     const pixels = definition?.kind === "strip" ? ` · ${definition.pixels} px` : "";
     const resolved = resolvedReferenceDefinition(fixture.definition);
     const resolvedDetail = resolved ? ` · ${resolved.length} m · ${resolved.footprint} slots` : "";
-    const marks = marksFor(fixture);
+    const marks = fixtureMarksFor(fixture, overlaps);
     const marksDetail = marks.length > 0 ? ` · ${marks.join(" · ")}` : "";
     const hintDetail =
       (fixture.uuid ? ` · uuid ${escapeHtml(fixture.uuid.slice(0, 8))}` : "") +
@@ -978,10 +1046,25 @@ function renderSceneFixtures(fixtures: readonly LocalFixture[]): void {
     const hintAttrs =
       (fixture.uuid ? ` data-uuid="${escapeHtml(fixture.uuid)}"` : "") +
       (fixture.revision ? ` data-revision="${escapeHtml(fixture.revision)}"` : "");
-    return `<li role="button" tabindex="0" data-local-fixture="${fixture.id}" data-editable-fixture="${fixture.id}" data-mode="${escapeHtml(fixture.mode)}" data-marks="${escapeHtml(marks.join(" · "))}"${hintAttrs}${resolved ? ` data-resolved-footprint="${resolved.footprint}" data-resolved-length="${resolved.length}"` : ""}><span><b>${fixture.id} · ${escapeHtml(fixture.definition)}${pixels}</b><small>${detail}${resolvedDetail}${marksDetail}${hintDetail}</small></span>${edit}</li>`;
+    const heldLevel =
+      holdActive && heldIds.has(fixture.id)
+        ? document.querySelector<HTMLElement>(
+            `[data-local-fixture="${CSS.escape(String(fixture.id))}"]`,
+          )?.dataset.localLevel
+        : undefined;
+    const heldAttr = heldLevel === undefined ? "" : ` data-local-level="${heldLevel}"`;
+    return `<li role="button" tabindex="0" data-local-fixture="${fixture.id}" data-editable-fixture="${fixture.id}" data-mode="${escapeHtml(fixture.mode)}" data-marks="${escapeHtml(marks.join(" · "))}"${heldAttr}${hintAttrs}${resolved ? ` data-resolved-footprint="${resolved.footprint}" data-resolved-length="${resolved.length}"` : ""}><span><b>${fixture.id} · ${escapeHtml(fixture.definition)}${pixels}</b><small>${detail}${resolvedDetail}${marksDetail}${hintDetail}</small></span>${edit}</li>`;
   };
+  const commandFixtureIds = new Set(commands.fixtures().map((fixture) => fixture.id));
   for (const [kind, list] of [
-    ["local-fixtures", fixtures.filter((fixture) => fixture.addresses.length > 0)],
+    [
+      "local-fixtures",
+      fixtures.filter(
+        (fixture) =>
+          fixture.addresses.length > 0 &&
+          (commandFixtureIds.has(fixture.id) || !referenceFixtureIds.has(fixture.id)),
+      ),
+    ],
     ["scene-objects", fixtures.filter((fixture) => fixture.addresses.length === 0)],
   ] as const) {
     const host = required(`[data-${kind}]`);
@@ -997,7 +1080,7 @@ function renderSceneFixtures(fixtures: readonly LocalFixture[]): void {
           fixture.addresses
             .map((address) => `${address.universe}.${address.address}.${address.footprint}`)
             .join("+"),
-          marksFor(fixture).join("+"),
+          fixtureMarksFor(fixture, overlaps).join("+"),
           fixture.uuid ?? "",
           fixture.revision ?? "",
         ].join("|");
@@ -1009,7 +1092,46 @@ function renderSceneFixtures(fixtures: readonly LocalFixture[]): void {
       bindFixtureRows();
     }
   }
-  renderIssues(fixtures, overlaps);
+  renderIssues(
+    fixtures.filter(
+      (fixture) => commandFixtureIds.has(fixture.id) || !referenceFixtureIds.has(fixture.id),
+    ),
+    overlaps,
+  );
+}
+
+function fixtureMarksFor(
+  fixture: LocalFixture,
+  overlaps: ReadonlyMap<number, ReadonlySet<number>>,
+): string[] {
+  const marks: string[] = [];
+  if (fixture.addresses.length > 0) {
+    const trust = breakTrust(fixture.addresses);
+    if (trust.contended) marks.push("disputed");
+    if (trust.stale) marks.push("old");
+  }
+  if (commands.isOverridden(fixture.id)) marks.push("overridden");
+  if ((overlaps.get(fixture.id)?.size ?? 0) > 0) marks.push("patch overlap");
+  if (
+    !visibleDefinitions()[fixture.definition] &&
+    !resolvedReferenceDefinition(fixture.definition) &&
+    !hasDefinition(fixture.definition)
+  )
+    marks.push("unresolved definition");
+  if (
+    fixture.addresses.length > 0 &&
+    fixture.mode.length > 0 &&
+    hasDefinition(fixture.definition) &&
+    !hasMode(fixture.definition, fixture.mode)
+  )
+    marks.push("unbound mode");
+  if (
+    hasDefinition(fixture.definition) &&
+    staticsFor(fixture.definition, fixture.mode)?.layout.kind === "marker"
+  )
+    marks.push("marker · no declared extent");
+  for (const mark of fixture.marks ?? []) if (!marks.includes(mark)) marks.push(mark);
+  return marks;
 }
 
 function breakTrust(addresses: readonly BreakAddress[]): {
@@ -1233,8 +1355,10 @@ function subscriptionUniverses(fixtures: readonly LocalFixture[]): number[] {
 
 function localFixtureLevels(): Map<number, number> {
   const levels = new Map<number, number>();
-  for (const fixture of commands.fixtures()) {
-    const inline = commands.definitions()[fixture.definition];
+  const fixtures = playbackScene?.fixtures ?? visibleFixtures();
+  const definitions = playbackScene?.definitions ?? visibleDefinitions();
+  for (const fixture of fixtures) {
+    const inline = definitions[fixture.definition];
     const resolved = inline ?? resolvedReferenceDefinition(fixture.definition);
     const stripFootprint =
       resolved && "pixels" in resolved
@@ -1260,7 +1384,7 @@ const zoomOverrides = new Map<number, number>();
 function localFixtureStates(): Map<number, FixtureState> {
   const states = new Map<number, FixtureState>();
   const frames = effectiveFrames();
-  for (const fixture of commands.fixtures()) {
+  for (const fixture of playbackScene?.fixtures ?? visibleFixtures()) {
     if (!hasDefinition(fixture.definition) || fixture.addresses.length === 0) continue;
     const zoomDeg = zoomOverrides.get(fixture.id);
     states.set(
@@ -1723,44 +1847,48 @@ function exactPivot(value: unknown): Pivot {
 /** Queries read and move cursors; none mutate the persistent scene or earn undo entries. */
 function answerAgentQuery(name: string, params: Record<string, unknown>): unknown {
   switch (name) {
-    case "rig.list":
+    case "rig.list": {
+      const fixtures = visibleFixtures();
+      const overlaps = patchOverlaps(fixtures);
       return {
         feed: resolvingFeed(),
-        referenceStrips: referenceStrips.map((strip) => ({
-          id: strip.id,
-          pixels: strip.pixels,
-          addresses: strip.addresses,
-          placement: strip.placement,
-        })),
-        sceneFixtures: commands.fixtures().map((fixture) => ({
+        sceneFixtures: fixtures.map((fixture) => ({
           ...fixture,
-          placement: commands.placement(fixture.id, { position: [0, 0, 0], rotation: [0, 0, 0] }),
-          marks: breakTrust(fixture.addresses),
+          placement: visiblePlacements().get(fixture.id) ?? {
+            position: [0, 0, 0],
+            rotation: [0, 0, 0],
+          },
+          marks: fixtureMarksFor(fixture, overlaps),
         })),
         arrays: commands.arrays(),
         views: Object.keys(commands.views()),
       };
+    }
     case "fixture.get": {
       if (!Number.isInteger(params.id)) throw new Error("fixture.get needs an integer id");
-      const scene = commands.fixtures().find((fixture) => fixture.id === params.id);
+      const fixtures = visibleFixtures();
+      const scene = fixtures.find((fixture) => fixture.id === params.id);
       if (scene)
         return {
           ...scene,
-          placement: commands.placement(scene.id, { position: [0, 0, 0], rotation: [0, 0, 0] }),
+          placement: visiblePlacements().get(scene.id) ?? {
+            position: [0, 0, 0],
+            rotation: [0, 0, 0],
+          },
           level: localFixtureLevels().get(scene.id) ?? 0,
-          marks: breakTrust(scene.addresses),
+          marks: fixtureMarksFor(scene, patchOverlaps(fixtures)),
         };
-      const strip = referenceStrips.find((candidate) => candidate.id === params.id);
-      if (strip) return { ...strip, level: 0, marks: { stale: false, contended: false } };
       throw new Error(`unknown fixture ${String(params.id)}`);
     }
     case "issues.list": {
-      const overlaps = patchOverlaps(commands.fixtures());
+      const fixtures = visibleFixtures();
+      const overlaps = patchOverlaps(fixtures);
       return {
         overlaps: [...overlaps.entries()].map(([slot, ids]) => ({ slot, fixtures: [...ids] })),
-        fixtures: commands
-          .fixtures()
-          .map((fixture) => ({ id: fixture.id, marks: breakTrust(fixture.addresses) })),
+        fixtures: fixtures.map((fixture) => ({
+          id: fixture.id,
+          marks: fixtureMarksFor(fixture, overlaps),
+        })),
       };
     }
     case "universes.list":
@@ -1847,15 +1975,7 @@ function applyAgentLook(params: Record<string, unknown>): unknown {
 }
 
 function paintGeneratedLevels(): void {
-  const frames = effectiveFrames();
-  applyLocalResolution();
-  for (const [index, strip] of strips.entries()) {
-    const definition = referenceStrips[index];
-    if (definition && !(holdActive && heldIds.has(definition.id))) {
-      const resolved = resolveColor(textureBytesForStrip(definition, frames));
-      strip.setPixels(renderMode === "intensity" ? intensityPixels(resolved) : resolved);
-    }
-  }
+  paintFeedFrame([...generated.frame()].map(([universe, slots]) => ({ universe, slots })));
 }
 
 /** Captures are handles: bytes go to the bridge over HTTP, the reply states the rest. */
@@ -1896,27 +2016,30 @@ async function captureAgentView(params: Record<string, unknown>): Promise<unknow
 }
 
 function resolveShareReference(id: string): BhsDefinition | null {
-  const resolved = resolvedReferenceDefinition(id);
-  if (!resolved) return null;
-  const pixels =
-    referenceStrips.find((strip) => strip.definitionId === id)?.pixels ??
-    referenceStrips[0]?.pixels ??
-    23;
-  return {
-    kind: "strip",
-    pixels,
-    pitchMm: Math.round((resolved.length * 1000) / pixels),
-    channelsPerPixel: Math.max(1, Math.round(resolved.footprint / pixels)),
-    primitive: "Cube",
-  };
+  return resolvedReferenceDefinition(id)
+    ? (() => {
+        const resolved = resolvedReferenceDefinition(id)!;
+        const pixels =
+          referenceStrips.find((strip) => strip.definitionId === id)?.pixels ??
+          referenceStrips[0]?.pixels ??
+          23;
+        return {
+          kind: "strip",
+          pixels,
+          pitchMm: Math.round((resolved.length * 1000) / pixels),
+          channelsPerPixel: Math.max(1, Math.round(resolved.footprint / pixels)),
+          primitive: "Cube",
+        };
+      })()
+    : shareDefinition(id);
 }
 
 async function shareScene(): Promise<string | null> {
   const state = required("[data-share-state]");
   const result = await encodeShareSnapshot({
-    fixtures: commands.fixtures(),
-    definitions: commands.definitions(),
-    placements: effectivePlacements(),
+    fixtures: visibleFixtures(),
+    definitions: visibleDefinitions(),
+    placements: visiblePlacements(),
     views: commands.views(),
     resolveReference: resolveShareReference,
   });
@@ -1925,7 +2048,10 @@ async function shareScene(): Promise<string | null> {
     const fragment =
       recording && recordingName ? result.fragment + "&r=" + recordingName : result.fragment;
     location.hash = fragment;
-    state.textContent = "copied";
+    state.textContent =
+      result.dropped.length === 0 ? "copied" : `partial · ${result.dropped.length} omitted`;
+    if (result.dropped.length > 0)
+      state.title = `Unresolved fixture ids omitted: ${result.dropped.join(", ")}`;
     const url = `${location.origin}${location.pathname}#${fragment}`;
     try {
       await navigator.clipboard.writeText(url);
@@ -2046,8 +2172,10 @@ function enterViewerMode(snapshot: ShareSnapshot): void {
     if (tab.dataset.overlayTab !== "fixtures" && tab.dataset.overlayTab !== "objects")
       tab.hidden = true;
   }
-  const { definitions, fixtures, placements } = snapshotScene(snapshot);
-  viewportApi.setSceneFixtures(fixtures, definitions);
+  const snapshotSceneState = snapshotScene(snapshot);
+  playbackScene = snapshotSceneState;
+  const { fixtures, placements } = snapshotSceneState;
+  viewportApi.setSceneFixtures(fixtures, snapshotSceneState.definitions);
   // Objects joins the viewer list only when non-empty (ADR-0032 §5).
   if (!fixtures.some((fixture) => fixture.addresses.length === 0))
     document.querySelector<HTMLElement>('[data-overlay-tab="objects"]')!.hidden = true;
@@ -2057,7 +2185,7 @@ function enterViewerMode(snapshot: ShareSnapshot): void {
   }
   for (const editable of editableFixtures) {
     const placement = placements.get(editable.id) ?? defaultPlacements.get(editable.id);
-    if (placement) editable.setPlacement(commands.placement(editable.id, placement));
+    if (placement) editable.setPlacement(placement);
   }
   const age = required("[data-snapshot-age]");
   age.textContent = formatSnapshotAge(snapshot.takenAt);
@@ -2094,13 +2222,12 @@ function enterViewerMode(snapshot: ShareSnapshot): void {
       });
     }
   }
-  viewportApi.frameContentBox([
-    ...referenceStrips.map((strip) => strip.placement.position),
-    ...fixtures.map(
+  viewportApi.frameContentBox(
+    fixtures.map(
       (fixture) =>
         placements.get(fixture.id)?.position ?? ([0, 0.5, 0] as [number, number, number]),
     ),
-  ]);
+  );
   renderPlacementEditor();
   if (viewerActive) required("#selection-status").textContent = "none";
 }
@@ -2112,21 +2239,6 @@ document.addEventListener("keydown", (event) => {
 function pinHold(): void {
   heldIds.clear();
   for (const id of selectedIds) heldIds.add(id);
-}
-const intensityScratch = new Map<number, Float32Array>();
-function intensityPixels(resolved: LinearRGB): LinearRGB {
-  let out = intensityScratch.get(resolved.length);
-  if (!out) {
-    out = new Float32Array(resolved.length);
-    intensityScratch.set(resolved.length, out);
-  }
-  for (let index = 0; index + 2 < resolved.length; index += 3) {
-    const peak = Math.max(resolved[index]!, resolved[index + 1]!, resolved[index + 2]!);
-    out[index] = peak;
-    out[index + 1] = peak;
-    out[index + 2] = peak;
-  }
-  return mintLinearRGB(out);
 }
 
 function trustLabel(stale: boolean, contended: boolean): string {

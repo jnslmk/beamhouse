@@ -616,11 +616,11 @@ describe("committed representative MVR", () => {
     const ingest = await parseMvr(new Uint8Array(bytes));
     const patch = new Map(ingest.patch.fixtures.map((fixture) => [fixture.id, fixture]));
     // Ladder rungs: numeric, string FixtureID, UnitNumber, synthesized.
-    expect(patch.get(1)!.definition).toBe("gdtf:9C7854E1-32D5-4DE9-BB8E-6D121F27CF48");
-    expect(patch.get(1)!.mode).toBe("Normal");
-    expect(patch.get(1)!.marks).toBeUndefined();
-    expect(patch.get(2)!.mode).toBe("Dimmer");
-    expect(patch.get(3)!.mode).toBe("23px RGB 69-channel");
+    expect(patch.get(21)!.definition).toBe("gdtf:9C7854E1-32D5-4DE9-BB8E-6D121F27CF48");
+    expect(patch.get(21)!.mode).toBe("Normal");
+    expect(patch.get(21)!.marks).toBeUndefined();
+    expect(patch.get(22)!.mode).toBe("Dimmer");
+    expect(patch.get(23)!.mode).toBe("23px RGB 69-channel");
     expect(patch.get(1000)!.marks?.join(" ")).toMatch(/synthesized id 1000/);
     // Every repair is a mark.
     const marks = ingest.patch.fixtures.flatMap((fixture) => fixture.marks ?? []);
@@ -629,7 +629,7 @@ describe("committed representative MVR", () => {
     expect(marks.join("\n")).toMatch(/only mode/);
     expect(marks.join("\n")).toMatch(/not in the archive/);
     // Millimetres arrive as metres.
-    expect(ingest.placements["1"]!.position).toEqual([2.4, 0.5, 0]);
+    expect(ingest.placements["21"]!.position).toEqual([2.4, 0.5, 0]);
     // Objects keep positive ladder ids with placements.
     const objects = new Map(ingest.objects.map((object) => [object.id, object]));
     expect(objects.get(6)!.definition).toBe("mvr:unresolved");

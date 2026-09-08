@@ -19,6 +19,7 @@ import {
   type GdtfGeometryNode,
 } from "gdtf-ts";
 import { parseOflFixture, type OflConverged } from "./ofl.ts";
+import type { BhsDefinition } from "./scene.ts";
 
 /** Branded linear-radiance triple. Minted only at the colour boundary. */
 export type LinearRGB = Float32Array & { readonly __linearRgb: unique symbol };
@@ -55,9 +56,8 @@ export function blackbodyLinear(kelvin: number): [number, number, number] {
   return [linearize(red), linearize(green), linearize(blue)];
 }
 
-type RegisteredDefinition =
+export type RegisteredDefinition =
   { kind: "gdtf"; definition: GdtfDefinition } | { kind: "ofl"; definition: OflConverged };
-
 const registry = new Map<string, RegisteredDefinition>();
 
 export function registerGdtf(id: string, definition: GdtfDefinition): void {
@@ -72,6 +72,52 @@ export function registerOfl(id: string, input: unknown): void {
 /** Tests reset the registry; the running product registers once per definition. */
 export function clearDefinitions(): void {
   registry.clear();
+}
+
+/** Registrations travel with control snapshots; unregistered ids stay visibly unresolved. */
+export function registeredDefinitions(ids: Iterable<string>): Record<string, RegisteredDefinition> {
+  const definitions: Record<string, RegisteredDefinition> = {};
+  for (const id of ids) {
+    const definition = registry.get(id);
+    if (definition) definitions[id] = definition;
+  }
+  return definitions;
+}
+
+/** GDTF data is structured-clone-safe and is the registration MVR snapshots require. */
+export function registeredGdtfDefinitions(
+  ids: Iterable<string>,
+): Record<string, RegisteredDefinition> {
+  const definitions: Record<string, RegisteredDefinition> = {};
+  for (const id of ids) {
+    const definition = registry.get(id);
+    if (definition?.kind === "gdtf")
+      definitions[id] = {
+        kind: "gdtf",
+        definition: {
+          ...definition.definition,
+          // A follower resolves optics and channels, never a local preview GLB.
+          models: definition.definition.models.map((model) => ({ ...model, glb: null })),
+        },
+      };
+  }
+  return definitions;
+}
+
+export function registerDefinitions(
+  definitions: Readonly<Record<string, RegisteredDefinition>>,
+): void {
+  for (const [id, definition] of Object.entries(definitions)) {
+    if (
+      !id.startsWith("gdtf:") ||
+      definition?.kind !== "gdtf" ||
+      !definition.definition ||
+      typeof definition.definition.fixtureTypeId !== "string" ||
+      !Array.isArray(definition.definition.modes)
+    )
+      continue;
+    registry.set(id, definition);
+  }
 }
 /** Canonical attribute names: the one source of truth both formats resolve into. */
 export const ATTR = {
@@ -563,5 +609,18 @@ export function staticsFor(id: string, mode?: string): FixtureStatics | null {
     radiusM: null,
     // OFL declares no edge type; a sole lens reads soft.
     softEdge: beamKind === "cone",
+  };
+}
+
+/** Compact inline geometry for shares: viewers need renderable shape, never library access. */
+export function shareDefinition(id: string): BhsDefinition | null {
+  const statics = staticsFor(id);
+  if (!statics) return null;
+  return {
+    kind: "primitive",
+    primitive: "Cube",
+    width: statics.size[0],
+    depth: statics.size[2],
+    height: statics.size[1],
   };
 }

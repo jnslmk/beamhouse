@@ -137,6 +137,19 @@ describe("the .bhr container", () => {
   });
 });
 
+test("cold seeks probe logarithmically rather than inflating every prior member", async () => {
+  const recording = new Recording(concat(range(0, 64).map((frame) => memberOf([frame]))));
+  const readMember = recording.readMember.bind(recording);
+  let reads = 0;
+  recording.readMember = async (index) => {
+    reads += 1;
+    return readMember(index);
+  };
+  const result = await recording.frameAt(Math.round((50 * 1000) / FPS));
+  expect(result.member).toBe(50);
+  expect(reads).toBeLessThanOrEqual(8);
+});
+
 describe("recording playback", () => {
   test("a boundary seek reconstructs the same complete universe state", async () => {
     const file = concat([memberOf(range(0, MEMBER_FRAMES)), memberOf(range(MEMBER_FRAMES, 60))]);
