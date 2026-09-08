@@ -637,8 +637,10 @@ export function createViewport(
           const radius = poolRadiusM(angle, throwM, optics.radiusM);
           entry.pool.visible = true;
           entry.pool.position.copy(mesh.position).addScaledVector(beamAxis, throwM).setY(0.02);
+          // Yaw maps local +Z onto the beam's ground direction, so the
+          // oblique-incidence stretch rides Z; X stays the cone radius.
           entry.pool.rotation.set(0, Math.atan2(beamAxis.x, beamAxis.z), 0);
-          entry.pool.scale.set(radius * poolStretch(beamAxis.y), 1, radius);
+          entry.pool.scale.set(radius, 1, radius * poolStretch(beamAxis.y));
           setPoolUniforms(entry.pool.material, state, edge);
           pools += 1;
         }
