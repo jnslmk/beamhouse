@@ -1,3 +1,5 @@
+import type { Patch, PatchFixture } from "./patch.ts";
+
 export interface Placement {
   position: [number, number, number];
   rotation: [number, number, number];
@@ -46,12 +48,16 @@ export interface LocalFixture {
   addresses: BreakAddress[];
 }
 
-interface PersistedScene {
+export interface PersistedScene {
   overrides: Record<string, Placement>;
   views: Record<string, CameraView>;
   arrays: Record<string, ArrayDef>;
   definitions: Record<string, BhsDefinition>;
   fixtures: Record<string, LocalFixture>;
+  /** Watched Mizer project this patch was ingested from; null before the first ingest. */
+  patchPath: string | null;
+  /** Last ingested patch, keyed by integer fixture id. Only ingests write here. */
+  patch: Record<string, PatchFixture>;
 }
 
 export type ArrayDef =
@@ -115,6 +121,7 @@ export interface AgentRequest {
 type ControlMessage =
   | { op: "request"; requestId: number; request: AgentRequest }
   | { op: "response"; requestId: number; ok: boolean; result?: unknown; error?: string }
+  | { op: "reload"; path: string }
   | { op: "control.owner"; owner: boolean; ownerName: string | null }
   | { op: "control.snapshot.request"; requestId?: number; relinquish?: boolean }
   | { op: "control.snapshot"; scene: unknown; requestId?: number }
@@ -152,6 +159,7 @@ export class SceneCommands {
   #cursor = 0;
   #changed: (() => void) | null = null;
   #requestHandler: ((requestId: number, request: AgentRequest) => void) | null = null;
+  #reloadHandler: ((path: string) => void) | null = null;
   #owner = false;
   #ownerName: string | null = null;
   #database: IDBDatabase;
@@ -224,7 +232,26 @@ export class SceneCommands {
   }
 
   fixtures(): readonly LocalFixture[] {
-    return Object.values(this.#scene.fixtures);
+    // The rendered patch is ingested patch plus local contributions; every
+    // consumer (viewport, resolution, subscriptions, lists) routes through here.
+    return [...Object.values(this.#scene.patch), ...Object.values(this.#scene.fixtures)];
+  }
+
+  patchPath(): string | null {
+    return this.#scene.patchPath;
+  }
+
+  /** Ingests replace only patch-owned state; id-keyed overrides, arrays, local fixtures, views and hints survive. Never earns history: ingests are not commands. */
+  ingestPatch(patch: Patch, path: string): void {
+    if (!this.#owner) return;
+    const after = applyPatchIngest(this.#scene, patch, path);
+    if (sameScene(this.#scene, after)) return;
+    this.#scene = after;
+    void this.#saveAndNotify();
+  }
+
+  onReload(handler: ((path: string) => void) | null): void {
+    this.#reloadHandler = handler;
   }
 
   nextFixtureId(): number {
@@ -328,6 +355,11 @@ export class SceneCommands {
       return;
     }
     if (message.op === "response") return;
+    if (message.op === "reload") {
+      if (typeof message.path === "string" && message.path.length > 0)
+        this.#reloadHandler?.(message.path);
+      return;
+    }
     if (message.op === "control.owner") {
       if (!message.owner && (this.#owner || this.#relinquishing)) this.#clearHistory();
       this.#owner = message.owner;
@@ -674,9 +706,17 @@ function save(database: IDBDatabase, scene: PersistedScene): Promise<void> {
   });
 }
 
-function normalize(value: unknown): PersistedScene {
+export function normalize(value: unknown): PersistedScene {
   if (!value || typeof value !== "object")
-    return { overrides: {}, views: {}, arrays: {}, definitions: {}, fixtures: {} };
+    return {
+      overrides: {},
+      views: {},
+      arrays: {},
+      definitions: {},
+      fixtures: {},
+      patchPath: null,
+      patch: {},
+    };
   const scene = value as Partial<PersistedScene>;
   const arrays: Record<string, ArrayDef> = {};
   if (scene.arrays && typeof scene.arrays === "object") {
@@ -698,6 +738,13 @@ function normalize(value: unknown): PersistedScene {
       if (valid && String(valid.id) === id) fixtures[id] = valid;
     }
   }
+  const patch: Record<string, PatchFixture> = {};
+  if (scene.patch && typeof scene.patch === "object") {
+    for (const [id, fixture] of Object.entries(scene.patch)) {
+      if (isPatchFixture(fixture) && String(fixture.id) === id)
+        patch[id] = { ...fixture, addresses: fixture.addresses.map((address) => ({ ...address })) };
+    }
+  }
   for (const id of Object.keys(definitions)) {
     if (!Object.values(fixtures).some((fixture) => fixture.definition === id))
       delete definitions[id];
@@ -708,6 +755,8 @@ function normalize(value: unknown): PersistedScene {
     arrays,
     definitions,
     fixtures,
+    patchPath: typeof scene.patchPath === "string" ? scene.patchPath : null,
+    patch,
   };
 }
 
@@ -749,6 +798,41 @@ function isLocalFixture(value: unknown): value is LocalFixture {
     fixture.addresses.every(isBreakAddress) &&
     (fixture.addresses.length === 0) === (fixture.mode.length === 0)
   );
+}
+
+/** Ingested patch fixtures mirror the local shape with console-owned ids: non-negative integers, always addressed. */
+function isPatchFixture(value: unknown): value is PatchFixture {
+  if (!value || typeof value !== "object") return false;
+  const fixture = value as Partial<PatchFixture>;
+  return (
+    typeof fixture.id === "number" &&
+    Number.isInteger(fixture.id) &&
+    fixture.id >= 0 &&
+    typeof fixture.definition === "string" &&
+    fixture.definition.length > 0 &&
+    typeof fixture.mode === "string" &&
+    fixture.mode.length > 0 &&
+    Array.isArray(fixture.addresses) &&
+    fixture.addresses.length > 0 &&
+    fixture.addresses.every(isBreakAddress)
+  );
+}
+
+/** Re-ingest replaces the patch record and source path wholesale; every other layer is untouched. */
+export function applyPatchIngest(
+  scene: PersistedScene,
+  patch: Patch,
+  path: string,
+): PersistedScene {
+  const after = clone(scene);
+  after.patchPath = path;
+  after.patch = {};
+  for (const fixture of patch.fixtures)
+    after.patch[String(fixture.id)] = {
+      ...fixture,
+      addresses: fixture.addresses.map((address) => ({ ...address })),
+    };
+  return after;
 }
 
 function isTuple3(value: unknown): value is [number, number, number] {

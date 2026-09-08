@@ -1,8 +1,9 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { existsSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
 import { createSocket } from "node:dgram";
-import { resolve } from "node:path";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
 import { Packet } from "sacn";
 import { encodeShareSnapshot } from "../app/src/share.ts";
 import { chromium, type Browser, type BrowserContext, type Page } from "playwright";
@@ -1796,6 +1797,88 @@ describe("running Beamhouse", () => {
         ) !== null,
     );
   }, 30_000);
+  test("re-patches the live scene from a watched Mizer project without dropping the socket", async () => {
+    // A two-second build guarantees the served bundle matches these sources.
+    const build = Bun.spawnSync(["bun", "run", "build"], {
+      cwd: repository,
+      stdout: "ignore",
+      stderr: "pipe",
+    });
+    if (!build.success) throw new Error(build.stderr.toString());
+    const watchDir = mkdtempSync(join(tmpdir(), "beamhouse-patch-"));
+    const watchHttp = await freeTcpPort();
+    const watchSacn = await freeUdpPort();
+    const watchArtnet = await freeUdpPort();
+    // Spawned directly (not via `bun run`) so SIGTERM lands on the process owning the handler.
+    const patchBridge = Bun.spawn(["bun", "src/main.ts"], {
+      cwd: resolve(repository, "bridge"),
+      env: {
+        ...process.env,
+        BEAMHOUSE_HOST: "127.0.0.1",
+        BEAMHOUSE_PORT: String(watchHttp),
+        BEAMHOUSE_SACN_PORT: String(watchSacn),
+        BEAMHOUSE_ARTNET_PORT: String(watchArtnet),
+        BEAMHOUSE_WATCH_DIR: watchDir,
+      },
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const patchPage = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+    try {
+      await waitUntilReachable(`http://127.0.0.1:${watchHttp}`, patchBridge);
+      await patchPage.goto(`http://127.0.0.1:${watchHttp}`, { waitUntil: "domcontentloaded" });
+      await patchPage.locator('html[data-ready="true"]').waitFor();
+      await patchPage.locator("#ownership-status", { hasText: "owner" }).waitFor();
+      // Id-keyed contributions seeded before the first ingest must survive every repatch.
+      await seedWorkingScene(patchPage);
+      await patchPage.reload({ waitUntil: "domcontentloaded" });
+      await patchPage.locator('html[data-ready="true"]').waitFor();
+
+      const mover = "gdtf:9C7854E1-32D5-4DE9-BB8E-6D121F27CF48";
+      const projectFile = resolve(watchDir, "rig.yml");
+      writeFileSync(
+        projectFile,
+        mizerProject([
+          [1, "First", mover, "Normal", 1, 1],
+          [2, "Second", mover, "Normal", 1, 15],
+        ]),
+      );
+      await openFixturesOn(patchPage);
+      await patchPage.locator('[data-local-fixture="1"]').waitFor();
+      await patchPage.locator('[data-local-fixture="2"]').waitFor();
+      await expectPatchContribution(patchPage);
+      await patchPage.locator("#feed-status", { hasText: "live" }).waitFor();
+
+      writeFileSync(
+        projectFile,
+        mizerProject([
+          [2, "Second", mover, "Wide", 1, 20],
+          [3, "Third", mover, "Normal", 2, 30],
+        ]),
+      );
+      await patchPage.locator('[data-local-fixture="1"]').waitFor({ state: "detached" });
+      await patchPage.locator('[data-local-fixture="3"]').waitFor();
+      await patchPage.locator('[data-local-fixture="2"][data-mode="Wide"]').waitFor();
+      await patchPage.locator('[data-local-fixture="2"] [data-break="1.020"]').waitFor();
+      await expectPatchContribution(patchPage);
+
+      expect(await patchPage.locator("#feed-status").getAttribute("data-status")).toBe("live");
+      await patchPage.locator("#ownership-status", { hasText: "owner" }).waitFor();
+    } finally {
+      await patchPage.close();
+      // Bridge shutdown occasionally ignores SIGTERM; SIGKILL always lands.
+      patchBridge.kill("SIGTERM");
+      const exited = await Promise.race([
+        patchBridge.exited.then(() => true),
+        Bun.sleep(5_000).then(() => false),
+      ]);
+      if (!exited) {
+        patchBridge.kill("SIGKILL");
+        await patchBridge.exited;
+      }
+      rmSync(watchDir, { recursive: true, force: true });
+    }
+  }, 30_000);
 });
 async function injectGdtf(filename: string): Promise<string> {
   const base64 = Buffer.from(
@@ -2211,11 +2294,11 @@ async function freeUdpPort(): Promise<number> {
   return address.port;
 }
 
-async function waitUntilReachable(url: string): Promise<void> {
+async function waitUntilReachable(url: string, owner: Bun.Subprocess = bridge): Promise<void> {
   const deadline = Date.now() + 5_000;
   while (Date.now() < deadline) {
-    if (bridge.exitCode !== null) {
-      throw new Error(`bridge exited early with ${bridge.exitCode}`);
+    if (owner.exitCode !== null) {
+      throw new Error(`bridge exited early with ${owner.exitCode}`);
     }
     try {
       const response = await fetch(url);
@@ -2226,4 +2309,95 @@ async function waitUntilReachable(url: string): Promise<void> {
     await Bun.sleep(25);
   }
   throw new Error("bridge did not start");
+}
+
+type MizerRow = [
+  id: number,
+  name: string,
+  fixture: string,
+  mode: string,
+  universe: number,
+  channel: number,
+];
+
+function mizerProject(rows: MizerRow[]): string {
+  const body = rows
+    .map(
+      ([id, name, fixture, mode, universe, channel]) =>
+        `  - id: ${id}\n    name: ${name}\n    fixture: "${fixture}"\n    mode: ${mode}\n    universe: ${universe}\n    channel: ${channel}`,
+    )
+    .join("\n");
+  return `version: 6\nfixtures:\n${body}\n`;
+}
+
+async function seedWorkingScene(target: Page): Promise<void> {
+  await target.evaluate(async () => {
+    const database = await new Promise<IDBDatabase>((resolveDatabase, rejectDatabase) => {
+      const request = indexedDB.open("beamhouse.scene.v1", 1);
+      request.onsuccess = () => resolveDatabase(request.result);
+      request.onerror = () =>
+        rejectDatabase(request.error ?? new Error("could not open working scene"));
+    });
+    try {
+      await new Promise<void>((resolvePut, rejectPut) => {
+        const request = database
+          .transaction("working-scenes", "readwrite")
+          .objectStore("working-scenes")
+          .put(
+            {
+              overrides: { 2: { position: [7.5, 0, 0], rotation: [0, 0, 0] } },
+              views: { booth: { position: [0, 2, 6], target: [0, 1, 0] } },
+              arrays: {
+                "seed-array": {
+                  kind: "radial",
+                  id: "seed-array",
+                  memberIds: [2],
+                  center: [0, 3, 0],
+                  radius: 0.75,
+                  startAngleDeg: 0,
+                  stepDeg: 360,
+                },
+              },
+              definitions: {
+                "bhs:seed": {
+                  kind: "strip",
+                  pixels: 4,
+                  pitchMm: 25,
+                  channelsPerPixel: 3,
+                  primitive: "Cube",
+                },
+              },
+              fixtures: {
+                "-1": {
+                  id: -1,
+                  definition: "bhs:seed",
+                  mode: "default",
+                  addresses: [{ universe: 4, address: 1, footprint: 12 }],
+                },
+                "-2": { id: -2, definition: "bhs:seed", mode: "", addresses: [] },
+              },
+              patchPath: null,
+              patch: {},
+            },
+            "current",
+          );
+        request.onsuccess = () => resolvePut();
+        request.onerror = () =>
+          rejectPut(request.error ?? new Error("could not seed working scene"));
+      });
+    } finally {
+      database.close();
+    }
+  });
+}
+
+async function expectPatchContribution(target: Page): Promise<void> {
+  await target.locator('[data-local-fixture="2"]').click();
+  await target.locator('[data-placement-x="7.5"]').waitFor();
+  await expectCount(target.locator('[data-local-fixture="-1"]'), 1);
+  await target.locator("[data-array-status]", { hasText: "seed-array" }).waitFor();
+  await target.locator('[data-camera-view="booth"]').waitFor();
+  await target.locator('[data-overlay-tab="objects"]').click();
+  await target.locator('[data-scene-objects] [data-local-fixture="-2"]').waitFor();
+  await target.locator('[data-overlay-tab="fixtures"]').click();
 }

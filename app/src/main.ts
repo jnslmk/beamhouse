@@ -44,6 +44,7 @@ import {
   type Placement,
   type SceneCommand,
 } from "./scene.ts";
+import { parseMizerProject } from "./patch.ts";
 import { GeneratedFeed, type FeedId } from "./look.ts";
 import "./style.css";
 
@@ -109,8 +110,8 @@ root.innerHTML = `
           )
           .join("")}
       </ol>
-      <section class="local-fixtures" aria-label="Local fixtures">
-        <div class="health-heading"><b>Local fixtures</b><output data-local-error></output></div>
+      <section class="local-fixtures" aria-label="Fixtures">
+        <div class="health-heading"><b>Fixtures</b><output data-local-error></output></div>
         <ol data-local-fixtures></ol>
         <div class="array-form">
           <label>source<select data-local-definition-source><option value="existing">existing definition</option><option value="new-strip">new Beamhouse strip</option></select></label>
@@ -347,12 +348,51 @@ for (const fixture of editableFixtures) {
   const fallback = defaultPlacements.get(fixture.id);
   if (fallback) fixture.setPlacement(commands.placement(fixture.id, fallback));
 }
+let pendingPatchPath: string | null = null;
+let patchIssue: string | null = null;
+
+/** Watched-file save → re-ingest: bridge bytes through the patch contract into patch-only state. The live socket stays connected throughout. */
+async function maybeIngestPatch(): Promise<void> {
+  const path = pendingPatchPath;
+  if (!path || viewerSnapshot || !commands.isOwner()) return;
+  pendingPatchPath = null;
+  const hadIssue = patchIssue !== null;
+  patchIssue = null;
+  let bytes: Uint8Array;
+  try {
+    const response = await fetch(`/${path}`);
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    bytes = new Uint8Array(await response.arrayBuffer());
+  } catch {
+    patchIssue = `Patch ${path} is unreachable; keeping the last ingested patch.`;
+    renderSceneFixtures(commands.fixtures());
+    return;
+  }
+  try {
+    commands.ingestPatch(parseMizerProject(bytes), path);
+  } catch {
+    patchIssue = `Patch ${path} does not parse; keeping the last ingested patch.`;
+    renderSceneFixtures(commands.fixtures());
+    return;
+  }
+  // An unchanged re-ingest notifies nothing; still repaint a cleared issue row.
+  if (hadIssue) renderSceneFixtures(commands.fixtures());
+}
+
 syncSceneFixtures();
 commands.onChanged(() => {
   // A shared link is frozen: later scene traffic never rewrites the snapshot rig.
   if (!viewerSnapshot) syncSceneFixtures();
   renderPlacementEditor();
+  void maybeIngestPatch();
 });
+// A watched save adopts the latest patch file; the stored path re-ingests on startup.
+commands.onReload((path) => {
+  pendingPatchPath = path;
+  void maybeIngestPatch();
+});
+pendingPatchPath = commands.patchPath();
+void maybeIngestPatch();
 // The owning page applies control-channel requests; followers never see them.
 commands.onRequest((requestId, request) => void handleAgentRequest(requestId, request));
 required("#viewport").dataset.feed = resolvingFeed();
@@ -939,6 +979,7 @@ function patchOverlaps(fixtures: readonly LocalFixture[]): Map<number, Set<numbe
 
 function renderIssues(fixtures: readonly LocalFixture[], overlaps: Map<number, Set<number>>): void {
   const rows: string[] = [];
+  if (patchIssue) rows.push(`<li data-issue="patch:source">${escapeHtml(patchIssue)}</li>`);
   for (const fixture of fixtures) {
     const others = [...(overlaps.get(fixture.id) ?? [])].sort((a, b) => a - b);
     if (others.length > 0)

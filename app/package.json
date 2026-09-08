@@ -11,7 +11,8 @@
   "dependencies": {
     "@beamhouse/wire": "workspace:*",
     "gdtf-ts": "workspace:*",
-    "three": "0.185.1"
+    "three": "0.185.1",
+    "yaml": "2.9.0"
   },
   "devDependencies": {
     "@types/three": "0.185.0",

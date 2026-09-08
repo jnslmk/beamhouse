@@ -87,6 +87,7 @@ export async function startBridge(config: BridgeConfig): Promise<RunningBridge> 
   artnet.bind(config.artnetPort, config.hostname);
   await once(artnet, "listening");
 
+  const watchPrefix = basename(config.watchDirectory);
   const server = Bun.serve<ClientData>({
     hostname: config.hostname,
     port: config.httpPort,
@@ -101,6 +102,11 @@ export async function startBridge(config: BridgeConfig): Promise<RunningBridge> 
       }
       if (url.pathname.startsWith("/capture/")) {
         return handleCapture(request, url.pathname.slice("/capture/".length), captures);
+      }
+      // Reload paths are watch-relative (`shows/rig.yml`), so the watched bytes
+      // are served under the same prefix; parsing stays in the browser.
+      if (url.pathname === `/${watchPrefix}` || url.pathname.startsWith(`/${watchPrefix}/`)) {
+        return serveWatched(request, url, config.watchDirectory, watchPrefix);
       }
       return serveApp(request, url, config.appDirectory);
     },
@@ -453,5 +459,33 @@ async function serveApp(request: Request, url: URL, appDirectory: string): Promi
       "Cache-Control":
         relativePath === "index.html" ? "no-cache" : "public, max-age=31536000, immutable",
     },
+  });
+}
+
+async function serveWatched(
+  request: Request,
+  url: URL,
+  watchDirectory: string,
+  watchPrefix: string,
+): Promise<Response> {
+  if (request.method !== "GET" && request.method !== "HEAD") {
+    return new Response("Method not allowed", { status: 405 });
+  }
+  const relativePath = decodeURIComponent(url.pathname.slice(watchPrefix.length + 2));
+  if (
+    relativePath.length === 0 ||
+    relativePath.split("/").some((segment) => segment === "" || segment === "." || segment === "..")
+  ) {
+    return new Response("Not found", { status: 404 });
+  }
+  const absolutePath = resolve(watchDirectory, relativePath);
+  const watchRoot = resolve(watchDirectory);
+  if (!absolutePath.startsWith(`${watchRoot}${sep}`)) {
+    return new Response("Not found", { status: 404 });
+  }
+  const file = Bun.file(absolutePath);
+  if (!(await file.exists())) return new Response("Not found", { status: 404 });
+  return new Response(request.method === "HEAD" ? null : file, {
+    headers: { "Cache-Control": "no-cache" },
   });
 }
