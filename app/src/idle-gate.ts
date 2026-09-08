@@ -46,6 +46,28 @@ export class FixtureChangeGate {
   }
 }
 
+/** Changed 1-based slots from one raw DMX universe; generated frames never enter this gate. */
+export class RawSlotChangeGate {
+  readonly #last = new Map<number, number>();
+  readonly #tracked: readonly number[];
+
+  constructor(tracked: readonly number[]) {
+    this.#tracked = tracked;
+  }
+
+  changed(slots: Uint8Array | undefined): Set<number> {
+    const changed = new Set<number>();
+    if (!slots) return changed;
+    for (const slot of this.#tracked) {
+      const value = slots[slot - 1] ?? 0;
+      if (this.#last.get(slot) === value) continue;
+      this.#last.set(slot, value);
+      changed.add(slot);
+    }
+    return changed;
+  }
+}
+
 /** Concatenated break bytes for one fixture; null when no addressed universe has a frame yet. */
 export function fixtureSlotBytes(
   frames: ReadonlyMap<number, Uint8Array>,

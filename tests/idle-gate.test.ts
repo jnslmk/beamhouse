@@ -4,6 +4,7 @@ import {
   copyRgbBytesIfChanged,
   FixtureChangeGate,
   MarkGate,
+  RawSlotChangeGate,
   shouldRewriteMarks,
 } from "../app/src/idle-gate.ts";
 
@@ -50,6 +51,25 @@ describe("changed-only fixture updates", () => {
     expect([...gate.changed(fixtures, frames)]).toEqual([]);
     gate.invalidate();
     expect([...gate.changed(fixtures, frames)]).toEqual([1]);
+  });
+});
+
+describe("raw reference-row updates", () => {
+  test("live universe-one changes paint while a generated universe-two look is held", () => {
+    const gate = new RawSlotChangeGate([1, 2, 3]);
+    const raw = new Map([[1, slots([70, 80, 90])]]);
+    gate.changed(raw.get(1));
+
+    const generatedGate = new FixtureChangeGate();
+    const generatedFixtures = [{ id: 101, addresses: [{ universe: 2, address: 1, footprint: 3 }] }];
+    const generatedLook = new Map([[2, slots([128, 128, 128])]]);
+    expect([...generatedGate.changed(generatedFixtures, generatedLook)]).toEqual([101]);
+    expect([...gate.changed(raw.get(1))]).toEqual([]);
+
+    raw.set(1, slots([71, 81, 91]));
+    expect([...generatedGate.changed(generatedFixtures, generatedLook)]).toEqual([]);
+    expect([...gate.changed(raw.get(1))]).toEqual([1, 2, 3]);
+    expect([...gate.changed(raw.get(1))]).toEqual([]);
   });
 });
 

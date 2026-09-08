@@ -31,7 +31,7 @@ import {
   type FixtureState,
 } from "./resolve.ts";
 import { createViewport, type StripProbeMarkers } from "./viewport.ts";
-import { FixtureChangeGate } from "./idle-gate.ts";
+import { FixtureChangeGate, RawSlotChangeGate } from "./idle-gate.ts";
 import {
   decodeRecordingName,
   decodeShareFragment,
@@ -395,6 +395,7 @@ let latestHealth: UniversesMessage | null = null;
 // Idle-frame gate: per-fixture DMX slot bytes since the last rendered frame.
 // Only changed fixtures re-resolve; placement and camera stay separate signals.
 const fixtureGate = new FixtureChangeGate();
+const rawReferenceRowGate = new RawSlotChangeGate([1, 2, 3]);
 let lastSubscribed = "";
 let lastStripReadback = "";
 // The generated look enters above the same resolution seam as live frames.
@@ -853,9 +854,10 @@ function paintFeedFrame(universes: UniverseFrame[]): void {
   }
   if (!playbackScene) {
     const slots = latestFrames.get(1);
+    const rawReferenceRowsChanged = rawReferenceRowGate.changed(slots);
     if (slots)
       for (let id = 1; id <= 3; id += 1) {
-        if (!changed.has(id)) continue;
+        if (!rawReferenceRowsChanged.has(id)) continue;
         const referenceRow = document.querySelector<HTMLElement>(`[data-fixture="${id}"]`);
         if (!referenceRow) continue;
         const level = slots[id - 1] ?? 0;
