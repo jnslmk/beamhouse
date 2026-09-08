@@ -82,7 +82,7 @@ export interface SceneAtmosphere {
 }
 
 /** Explicit .bhs fixed points: written into the scene, read verbatim downstream. */
-export const SCENE_DENSITY = 0.04;
+export const SCENE_DENSITY = 0.32;
 export const SCENE_BEAM_LENGTH_M = 10;
 
 export type ArrayDef =

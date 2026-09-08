@@ -37,7 +37,7 @@ export function poolStretch(dirY: number): number {
 }
 
 /** Soft length falloff: bright at the source, gone at the scene beam length. */
-export const BEAM_LENGTH_FALLOFF_K = 2.5;
+export const BEAM_LENGTH_FALLOFF_K = 1.2;
 
 export const BEAM_VERT = /* glsl */ `
 varying float vAxis;
@@ -69,7 +69,7 @@ float density(vec3 p) {
 }
 void main() {
   float t = clamp(vAxis / uLen, 0.0, 1.0);
-  float axial = 1.0 - atan(t * uLenK) / atan(uLenK);
+  float axial = 1.0 - atan(t * t * t * uLenK) / atan(uLenK);
   float facing = abs(dot(normalize(vNormalW), normalize(vViewW)));
   float edge = pow(facing, mix(9.0, 0.6, clamp(uEdge, 0.0, 1.0)));
   float scatter = density(vec3(0.0)) * axial * edge;
