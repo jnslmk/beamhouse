@@ -2,6 +2,8 @@ import { defineConfig } from "vite";
 
 export default defineConfig({
   base: "./",
+  // ponytail: single-viewport LAN-served bundle (three.js dominates); warn only past 1 MB.
+  build: { chunkSizeWarningLimit: 1000 },
   worker: { format: "iife" },
   server: {
     proxy: {
