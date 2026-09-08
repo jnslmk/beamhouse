@@ -1982,6 +1982,145 @@ describe("running Beamhouse", () => {
       rmSync(watchDir, { recursive: true, force: true });
     }
   }, 60_000);
+  test("renders volumetric beams and ground pools from movers, strobe, zoom and OFL", async () => {
+    await openFixtures();
+    const moverId = await injectGdtf("GLP@impression 90 RGB@v1.gdtf");
+    // Six reference movers plus one authored tungsten load on universe 9.
+    for (let index = 0; index < 6; index += 1)
+      await addLocalFixture(moverId, "Normal", 9, 1 + index * 14, 14);
+    const parId = await injectGdtf("Beamhouse@generic PAR38@v1.gdtf");
+    await addLocalFixture(parId, "Dimmer", 9, 100, 1);
+    await page.evaluate(
+      ([sole, matrix]: unknown[]) => {
+        const hook = (window as unknown as Record<string, unknown>)["__beamhouseRegisterOfl"] as (
+          id: string,
+          definition: unknown,
+        ) => { definition: string };
+        hook("ofl:test:beam-sole", sole);
+        hook("ofl:test:beam-matrix", matrix);
+      },
+      [BEAM_SOLE_SPOT, PRODUCT_BAR],
+    );
+    await addLocalFixture("ofl:test:beam-sole", "Spot", 9, 110, 2);
+    await addLocalFixture("ofl:test:beam-matrix", "6px RGB", 9, 120, 18);
+    // Break-scoped rows: earlier tests leave their own fixtures behind.
+    const rowId = async (breakText: string): Promise<number> =>
+      Number(
+        await page
+          .locator("[data-local-fixture]", { hasText: breakText })
+          .first()
+          .getAttribute("data-local-fixture"),
+      );
+    const mover1 = await rowId("9.001");
+    const par = await rowId("9.100");
+    const soleId = await rowId("9.110");
+    const barId = await rowId("9.120");
+    const row = (id: number): string => `[data-local-fixture="${id}"]`;
+    const moverFrame = (): number[] => {
+      const slots = new Array<number>(140).fill(0);
+      for (let index = 0; index < 6; index += 1) {
+        const base = index * 14;
+        // Pan 0, tilt full (aimed down), red, shutter open, dimmer full.
+        slots.splice(base, 14, 0, 0, 255, 255, 0, 255, 0, 0, 255, 255, 0, 0, 0, 0);
+      }
+      slots[99] = 26;
+      slots[109] = 255;
+      slots[110] = 255;
+      for (let index = 119; index < 137; index += 1) slots[index] = 255;
+      return slots;
+    };
+    const cones = () => page.locator("#viewport").getAttribute("data-fixture-cones");
+    const pools = () => page.locator("#viewport").getAttribute("data-beam-pools");
+    const cones0 = Number((await cones()) ?? 0);
+    const pools0 = Number((await pools()) ?? 0);
+    const frame = moverFrame();
+    let sequence = 1;
+    await sendUdp(sacn(sequence++, frame, 0, 9), sacnPort);
+    await page.waitForFunction(
+      (id: number) =>
+        document.querySelector(`[data-local-fixture="${id}"]`)?.getAttribute("data-local-level") ===
+        "255",
+      mover1,
+    );
+    // Six mover cones plus tungsten and sole-spot cones; every down-aimed
+    // beam lands a ground pool.
+    await page.waitForFunction(
+      (count: number) =>
+        document.querySelector("#viewport")?.getAttribute("data-fixture-cones") === String(count),
+      cones0 + 8,
+    );
+    expect(await cones()).toBe(String(cones0 + 8));
+    expect(await pools()).toBe(String(pools0 + 6));
+    // Motion: the first mover pans across the rig, cones unchanged.
+    frame[0] = 255;
+    frame[1] = 255;
+    await sendUdp(sacn(sequence++, frame, 0, 9), sacnPort);
+    await page.waitForFunction(
+      (id: number) =>
+        document.querySelector(`[data-local-fixture="${id}"]`)?.getAttribute("data-pan") ===
+        "330.0",
+      mover1,
+    );
+    expect(await cones()).toBe(String(cones0 + 8));
+    // Strobe reads lit; a closed shutter gates one cone and its pool.
+    frame[8] = 100;
+    await sendUdp(sacn(sequence++, frame, 0, 9), sacnPort);
+    await page.waitForFunction(
+      (id: number) =>
+        document.querySelector(`[data-local-fixture="${id}"]`)?.getAttribute("data-local-level") ===
+        "255",
+      mover1,
+    );
+    expect(await cones()).toBe(String(cones0 + 8));
+    frame[8] = 0;
+    await sendUdp(sacn(sequence++, frame, 0, 9), sacnPort);
+    await page.waitForFunction(
+      ([count]: [number]) =>
+        document.querySelector("#viewport")?.getAttribute("data-fixture-cones") === String(count),
+      [cones0 + 7] as [number],
+    );
+    expect(await pools()).toBe(String(pools0 + 5));
+    // The intensity map hides cones; pools render unchanged.
+    await page.locator("[data-render-toggle]").click();
+    await page.locator('#viewport[data-render-mode="intensity"]').waitFor();
+    expect(await cones()).toBe("0");
+    expect(await pools()).toBe(String(pools0 + 5));
+    await page.locator("[data-render-toggle]").click();
+    await page.locator('#viewport[data-render-mode="live"]').waitFor();
+    frame[8] = 255;
+    await sendUdp(sacn(sequence, frame, 0, 9), sacnPort);
+    await page.waitForFunction(
+      ([count]: [number]) =>
+        document.querySelector("#viewport")?.getAttribute("data-fixture-cones") === String(count),
+      [cones0 + 8] as [number],
+    );
+    // Tungsten at ~10%: warm drift on a declared cone.
+    expect(await page.locator(row(par)).getAttribute("data-beam")).toBe("cone 60.0");
+    const warm = ((await page.locator(row(par)).getAttribute("data-color")) ?? "")
+      .split(",")
+      .map(Number);
+    expect(warm[0] ?? 0).toBeGreaterThan(200);
+    expect((warm[0] ?? 0) - (warm[2] ?? 0)).toBeGreaterThan(150);
+    // OFL sole emitter draws a cone; matrix pixels stay on the strip path.
+    expect(await page.locator(row(soleId)).getAttribute("data-beam")).toBe("cone 8.0");
+    expect(await page.locator(row(barId)).getAttribute("data-beam")).toBe("glow 0.0");
+    expect(await cones()).toBe(String(cones0 + 8));
+    expect(await pools()).toBe(String(pools0 + 6));
+    // X4 zoom instrument: resolved zoom drives the cone angle.
+    const x4Id = await injectThirdPartyMover();
+    await addLocalFixture(x4Id, "Mover", 10, 1, 9);
+    const x4 = await rowId("10.001");
+    await sendUdp(sacn(1, [0, 0, 0, 128, 255, 0, 0, 255, 255], 0, 10), sacnPort);
+    await page.waitForFunction(
+      (id: number) =>
+        document.querySelector(`[data-local-fixture="${id}"]`)?.getAttribute("data-zoom") ===
+        "28.4",
+      x4,
+    );
+    expect(await page.locator(row(x4)).getAttribute("data-beam")).toBe("cone 28.4");
+    expect(await cones()).toBe(String(cones0 + 9));
+    expect(await pools()).toBe(String(pools0 + 7));
+  }, 60_000);
 });
 async function injectGdtf(filename: string): Promise<string> {
   const base64 = Buffer.from(
@@ -2012,6 +2151,24 @@ async function addLocalFixture(
   await page.locator("[data-local-breaks]").fill("");
   await page.locator("[data-local-add]").click();
 }
+
+const BEAM_SOLE_SPOT = {
+  name: "Beam Sole Spot",
+  physical: {
+    dimensions: { width: 200, height: 300, depth: 200 },
+    lens: { degreesMinMax: [8, 8] },
+  },
+  templateChannels: {
+    Dimmer: { capability: { type: "Intensity" } },
+    Shutter: {
+      capabilities: [
+        { type: "Shutter", shutterEffect: "Closed", dmxRange: [0, 10] },
+        { type: "Shutter", shutterEffect: "Strobe", dmxRange: [11, 255] },
+      ],
+    },
+  },
+  modes: [{ name: "Spot", channels: ["Dimmer", "Shutter"] }],
+};
 
 const PRODUCT_BAR = {
   name: "Product Bar 6px",

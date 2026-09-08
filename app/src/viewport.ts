@@ -2,8 +2,26 @@ import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { TransformControls } from "three/addons/controls/TransformControls.js";
 import { resolvedReferenceDefinition, type LinearRGB, type StripFixture } from "./reference-rig.ts";
+import {
+  BEAM_FRAG,
+  BEAM_LENGTH_FALLOFF_K,
+  BEAM_VERT,
+  POOL_FRAG,
+  POOL_VERT,
+  beamThrowM,
+  edgeWidthFraction,
+  poolRadiusM,
+  poolStretch,
+} from "./beam-shader.ts";
 import { staticsFor, type FixtureState, type FixtureStatics } from "./resolve.ts";
-import { samePlacement, type BhsDefinition, type LocalFixture, type Placement } from "./scene.ts";
+import {
+  SCENE_BEAM_LENGTH_M,
+  SCENE_DENSITY,
+  samePlacement,
+  type BhsDefinition,
+  type LocalFixture,
+  type Placement,
+} from "./scene.ts";
 
 export interface EditableFixture {
   id: number;
@@ -62,6 +80,8 @@ export interface Viewport {
   setSceneFixtureLevels(levels: ReadonlyMap<number, number>): void;
   /** Total resolution through one seam: pan, tilt, zoom, colour, dimmer and shutter. */
   setSceneFixtureStates(states: ReadonlyMap<number, FixtureState>): void;
+  /** Scene-wide atmosphere fixed points: density uniform + soft beam length. */
+  setAtmosphere(density: number, beamLengthM: number): void;
   cameraView(): { position: [number, number, number]; target: [number, number, number] };
   setCameraView(view: {
     position: [number, number, number];
@@ -300,11 +320,23 @@ export function createViewport(
   const localFixtures = new Map<number, RenderedFixture>();
   const localMaterials = new Map<number, THREE.MeshStandardMaterial>();
   interface LocalBeam {
-    cone: THREE.Mesh;
-    glow: THREE.MeshBasicMaterial;
+    cone: THREE.Mesh<THREE.ConeGeometry, THREE.ShaderMaterial>;
+    pool: THREE.Mesh<THREE.CircleGeometry, THREE.ShaderMaterial>;
     angle: number;
+    radius: number;
+    lit: boolean;
   }
   const localBeams = new Map<number, LocalBeam>();
+  // Declared optics per fixture: FieldAngle/BeamRadius/edge from staticsFor,
+  // read at setSceneFixtures time so the per-tick seam stays total.
+  const localOptics = new Map<
+    number,
+    { fieldDeg: number | null; radiusM: number; soft: boolean }
+  >();
+  // Scene-wide atmosphere fixed points (.bhs stored); main.ts owns the refresh.
+  let beamDensity = SCENE_DENSITY;
+  let beamLengthM = SCENE_BEAM_LENGTH_M;
+  const beamAxis = new THREE.Vector3();
   interface LocalTexels {
     texture: THREE.DataTexture;
     pixels: Float32Array;
@@ -366,10 +398,13 @@ export function createViewport(
       const beam = localBeams.get(fixture.id);
       if (beam) {
         scene.remove(beam.cone);
+        scene.remove(beam.pool);
         beam.cone.geometry.dispose();
-        beam.glow.dispose();
+        beam.cone.material.dispose();
+        beam.pool.material.dispose();
         localBeams.delete(fixture.id);
       }
+      localOptics.delete(fixture.id);
       localTexels.get(fixture.id)?.texture.dispose();
       localTexels.delete(fixture.id);
       const index = editableFixtures.indexOf(fixture);
@@ -401,6 +436,12 @@ export function createViewport(
         },
       };
       localFixtures.set(fixture.id, rendered);
+      if (statics)
+        localOptics.set(fixture.id, {
+          fieldDeg: statics.fieldDeg,
+          radiusM: statics.radiusM ?? 0,
+          soft: statics.softEdge,
+        });
       if (mesh.material instanceof THREE.MeshStandardMaterial)
         localMaterials.set(fixture.id, mesh.material);
       editableFixtures.push(rendered);
@@ -408,6 +449,7 @@ export function createViewport(
   };
   const setSceneFixtureStates = (states: ReadonlyMap<number, FixtureState>) => {
     let cones = 0;
+    let pools = 0;
     for (const [id, rendered] of localFixtures) {
       const state = states.get(id);
       if (!state) continue;
@@ -452,37 +494,60 @@ export function createViewport(
         texels.texture.needsUpdate = true;
       }
       const beam = localBeams.get(id);
+      const optics = localOptics.get(id) ?? { fieldDeg: null, radiusM: 0, soft: true };
       if (state.beam.kind === "cone" && state.level > 0.001) {
+        const angle = state.beam.angleDeg;
+        const edge = edgeWidthFraction(angle, optics.fieldDeg, optics.soft);
         let entry = beam;
         if (!entry) {
-          const glow = new THREE.MeshBasicMaterial({
-            transparent: true,
-            opacity: 0,
-            blending: THREE.AdditiveBlending,
-            depthWrite: false,
-            side: THREE.DoubleSide,
-            fog: false,
-          });
-          const cone = new THREE.Mesh(coneGeometry(state.beam.angleDeg), glow);
+          const cone = new THREE.Mesh(
+            coneGeometry(angle, optics.radiusM, beamLengthM),
+            beamMaterial(),
+          );
+          const pool = new THREE.Mesh(poolGeometry, poolMaterial());
           scene.add(cone);
-          entry = { cone, glow, angle: state.beam.angleDeg };
+          entry = { cone, pool, angle, radius: optics.radiusM, lit: true };
           localBeams.set(id, entry);
-        } else if (Math.abs(entry.angle - state.beam.angleDeg) > 0.25) {
+        } else if (
+          Math.abs(entry.angle - angle) > 0.25 ||
+          Math.abs(entry.radius - optics.radiusM) > 0.005
+        ) {
           entry.cone.geometry.dispose();
-          entry.cone.geometry = coneGeometry(state.beam.angleDeg);
-          entry.angle = state.beam.angleDeg;
+          entry.cone.geometry = coneGeometry(angle, optics.radiusM, beamLengthM);
+          entry.angle = angle;
+          entry.radius = optics.radiusM;
         }
-        entry.cone.visible = true;
+        // Cones stay out of the intensity map; pools render unchanged there.
+        const live = renderMode === "live";
+        entry.lit = true;
+        entry.cone.visible = live;
         entry.cone.position.copy(mesh.position);
         entry.cone.quaternion.copy(mesh.quaternion);
-        entry.glow.color.setRGB(state.color[0] ?? 0, state.color[1] ?? 0, state.color[2] ?? 0);
-        entry.glow.opacity = 0.05 + state.level * 0.22;
-        cones += 1;
+        setBeamUniforms(entry.cone.material, state, edge, beamDensity, beamLengthM);
+        if (live) cones += 1;
+        // Analytic pool: the beam axis against y=0, sized by BeamAngle x
+        // throw with FieldAngle softening. No occlusion, no interaction.
+        beamAxis.set(0, 0, 1).applyQuaternion(mesh.quaternion);
+        const throwM = beamThrowM(mesh.position.y, beamAxis.y);
+        if (throwM === null) {
+          entry.pool.visible = false;
+        } else {
+          const radius = poolRadiusM(angle, throwM, optics.radiusM);
+          entry.pool.visible = true;
+          entry.pool.position.copy(mesh.position).addScaledVector(beamAxis, throwM).setY(0.02);
+          entry.pool.rotation.set(0, Math.atan2(beamAxis.x, beamAxis.z), 0);
+          entry.pool.scale.set(radius * poolStretch(beamAxis.y), 1, radius);
+          setPoolUniforms(entry.pool.material, state, edge);
+          pools += 1;
+        }
       } else if (beam) {
+        beam.lit = false;
         beam.cone.visible = false;
+        beam.pool.visible = false;
       }
     }
     host.dataset.fixtureCones = String(cones);
+    host.dataset.beamPools = String(pools);
   };
 
   const picker = new THREE.Raycaster();
@@ -567,6 +632,13 @@ export function createViewport(
     },
     setRenderMode(mode) {
       renderMode = mode;
+      // Cones leave the intensity map at once; pools render unchanged there.
+      let cones = 0;
+      for (const entry of localBeams.values()) {
+        entry.cone.visible = entry.lit && mode === "live";
+        if (entry.cone.visible) cones += 1;
+      }
+      host.dataset.fixtureCones = String(cones);
     },
     setEditable(nextEditable) {
       editable = nextEditable;
@@ -633,6 +705,17 @@ export function createViewport(
     setSceneFixtureStates,
     setSceneFixtures,
     showGdtfFixture,
+    setAtmosphere(density, lengthM) {
+      beamDensity = density;
+      if (lengthM !== beamLengthM) {
+        beamLengthM = lengthM;
+        // Geometry carries the length; rebuild cached cones at the new extent.
+        for (const entry of localBeams.values()) {
+          entry.cone.geometry.dispose();
+          entry.cone.geometry = coneGeometry(entry.angle, entry.radius, beamLengthM);
+        }
+      }
+    },
     capture(maxEdge = 1280, quality = 0.8) {
       return new Promise<CaptureResult>((resolve, reject) => {
         // No preserveDrawingBuffer tax: render and read back in the same frame.
@@ -687,13 +770,89 @@ function disposeObject(object: THREE.Object3D): void {
   });
 }
 /** Volumetric cone: apex at the fixture origin, opening along local +Z. */
-function coneGeometry(angleDeg: number): THREE.ConeGeometry {
-  const height = 4;
-  const radius = Math.max(0.01, Math.tan(THREE.MathUtils.degToRad(angleDeg) / 2) * height);
+function coneGeometry(angleDeg: number, radiusM = 0, height = 4): THREE.ConeGeometry {
+  const half = THREE.MathUtils.degToRad(angleDeg) / 2;
+  const slope = Math.tan(half);
+  const radius = Math.max(0.01, radiusM + slope * height);
   const geometry = new THREE.ConeGeometry(radius, height, 24, 1, true);
   geometry.rotateX(-Math.PI / 2);
   geometry.translate(0, 0, height / 2);
+  if (radiusM > 0 && slope > 1e-4) {
+    // BeamRadius: the cone surface passes through the lens radius at the
+    // fixture origin instead of starting at a point.
+    geometry.translate(0, 0, -radiusM / slope);
+  }
   return geometry;
+}
+
+/** Shared unit pool disc, baked flat on y=0: per-mesh scale carries the ellipse. */
+const poolGeometry: THREE.CircleGeometry = (() => {
+  const disc = new THREE.CircleGeometry(1, 40);
+  disc.rotateX(-Math.PI / 2);
+  return disc;
+})();
+
+function beamMaterial(): THREE.ShaderMaterial {
+  return new THREE.ShaderMaterial({
+    vertexShader: BEAM_VERT,
+    fragmentShader: BEAM_FRAG,
+    uniforms: {
+      uColor: { value: new THREE.Color(0, 0, 0) },
+      uLevel: { value: 0 },
+      uDensity: { value: SCENE_DENSITY },
+      uEdge: { value: 0.35 },
+      uLen: { value: SCENE_BEAM_LENGTH_M },
+      uLenK: { value: BEAM_LENGTH_FALLOFF_K },
+    },
+    transparent: true,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+  });
+}
+
+function poolMaterial(): THREE.ShaderMaterial {
+  return new THREE.ShaderMaterial({
+    vertexShader: POOL_VERT,
+    fragmentShader: POOL_FRAG,
+    uniforms: {
+      uColor: { value: new THREE.Color(0, 0, 0) },
+      uLevel: { value: 0 },
+      uEdge: { value: 0.35 },
+    },
+    transparent: true,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+  });
+}
+
+function setBeamUniforms(
+  material: THREE.ShaderMaterial,
+  state: FixtureState,
+  edge: number,
+  density: number,
+  lengthM: number,
+): void {
+  (material.uniforms["uColor"] as THREE.IUniform<THREE.Color>).value.setRGB(
+    state.color[0] ?? 0,
+    state.color[1] ?? 0,
+    state.color[2] ?? 0,
+  );
+  (material.uniforms["uLevel"] as THREE.IUniform<number>).value = state.level;
+  (material.uniforms["uDensity"] as THREE.IUniform<number>).value = density;
+  (material.uniforms["uEdge"] as THREE.IUniform<number>).value = edge;
+  (material.uniforms["uLen"] as THREE.IUniform<number>).value = lengthM;
+}
+
+function setPoolUniforms(material: THREE.ShaderMaterial, state: FixtureState, edge: number): void {
+  (material.uniforms["uColor"] as THREE.IUniform<THREE.Color>).value.setRGB(
+    state.color[0] ?? 0,
+    state.color[1] ?? 0,
+    state.color[2] ?? 0,
+  );
+  (material.uniforms["uLevel"] as THREE.IUniform<number>).value = state.level;
+  (material.uniforms["uEdge"] as THREE.IUniform<number>).value = edge;
 }
 
 function localFixtureMesh(definition: BhsDefinition | undefined, definitionId: string): THREE.Mesh {

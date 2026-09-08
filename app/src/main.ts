@@ -259,6 +259,8 @@ const viewportApi = createViewport(
   (id, additive) => selectFixture(id, additive),
 );
 const { cubes, strips, fixtures: editableFixtures } = viewportApi;
+// Stored atmosphere fixed points drive the beam shader; no default lives here.
+viewportApi.setAtmosphere(commands.atmosphere().density, commands.atmosphere().beamLengthM);
 // Beamhouse-side convergence: gdtf-ts owns bytes → definition, this layer owns
 // definition → display, including the canonical-mesh cache.
 const gdtfMeshCache = new Map<string, Object3D>();
@@ -410,6 +412,7 @@ syncSceneFixtures();
 commands.onChanged(() => {
   // A shared link is frozen: later scene traffic never rewrites the snapshot rig.
   if (!viewerSnapshot) syncSceneFixtures();
+  viewportApi.setAtmosphere(commands.atmosphere().density, commands.atmosphere().beamLengthM);
   renderPlacementEditor();
   void maybeIngestPatch();
 });

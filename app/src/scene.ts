@@ -65,7 +65,20 @@ export interface PersistedScene {
   patchPath: string | null;
   /** Last ingested patch, keyed by integer fixture id. Only ingests write here. */
   patch: Record<string, PatchFixture>;
+  /** Scene-wide atmosphere (ADR-0013.4, ADR-0013.6): stored, never defaulted at read. */
+  atmosphere: SceneAtmosphere;
 }
+
+export interface SceneAtmosphere {
+  /** Homogeneous density uniform, on by default low. 0 is clear air. */
+  density: number;
+  /** Soft beam-length falloff in metres; no geometric terminus. */
+  beamLengthM: number;
+}
+
+/** Explicit .bhs fixed points: written into the scene, read verbatim downstream. */
+export const SCENE_DENSITY = 0.04;
+export const SCENE_BEAM_LENGTH_M = 10;
 
 export type ArrayDef =
   | {
@@ -226,13 +239,15 @@ export class SceneCommands {
   isOverridden(id: number): boolean {
     return this.#scene.overrides[String(id)] !== undefined;
   }
-
   arrays(): Readonly<Record<string, ArrayDef>> {
     return this.#scene.arrays;
   }
-
   views(): Readonly<Record<string, CameraView>> {
     return this.#scene.views;
+  }
+  /** Stored fixed points, read verbatim: no default lives at any consumer. */
+  atmosphere(): SceneAtmosphere {
+    return this.#scene.atmosphere;
   }
   definitions(): Readonly<Record<string, BhsDefinition>> {
     return this.#scene.definitions;
@@ -731,6 +746,7 @@ export function normalize(value: unknown): PersistedScene {
       fixtures: {},
       patchPath: null,
       patch: {},
+      atmosphere: { density: SCENE_DENSITY, beamLengthM: SCENE_BEAM_LENGTH_M },
     };
   const scene = value as Partial<PersistedScene>;
   const arrays: Record<string, ArrayDef> = {};
@@ -778,7 +794,28 @@ export function normalize(value: unknown): PersistedScene {
     fixtures,
     patchPath: typeof scene.patchPath === "string" ? scene.patchPath : null,
     patch,
+    atmosphere: normalizeAtmosphere(scene.atmosphere),
   };
+}
+
+// The one seam that writes the fixed points: malformed or absent entries
+// come back as the stored defaults, so no consumer ever defaults at read.
+function normalizeAtmosphere(value: unknown): SceneAtmosphere {
+  if (value && typeof value === "object") {
+    const { density, beamLengthM } = value as Partial<SceneAtmosphere>;
+    if (
+      typeof density === "number" &&
+      Number.isFinite(density) &&
+      density >= 0 &&
+      density <= 1 &&
+      typeof beamLengthM === "number" &&
+      Number.isFinite(beamLengthM) &&
+      beamLengthM >= 1 &&
+      beamLengthM <= 40
+    )
+      return { density, beamLengthM };
+  }
+  return { density: SCENE_DENSITY, beamLengthM: SCENE_BEAM_LENGTH_M };
 }
 
 function normalizeLocalFixture(

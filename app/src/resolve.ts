@@ -168,6 +168,12 @@ export interface FixtureStatics {
   layout: EmitterLayout;
   beamKind: "cone" | "glow" | "marker";
   beamAngle: number | null;
+  /** Declared FieldAngle in degrees, null where the file omits it. */
+  fieldDeg: number | null;
+  /** Declared BeamRadius in metres, null where the file omits it. */
+  radiusM: number | null;
+  /** BeamType soft/hard edge: Wash/Fresnel/PC soften, Spot/Rectangle do not. */
+  softEdge: boolean;
 }
 
 function findBeam(nodes: readonly GdtfGeometryNode[]): GdtfGeometryNode | null {
@@ -191,10 +197,19 @@ function findGeometry(nodes: readonly GdtfGeometryNode[], name: string): GdtfGeo
 interface GdtfStatics {
   beamType?: string;
   beamAngle: number;
+  fieldDeg: number | null;
+  radiusM: number | null;
   colorTemperature: number;
   lampType?: string;
   size: [number, number, number];
 }
+
+/** BeamType soft/hard degeneracy (ADR-0013.9): Wash/Fresnel/PC soften. */
+const SOFT_BEAM_TYPES: Record<string, boolean> = {
+  Wash: true,
+  Fresnel: true,
+  PC: true,
+};
 
 function gdtfStatics(definition: GdtfDefinition, modeName: string): GdtfStatics {
   const beam = findBeam(definition.geometries);
@@ -207,12 +222,13 @@ function gdtfStatics(definition: GdtfDefinition, modeName: string): GdtfStatics 
   return {
     ...(beam?.beamType !== undefined ? { beamType: beam.beamType } : {}),
     beamAngle: beam?.beamAngle ?? 0,
+    fieldDeg: beam?.fieldAngle !== undefined && beam.fieldAngle > 0 ? beam.fieldAngle : null,
+    radiusM: beam?.beamRadius ?? null,
     colorTemperature: beam?.colorTemperature ?? 6000,
     ...(beam?.lampType !== undefined ? { lampType: beam.lampType } : {}),
     size: sized ? [sized.length, sized.height, sized.width] : [...MARKER_SIZE],
   };
 }
-
 function clamp01(value: number): number {
   return Math.min(1, Math.max(0, value));
 }
@@ -526,13 +542,26 @@ export function staticsFor(id: string, mode?: string): FixtureStatics | null {
       layout: emitterLayout(id, mode),
       beamKind: cone ? "cone" : "glow",
       beamAngle: cone ? statics.beamAngle : null,
+      fieldDeg: cone ? statics.fieldDeg : null,
+      radiusM: cone ? statics.radiusM : null,
+      softEdge:
+        cone && (statics.beamType === undefined || (SOFT_BEAM_TYPES[statics.beamType] ?? false)),
     };
   }
   const layout = emitterLayout(id, mode);
+  // Mirrors resolveOfl: a matrix stays on the strip path (glow) even with a
+  // lens; only a sole emitter draws the cone (ADR-0043).
+  let beamKind: FixtureStatics["beamKind"] = registered.definition.lensDeg ? "cone" : "glow";
+  if (layout.kind === "marker") beamKind = "marker";
+  else if (layout.kind === "tiled") beamKind = "glow";
   return {
     size: registered.definition.dimensionsM ?? [...MARKER_SIZE],
     layout,
-    beamKind: layout.kind === "marker" ? "marker" : registered.definition.lensDeg ? "cone" : "glow",
+    beamKind,
     beamAngle: registered.definition.lensDeg?.[0] ?? null,
+    fieldDeg: null,
+    radiusM: null,
+    // OFL declares no edge type; a sole lens reads soft.
+    softEdge: beamKind === "cone",
   };
 }
