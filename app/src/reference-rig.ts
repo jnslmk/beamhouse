@@ -83,6 +83,35 @@ export const referenceStrips: readonly StripFixture[] = Array.from({ length: 10 
   };
 });
 
+// gled2's own LED-index space (universe = Art-Net Port-Address + 1), verified
+// live on the bridge: LED g sits at universe 2 + floor(g / 170), slot
+// 1 + (g % 170) * 3, and arm i holds LEDs 23i..23i+22 — so the ten spokes
+// start at slot 1 of their universes, and arm 8 is the only one straddling
+// the 170-LED seam between universes 2 and 3. The console's DMXAddress-30
+// patch above is the other layout; gled2 is ADR-0012's second source and
+// streams the rig's own index space, not the console's patch.
+const GLED_LEDS_PER_UNIVERSE = 170;
+
+/** The arm's 23 pixels as contiguous per-universe runs at gled2's wire slots. */
+function gledBreaksForArm(arm: number): BreakAddress[] {
+  const breaks: BreakAddress[] = [];
+  let firstPixel = 0;
+  let led = arm * PIXELS_PER_SPOKE;
+  while (firstPixel < PIXELS_PER_SPOKE) {
+    const ledInUniverse = led % GLED_LEDS_PER_UNIVERSE;
+    const pixels = Math.min(PIXELS_PER_SPOKE - firstPixel, GLED_LEDS_PER_UNIVERSE - ledInUniverse);
+    breaks.push({
+      universe: 2 + Math.floor(led / GLED_LEDS_PER_UNIVERSE),
+      slot: 1 + ledInUniverse * SLOTS_PER_PIXEL,
+      firstPixel,
+      pixels,
+    });
+    firstPixel += pixels;
+    led += pixels;
+  }
+  return breaks;
+}
+
 const REFERENCE_STRIP_DEFINITION = "bhs:reference-strip";
 /** Hung house rig: authored tungsten conventionals, one dimmer channel each. */
 export const par38DefinitionId = "gdtf:FFC1C66D-905A-47AB-87DB-5FCEEF121B1A";
@@ -164,6 +193,24 @@ export const referenceSceneFixtures: readonly LocalFixture[] = [
   ...[206, 207, 208, 209, 210, 211, 212].map((id) => stageObject(id, stageTrussDefinitionId)),
   stageObject(213, stageSingerDefinitionId),
 ];
+
+/**
+ * The same ten spokes re-declared at gled2's wire addresses as same-id
+ * shadows of the reference entries: visibleFixtures() substitutes these for
+ * ids 101-110 when the gled2 stream is the one being watched (?gled2). The
+ * default view stays the console patch; geometry and placement are untouched
+ * because they are keyed by id and live in referenceScenePlacements.
+ */
+export const gledSceneFixtures: readonly LocalFixture[] = referenceStrips.map((strip, arm) => ({
+  id: strip.id,
+  definition: REFERENCE_STRIP_DEFINITION,
+  mode: "default",
+  addresses: gledBreaksForArm(arm).map((address) => ({
+    universe: address.universe,
+    address: address.slot,
+    footprint: address.pixels * SLOTS_PER_PIXEL,
+  })),
+}));
 
 // Beam fires along local +Z: hung placements yaw toward stage, then pitch down.
 export const referenceScenePlacements: ReadonlyMap<number, Placement> = new Map([

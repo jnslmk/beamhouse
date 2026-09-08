@@ -4,6 +4,7 @@ import { Box3, Group, Vector3, type Object3D } from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { LiveFeed } from "./live-feed.ts";
 import {
+  gledSceneFixtures,
   referenceSceneDefinitions,
   referenceSceneFixtures,
   referenceScenePlacements,
@@ -268,8 +269,16 @@ let editingDefinition: string | null = null;
 const commands = await SceneCommands.create({ control: viewerSnapshot === null });
 let playbackScene: SnapshotScene | null = null;
 
+// ?gled2 opts the view into gled2's STAR-TENT stream: the ten spokes read at
+// gled2's LED-index wire slots (slot 1 of each universe) instead of the
+// console's DMXAddress-30 patch. The reference rig stays the default; this is
+// the explicit switch for watching the second source (ADR-0012, ADR-0038).
+const gled2Stream = new URLSearchParams(location.search).has("gled2");
+
 function visibleFixtures(): LocalFixture[] {
   const fixtures = new Map(referenceSceneFixtures.map((fixture) => [fixture.id, fixture]));
+  // gled2's layout shadows the same-id reference spokes; commands still win below.
+  if (gled2Stream) for (const fixture of gledSceneFixtures) fixtures.set(fixture.id, fixture);
   for (const fixture of commands.fixtures()) fixtures.set(fixture.id, fixture);
   return [...fixtures.values()];
 }
