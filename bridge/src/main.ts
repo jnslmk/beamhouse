@@ -1,7 +1,10 @@
 import { resolve } from "node:path";
 import { startBridge, type BridgeConfig } from "./server.ts";
 
-export function configFromEnvironment(environment: NodeJS.ProcessEnv): BridgeConfig {
+export function configFromEnvironment(
+  environment: NodeJS.ProcessEnv,
+  argv: readonly string[] = [],
+): BridgeConfig {
   return {
     hostname: environment.BEAMHOUSE_HOST ?? "0.0.0.0",
     httpPort: numberFrom(environment.BEAMHOUSE_PORT, 7070),
@@ -11,11 +14,13 @@ export function configFromEnvironment(environment: NodeJS.ProcessEnv): BridgeCon
     watchDirectory: environment.BEAMHOUSE_WATCH_DIR ?? resolve(import.meta.dir, "../../shows"),
     sacnStaleMs: numberFrom(environment.BEAMHOUSE_SACN_STALE_MS, 2_500),
     artnetStaleMs: numberFrom(environment.BEAMHOUSE_ARTNET_STALE_MS, 6_000),
+    // ponytail: one flag, no surface — recording is a tee, not a job (ADR-0040 §5).
+    recordPath: recordPathFrom(argv) ?? environment.BEAMHOUSE_RECORD ?? null,
   };
 }
 
 if (import.meta.main) {
-  const bridge = await startBridge(configFromEnvironment(process.env));
+  const bridge = await startBridge(configFromEnvironment(process.env, process.argv.slice(2)));
   console.log(`Beamhouse listening on ${bridge.url}`);
 
   const stop = async () => {
@@ -24,6 +29,17 @@ if (import.meta.main) {
   };
   process.once("SIGINT", () => void stop());
   process.once("SIGTERM", () => void stop());
+}
+
+function recordPathFrom(argv: readonly string[]): string | null {
+  for (let index = 0; index < argv.length; index += 1) {
+    if (argv[index] === "--record") {
+      const value = argv[index + 1];
+      if (!value || value.startsWith("--")) throw new Error("--record needs a file path");
+      return value;
+    }
+  }
+  return null;
 }
 
 function numberFrom(value: string | undefined, fallback: number): number {

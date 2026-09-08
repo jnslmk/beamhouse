@@ -3,9 +3,11 @@ import { createSocket, type Socket } from "node:dgram";
 import { once } from "node:events";
 import { basename, resolve, sep } from "node:path";
 import { Receiver, type Packet } from "sacn";
-import { encodeFrame } from "@beamhouse/wire";
+import { encodeFrame, encodeRecordMember, prefixFrame, RECORD_MEMBER_MS } from "@beamhouse/wire";
 import { parseArtDmx, parseSacn } from "./protocols.ts";
 import { UniverseStore } from "./universe-store.ts";
+import { appendFile, writeFile } from "node:fs/promises";
+import type { UniverseFrame } from "@beamhouse/wire";
 import { createCaptureStore, validateCaptureUpload, type CaptureStore } from "./mcp.ts";
 
 interface ClientData {
@@ -33,6 +35,8 @@ export interface BridgeConfig {
   watchDirectory: string;
   sacnStaleMs: number;
   artnetStaleMs: number;
+  /** .bhr path when --record tees constructed section-07 bytes; null records nothing. */
+  recordPath: string | null;
 }
 
 export interface RunningBridge {
@@ -59,6 +63,10 @@ export async function startBridge(config: BridgeConfig): Promise<RunningBridge> 
     { requester: ControlSocket; requestId: number; timer: ReturnType<typeof setTimeout> }
   >();
   const captures = createCaptureStore();
+  // --record is a byte tee with no surface: constructed section-07 bytes are
+  // buffered per tick and gzipped per 10 s member off the tick, so UDP reception
+  // never waits on compression or disk.
+  const recorder = config.recordPath ? createRecorder(config.recordPath) : null;
 
   const sacn = new Receiver({ universes: [], port: config.sacnPort, reuseAddr: true });
   // Receiver's built-in ordering rejects before emitting and cannot report the source.
@@ -152,6 +160,15 @@ export async function startBridge(config: BridgeConfig): Promise<RunningBridge> 
     for (const client of clients) {
       const frames = store.frames([...client.data.subscriptions]);
       if (frames.length > 0) client.send(encodeFrame(tMs, frames));
+    }
+    if (recorder) {
+      // The bridge joins sACN universes per subscription, so the subscription
+      // union is everything it receives; with no clients there is nothing to tee.
+      const wanted = new Set<number>();
+      for (const client of clients) {
+        for (const universe of client.data.subscriptions) wanted.add(universe);
+      }
+      if (wanted.size > 0) recorder.tee(tMs, store.frames([...wanted]));
     }
   }, 1000 / 30);
   const healthTimer = setInterval(() => broadcastHealth(true), 1_000);
@@ -372,6 +389,8 @@ export async function startBridge(config: BridgeConfig): Promise<RunningBridge> 
     url: server.url.toString().replace(/\/$/, ""),
     async stop() {
       clearInterval(frameTimer);
+      // Flush the partial member so even a short take stays a readable .bhr.
+      await recorder?.flush();
       clearInterval(healthTimer);
       clearInterval(ownershipTimer);
       for (const client of clients) client.close(1001, "bridge stopping");
@@ -379,6 +398,52 @@ export async function startBridge(config: BridgeConfig): Promise<RunningBridge> 
       patchWatcher.close();
       await new Promise<void>((done) => artnet.close(done));
       await new Promise<void>((done) => sacn.close(done));
+    },
+  };
+}
+
+interface Recorder {
+  tee(tMs: number, frames: UniverseFrame[]): void;
+  flush(): Promise<void>;
+}
+
+function createRecorder(path: string): Recorder {
+  let chunks: Uint8Array[] = [];
+  let memberStart = Date.now();
+  let failed = false;
+  const failedNote = " failed; continuing without a record";
+  let writing: Promise<void> = writeFile(path, new Uint8Array(0)).catch((error: unknown) => {
+    failed = true;
+    console.warn("Recording to " + path + failedNote, error);
+  });
+
+  function rotate(): void {
+    const pending = chunks;
+    chunks = [];
+    memberStart = Date.now();
+    if (pending.length === 0 || failed) return;
+    writing = writing
+      .then(() =>
+        appendFile(
+          path,
+          encodeRecordMember(pending, (raw) => Bun.gzipSync(raw)),
+        ),
+      )
+      .catch((error: unknown) => {
+        failed = true;
+        console.warn("Recording to " + path + failedNote, error);
+      });
+  }
+
+  return {
+    tee(tMs, frames) {
+      if (failed || frames.length === 0) return;
+      chunks.push(prefixFrame(encodeFrame(tMs, frames)));
+      if (Date.now() - memberStart >= RECORD_MEMBER_MS) rotate();
+    },
+    async flush() {
+      rotate();
+      await writing;
     },
   };
 }

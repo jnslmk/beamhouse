@@ -1,11 +1,12 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
 import { createSocket } from "node:dgram";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { Packet } from "sacn";
 import { encodeShareSnapshot } from "../app/src/share.ts";
+import { Recording } from "../app/src/record.ts";
 import { chromium, type Browser, type BrowserContext, type Page } from "playwright";
 
 const repository = resolve(import.meta.dir, "..");
@@ -1458,6 +1459,223 @@ describe("running Beamhouse", () => {
       await staticServer.stop(true);
     }
   }, 60_000);
+  test("records browser frames under --record and plays them back bridge-local", async () => {
+    const dist = resolve(repository, "app/dist");
+    if (!existsSync(resolve(dist, "index.html"))) {
+      const build = Bun.spawnSync(["bun", "run", "build"], {
+        cwd: repository,
+        stdout: "ignore",
+        stderr: "pipe",
+      });
+      if (!build.success) throw new Error(build.stderr.toString());
+    }
+    const scratch = mkdtempSync(join(tmpdir(), "beamhouse-record-"));
+    const watchDir = join(scratch, "shows");
+    mkdirSync(watchDir);
+    try {
+      writeFileSync(
+        join(watchDir, "deck.bhr"),
+        readFileSync(resolve(repository, "tests/fixtures/representative.bhr")),
+      );
+      const recordHttp = await freeTcpPort();
+      const recordSacn = await freeUdpPort();
+      const recordArt = await freeUdpPort();
+      const take = join(watchDir, "take.bhr");
+      const recorder = Bun.spawn(["bun", "bridge/src/main.ts", "--record", take], {
+        cwd: repository,
+        env: {
+          ...process.env,
+          BEAMHOUSE_HOST: "127.0.0.1",
+          BEAMHOUSE_PORT: String(recordHttp),
+          BEAMHOUSE_SACN_PORT: String(recordSacn),
+          BEAMHOUSE_ARTNET_PORT: String(recordArt),
+          BEAMHOUSE_WATCH_DIR: watchDir,
+        },
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+      try {
+        await waitUntilReachable("http://127.0.0.1:" + recordHttp, recorder);
+        const socket = new WebSocket("ws://127.0.0.1:" + recordHttp + "/ws");
+        socket.binaryType = "arraybuffer";
+        await new Promise<void>((done, reject) => {
+          let frames = 0;
+          const timer = setTimeout(
+            () => reject(new Error("no frames flowed during recording")),
+            10_000,
+          );
+          socket.addEventListener("open", () => {
+            socket.send(JSON.stringify({ op: "subscribe", universes: [1] }));
+            void sendUdp(sacn(1, [201, 202, 203]), recordSacn);
+          });
+          socket.addEventListener("message", (event) => {
+            if (event.data instanceof ArrayBuffer && ++frames >= 3) {
+              clearTimeout(timer);
+              done();
+            }
+          });
+          socket.addEventListener("error", () => {
+            clearTimeout(timer);
+            reject(new Error("recorder socket failed"));
+          });
+        });
+        socket.close();
+        const desk = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+        try {
+          await desk.goto("http://127.0.0.1:" + recordHttp + "/#r=shows/deck", {
+            waitUntil: "domcontentloaded",
+          });
+          await desk.locator('html[data-ready="true"]').waitFor({ timeout: 10_000 });
+          await desk.locator("[data-transport-seek]").waitFor({ timeout: 10_000 });
+          expect(await desk.locator(".brand strong").innerText()).toContain("deck");
+          await desk.locator("#feed-status", { hasText: "recorded" }).waitFor();
+          await desk.waitForFunction(
+            () =>
+              document
+                .querySelector("[data-transport-label]")
+                ?.textContent?.includes("shows/deck.bhr") ?? false,
+          );
+          await desk.waitForFunction(
+            () =>
+              /00:0[1-9] /.test(
+                document.querySelector("[data-transport-label]")?.textContent ?? "",
+              ),
+            null,
+            { timeout: 10_000 },
+          );
+        } finally {
+          await desk.close();
+        }
+        recorder.kill("SIGTERM");
+        await recorder.exited;
+        const raw = readFileSync(take);
+        const taken = new Recording(new Uint8Array(raw.buffer, raw.byteOffset, raw.byteLength));
+        expect(taken.memberCount).toBeGreaterThanOrEqual(1);
+        const last = await taken.frameAt(1_000_000_000);
+        expect(last.frame.universes.map((universe) => universe.universe)).toEqual([1]);
+        expect(last.frame.universes[0]!.slots.slice(0, 3)).toEqual(
+          Uint8Array.from([201, 202, 203]),
+        );
+      } finally {
+        if (recorder.exitCode === null) recorder.kill("SIGTERM");
+        await recorder.exited;
+      }
+    } finally {
+      rmSync(scratch, { recursive: true, force: true });
+    }
+  }, 60_000);
+  test("a named hosted recording autoplays and seeks from static hosting with no bridge", async () => {
+    const encoded = await encodeShareSnapshot({
+      fixtures: [
+        {
+          id: -1,
+          definition: "bhs:box",
+          mode: "pixel",
+          addresses: [{ universe: 1, address: 1, footprint: 3 }],
+        },
+      ],
+      definitions: {
+        "bhs:box": { kind: "primitive", primitive: "Cube", width: 1, depth: 1, height: 1 },
+      },
+      placements: new Map([[-1, { position: [0, 0.5, 2], rotation: [0, 0, 0] }]]),
+      views: {},
+      now: Date.now() - 3 * 3600 * 1000,
+    });
+    if (encoded.kind !== "link") throw new Error("recording rig should fit the fragment budget");
+    const dist = resolve(repository, "app/dist");
+    if (!existsSync(resolve(dist, "index.html"))) {
+      const build = Bun.spawnSync(["bun", "run", "build"], {
+        cwd: repository,
+        stdout: "ignore",
+        stderr: "pipe",
+      });
+      if (!build.success) throw new Error(build.stderr.toString());
+    }
+    const bhr = readFileSync(resolve(repository, "tests/fixtures/representative.bhr"));
+    const staticPort = await freeTcpPort();
+    const staticServer = Bun.serve({
+      port: staticPort,
+      hostname: "127.0.0.1",
+      fetch(request) {
+        const pathname = new URL(request.url).pathname;
+        if (pathname === "/opener.bhr")
+          return new Response(bhr, { headers: { "content-type": "application/octet-stream" } });
+        const file = pathname === "/" ? "index.html" : pathname.slice(1);
+        const resolved = resolve(dist, file);
+        if (!resolved.startsWith(dist)) return new Response("forbidden", { status: 403 });
+        try {
+          const body = readFileSync(resolved);
+          const type = resolved.endsWith(".html")
+            ? "text/html"
+            : resolved.endsWith(".js")
+              ? "text/javascript"
+              : resolved.endsWith(".css")
+                ? "text/css"
+                : "application/octet-stream";
+          return new Response(body, { headers: { "content-type": type } });
+        } catch {
+          return new Response("missing", { status: 404 });
+        }
+      },
+    });
+    try {
+      const viewer = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+      try {
+        await viewer.goto(
+          "http://127.0.0.1:" + staticPort + "/#" + encoded.fragment + "&r=opener",
+          {
+            waitUntil: "domcontentloaded",
+          },
+        );
+        await viewer.locator("html[data-ready='true']").waitFor({ timeout: 10_000 });
+        await viewer.locator("[data-transport-seek]").waitFor({ timeout: 10_000 });
+        expect(await viewer.locator(".brand strong").innerText()).toContain("opener");
+        expect(await viewer.locator("[data-transport-label]").innerText()).toContain(
+          "Snapshot \u00b7",
+        );
+        expect(await viewer.locator("[data-transport-label]").innerText()).toContain("/ 00:11");
+        await viewer.waitForFunction(
+          () =>
+            /00:0[1-9] /.test(document.querySelector("[data-transport-label]")?.textContent ?? ""),
+          null,
+          { timeout: 10_000 },
+        );
+        await viewer.locator("[data-transport-seek]").evaluate((slider: HTMLInputElement) => {
+          slider.value = "10";
+          slider.dispatchEvent(new Event("change", { bubbles: true }));
+        });
+        await viewer.waitForFunction(
+          () =>
+            /00:1[0-1] /.test(document.querySelector("[data-transport-label]")?.textContent ?? ""),
+          null,
+          { timeout: 10_000 },
+        );
+        const levels = await viewer
+          .locator("[data-fixture] output")
+          .evaluateAll((outputs) => outputs.map((output) => Number(output.textContent)));
+        const landed = Array.from({ length: 45 }, (_, offset) => 300 + offset).find(
+          (frame) =>
+            frame % 256 === levels[0] &&
+            (2 * frame) % 256 === levels[1] &&
+            (3 * frame) % 256 === levels[2],
+        );
+        expect(landed).toBeDefined();
+        await viewer.setViewportSize({ width: 390, height: 844 });
+        expect(await viewer.locator("[data-transport-seek]").isVisible()).toBe(true);
+        expect(await viewer.locator(".status-chips .chip:visible").count()).toBe(2);
+        const portraitBox = await viewer.locator("#viewport").boundingBox();
+        expect(portraitBox?.height).toBeGreaterThan(300);
+        expect(portraitBox?.height).toBeLessThan(340);
+        await viewer.setViewportSize({ width: 844, height: 390 });
+        expect(await viewer.locator("[data-transport-seek]").isVisible()).toBe(true);
+      } finally {
+        await viewer.close();
+      }
+    } finally {
+      await staticServer.stop(true);
+    }
+  }, 60_000);
+
   test("drives the STAR-TENT spokes, history, and a feed-stamped capture over MCP without stalling DMX", async () => {
     await page.locator("#ownership-status", { hasText: "owner" }).waitFor();
     await openFixtures();

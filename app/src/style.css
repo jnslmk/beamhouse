@@ -551,6 +551,19 @@ body[data-viewer="true"] #viewport::after {
   clip-path: inset(50%);
   white-space: nowrap;
 }
+/* The transport is the Snapshot tag grown a scrub track: same slot, one overlay
+   (ADR-0042 decision 2). The label never intercepts orbit; only the slider does. */
+.snapshot-age[data-transport="true"] {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: calc(100% - 36px);
+}
+.snapshot-age[data-transport="true"] input[type="range"] {
+  pointer-events: auto;
+  width: 120px;
+  accent-color: #8bc9a4;
+}
 .snapshot-age {
   position: absolute;
   left: 18px;

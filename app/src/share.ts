@@ -215,11 +215,32 @@ export function snapshotScene(snapshot: ShareSnapshot): {
   return { definitions, fixtures, placements };
 }
 
+const RECORDING_NAME = /^[A-Za-z0-9][A-Za-z0-9._/-]{0,127}$/;
+
+/** Fragment r=name: a deployment-local recording name, never a URL (ADR-0040 decision 2). */
+export function decodeRecordingName(hash: string): string | null {
+  const name = new URLSearchParams(hash.startsWith("#") ? hash.slice(1) : hash).get("r");
+  if (!name || !RECORDING_NAME.test(name)) return null;
+  if (name.split("/").some((segment) => segment === "" || segment === "." || segment === ".."))
+    return null;
+  return name;
+}
+
+/** A named hosted recording resolves against the viewer's own origin (ADR-0040 decision 2). */
+export function recordingUrl(name: string): string {
+  return new URL(name + ".bhr", location.href).toString();
+}
+
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
-export function formatSnapshotAge(takenAt: number, nowMs = Date.now()): string {
+/** The snapshot date half of the transport label: one date, and it is the scene's (ADR-0041 decision 4). */
+export function formatSnapshotDate(takenAt: number): string {
   const taken = new Date(takenAt);
-  const absolute = `${taken.getDate()} ${MONTHS[taken.getMonth()]} ${String(taken.getHours()).padStart(2, "0")}:${String(taken.getMinutes()).padStart(2, "0")}`;
+  return `${taken.getDate()} ${MONTHS[taken.getMonth()]} ${String(taken.getHours()).padStart(2, "0")}:${String(taken.getMinutes()).padStart(2, "0")}`;
+}
+
+export function formatSnapshotAge(takenAt: number, nowMs = Date.now()): string {
+  const absolute = formatSnapshotDate(takenAt);
   const minutes = Math.max(0, Math.round((nowMs - takenAt) / 60000));
   const relative =
     minutes < 1

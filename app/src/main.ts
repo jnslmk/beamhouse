@@ -1,4 +1,4 @@
-import type { UniverseHealth, UniversesMessage } from "@beamhouse/wire";
+import type { UniverseFrame, UniverseHealth, UniversesMessage } from "@beamhouse/wire";
 import { parseGdtf, proxyPrimitive, type GdtfGeometryNode } from "gdtf-ts";
 import type { Object3D } from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
@@ -23,9 +23,12 @@ import {
 } from "./resolve.ts";
 import { createViewport, type StripProbeMarkers } from "./viewport.ts";
 import {
+  decodeRecordingName,
   decodeShareFragment,
   encodeShareSnapshot,
   formatSnapshotAge,
+  formatSnapshotDate,
+  recordingUrl,
   snapshotScene,
   type ShareSnapshot,
 } from "./share.ts";
@@ -47,6 +50,7 @@ import {
 import { parseMvr } from "./mvr.ts";
 import { parseMizerProject } from "./patch.ts";
 import { GeneratedFeed, type FeedId } from "./look.ts";
+import { formatTransportTime, RecordPlayer } from "./record.ts";
 import "./style.css";
 
 const root = document.querySelector<HTMLElement>("#app");
@@ -241,6 +245,12 @@ const stripProbeMarkers: StripProbeMarkers[] = referenceStrips.map((strip) => ({
   end: required(`[data-strip-probe="${strip.id}-end"]`),
 }));
 const viewerSnapshot = await decodeShareFragment(location.hash);
+// Fragment r=name: a deployment-local recording resolved at the viewer's own origin.
+const recordingParam = decodeRecordingName(location.hash);
+let recording: RecordPlayer | null = null;
+let recordingName: string | null = null;
+let transportLead = "";
+let transportScrubbing = false;
 let viewerActive = false;
 let selectedIds: number[] = [];
 let holdActive = false;
@@ -689,71 +699,83 @@ required<HTMLButtonElement>("[data-array-save]").addEventListener("click", () =>
   commands.apply({ kind: "array.set", id, array });
 });
 
-if (!viewerSnapshot) {
+/** One paint path for live and recorded frames: the normal feed/resolution seam. */
+function paintFeedFrame(universes: UniverseFrame[]): void {
+  for (const universe of universes) {
+    receivedUniverses.add(universe.universe);
+    latestFrames.set(universe.universe, universe.slots);
+  }
+  const { levels, states } = applyLocalResolution();
+  for (const [id, level] of levels)
+    document
+      .querySelector<HTMLElement>(`[data-local-fixture="${CSS.escape(String(id))}"]`)
+      ?.setAttribute("data-local-level", String(level));
+  for (const [id, state] of states) {
+    const row = document.querySelector<HTMLElement>(
+      `[data-local-fixture="${CSS.escape(String(id))}"]`,
+    );
+    if (!row) continue;
+    row.setAttribute("data-local-level", String(Math.round(state.level * 255)));
+    row.setAttribute("data-state", state.status);
+    row.setAttribute("data-pan", state.panDeg.toFixed(1));
+    row.setAttribute("data-tilt", state.tiltDeg.toFixed(1));
+    row.setAttribute("data-zoom", state.zoomDeg === null ? "" : state.zoomDeg.toFixed(1));
+    row.setAttribute(
+      "data-color",
+      [state.color[0] ?? 0, state.color[1] ?? 0, state.color[2] ?? 0]
+        .map((channel) => Math.round(channel * 255))
+        .join(","),
+    );
+    row.setAttribute("data-beam", `${state.beam.kind} ${state.beam.angleDeg.toFixed(1)}`);
+  }
+  for (const [index, strip] of strips.entries()) {
+    const definition = referenceStrips[index];
+    if (definition && !(holdActive && heldIds.has(definition.id))) {
+      const resolved = resolveColor(textureBytesForStrip(definition, effectiveFrames()));
+      strip.setPixels(renderMode === "intensity" ? intensityPixels(resolved) : resolved);
+    }
+  }
+  const first = referenceStrips[0]
+    ? textureBytesForStrip(referenceStrips[0], effectiveFrames())
+    : null;
+  const subscriptionElement = required("[data-local-error]");
+  subscriptionElement.dataset.subscribed = liveFeed?.subscribed().join(",") ?? "";
+  const last = referenceStrips.at(-1)
+    ? textureBytesForStrip(referenceStrips.at(-1)!, effectiveFrames())
+    : null;
+  if (first && last) {
+    const readback = required("[data-strip-readback]");
+    const value = `${first.slice(0, 3).join(",")}|${last.slice(-3).join(",")}`;
+    readback.dataset.stripReadback = value;
+    readback.textContent = `Pixel gradient · ${value.replace("|", " → ")}`;
+  }
+  const universe = universes.find((candidate) => candidate.universe === 1);
+  if (!universe) return;
+  const resolvedSlots = effectiveFrames().get(1) ?? universe.slots;
+  cubes.forEach((cube, index) => {
+    if (holdActive && heldIds.has(cube.id)) return;
+    const level = resolvedSlots[cube.address - 1] ?? 0;
+    cube.setLevel(level);
+    const row = fixtureRows[index];
+    if (!row) return;
+    row.dataset.level = String(level);
+    const output = row.querySelector("output");
+    if (output) output.textContent = String(level);
+  });
+  if (latestHealth) renderHealth(latestHealth);
+}
+
+// Bridge-local playback is the primary surface: a desktop r= link plays the recording
+// as the recorded feed instead of opening the live socket.
+let desktopRecorded = false;
+if (!viewerSnapshot && recordingParam) {
+  desktopRecorded = await startRecordedPlayback(recordingParam, recordingParam + ".bhr");
+  if (desktopRecorded) required("#feed-status").textContent = "recorded";
+}
+if (!viewerSnapshot && !desktopRecorded) {
   liveFeed = new LiveFeed(subscriptionUniverses(commands.fixtures()), {
     frame(universes) {
-      for (const universe of universes) {
-        receivedUniverses.add(universe.universe);
-        latestFrames.set(universe.universe, universe.slots);
-      }
-      const { levels, states } = applyLocalResolution();
-      for (const [id, level] of levels)
-        document
-          .querySelector<HTMLElement>(`[data-local-fixture="${CSS.escape(String(id))}"]`)
-          ?.setAttribute("data-local-level", String(level));
-      for (const [id, state] of states) {
-        const row = document.querySelector<HTMLElement>(
-          `[data-local-fixture="${CSS.escape(String(id))}"]`,
-        );
-        if (!row) continue;
-        row.setAttribute("data-local-level", String(Math.round(state.level * 255)));
-        row.setAttribute("data-state", state.status);
-        row.setAttribute("data-pan", state.panDeg.toFixed(1));
-        row.setAttribute("data-tilt", state.tiltDeg.toFixed(1));
-        row.setAttribute("data-zoom", state.zoomDeg === null ? "" : state.zoomDeg.toFixed(1));
-        row.setAttribute(
-          "data-color",
-          [state.color[0] ?? 0, state.color[1] ?? 0, state.color[2] ?? 0]
-            .map((channel) => Math.round(channel * 255))
-            .join(","),
-        );
-        row.setAttribute("data-beam", `${state.beam.kind} ${state.beam.angleDeg.toFixed(1)}`);
-      }
-      for (const [index, strip] of strips.entries()) {
-        const definition = referenceStrips[index];
-        if (definition && !(holdActive && heldIds.has(definition.id))) {
-          const resolved = resolveColor(textureBytesForStrip(definition, effectiveFrames()));
-          strip.setPixels(renderMode === "intensity" ? intensityPixels(resolved) : resolved);
-        }
-      }
-      const first = referenceStrips[0]
-        ? textureBytesForStrip(referenceStrips[0], effectiveFrames())
-        : null;
-      const subscriptionElement = required("[data-local-error]");
-      subscriptionElement.dataset.subscribed = liveFeed?.subscribed().join(",") ?? "";
-      const last = referenceStrips.at(-1)
-        ? textureBytesForStrip(referenceStrips.at(-1)!, effectiveFrames())
-        : null;
-      if (first && last) {
-        const readback = required("[data-strip-readback]");
-        const value = `${first.slice(0, 3).join(",")}|${last.slice(-3).join(",")}`;
-        readback.dataset.stripReadback = value;
-        readback.textContent = `Pixel gradient · ${value.replace("|", " → ")}`;
-      }
-      const universe = universes.find((candidate) => candidate.universe === 1);
-      if (!universe) return;
-      const resolvedSlots = effectiveFrames().get(1) ?? universe.slots;
-      cubes.forEach((cube, index) => {
-        if (holdActive && heldIds.has(cube.id)) return;
-        const level = resolvedSlots[cube.address - 1] ?? 0;
-        cube.setLevel(level);
-        const row = fixtureRows[index];
-        if (!row) return;
-        row.dataset.level = String(level);
-        const output = row.querySelector("output");
-        if (output) output.textContent = String(level);
-      });
-      if (latestHealth) renderHealth(latestHealth);
+      paintFeedFrame(universes);
     },
     health(message) {
       latestHealth = message;
@@ -765,8 +787,12 @@ if (!viewerSnapshot) {
       statusElement.dataset.status = status;
     },
   });
-} else {
+} else if (viewerSnapshot) {
   enterViewerMode(viewerSnapshot);
+  if (recordingParam) {
+    const lead = "Snapshot \u00b7 " + formatSnapshotDate(viewerSnapshot.takenAt);
+    void startRecordedPlayback(recordingParam, lead);
+  }
 }
 
 required<HTMLButtonElement>("[data-share]").addEventListener("click", () => void shareScene());
@@ -1446,7 +1472,7 @@ function effectiveFrames(): ReadonlyMap<number, Uint8Array> {
 }
 
 function resolvingFeed(): FeedId {
-  return activeFeed === "generated" && generated.hasFrame() ? "generated" : "live";
+  return activeFeed === "generated" && generated.hasFrame() ? "generated" : activeFeed;
 }
 
 /** The owning page applies control-channel requests through its existing seams. */
@@ -1895,9 +1921,12 @@ async function shareScene(): Promise<string | null> {
     resolveReference: resolveShareReference,
   });
   if (result.kind === "link") {
-    location.hash = result.fragment;
+    // A recording rides the link as a name, never as bytes (ADR-0040 decision 2).
+    const fragment =
+      recording && recordingName ? result.fragment + "&r=" + recordingName : result.fragment;
+    location.hash = fragment;
     state.textContent = "copied";
-    const url = `${location.origin}${location.pathname}#${result.fragment}`;
+    const url = `${location.origin}${location.pathname}#${fragment}`;
     try {
       await navigator.clipboard.writeText(url);
     } catch {
@@ -1918,6 +1947,89 @@ async function shareScene(): Promise<string | null> {
   state.textContent = "file";
   state.title = "Link too large for a URL — downloaded the snapshot as .bhs instead.";
   return null;
+}
+
+/** Load, auto-play, and mount the transport for one named hosted recording. */
+async function startRecordedPlayback(name: string, lead: string): Promise<boolean> {
+  let bytes: Uint8Array;
+  try {
+    const response = await fetch(recordingUrl(name));
+    if (!response.ok) return false;
+    bytes = new Uint8Array(await response.arrayBuffer());
+  } catch {
+    return false;
+  }
+  let player: RecordPlayer;
+  try {
+    player = await RecordPlayer.open(bytes, {
+      frame: (universes) => paintFeedFrame(universes),
+      time: (positionMs) => renderTransport(positionMs),
+    });
+  } catch {
+    return false;
+  }
+  recording = player;
+  recordingName = name;
+  transportLead = lead;
+  activeFeed = "recorded";
+  required("#viewport").dataset.feed = "recorded";
+  // The wordmark carries the recording name, not the word recorded (ADR-0042 decision 6).
+  const brand = document.querySelector(".brand strong");
+  if (brand) brand.textContent = "Beamhouse \u00b7 " + name.split("/").pop();
+  mountTransport();
+  await player.start();
+  return true;
+}
+
+/** The Snapshot tag grown a scrub track: one persistent viewport overlay (ADR-0042 decision 2). */
+function mountTransport(): void {
+  if (!recording) return;
+  const host = required("[data-snapshot-age]");
+  host.hidden = false;
+  host.dataset.transport = "true";
+  host.replaceChildren();
+  const label = document.createElement("span");
+  label.dataset.transportLabel = "true";
+  const seek = document.createElement("input");
+  seek.type = "range";
+  seek.min = "0";
+  seek.max = String(recording.durationMs / 1000);
+  seek.step = "0.1";
+  seek.setAttribute("aria-label", "Recording position");
+  seek.dataset.transportSeek = "true";
+  seek.addEventListener("pointerdown", () => {
+    transportScrubbing = true;
+  });
+  seek.addEventListener("pointerup", () => {
+    transportScrubbing = false;
+  });
+  seek.addEventListener("change", () => {
+    transportScrubbing = false;
+    void seekRecording(Number(seek.value) * 1000);
+  });
+  host.append(label, seek);
+  renderTransport(0);
+}
+
+function renderTransport(positionMs: number): void {
+  if (!recording) return;
+  const label = document.querySelector("[data-transport-label]");
+  const seek = document.querySelector<HTMLInputElement>("[data-transport-seek]");
+  if (label)
+    label.textContent =
+      transportLead + " \u00b7 " + formatTransportTime(positionMs, recording.durationMs);
+  if (seek && !transportScrubbing) seek.value = String(positionMs / 1000);
+}
+
+async function seekRecording(tMs: number): Promise<void> {
+  if (!recording) return;
+  recording.pause();
+  // A seek invalidates the resolve diff wholesale: stale universes drop before the
+  // member\u2019s complete frame repopulates them through the normal seam.
+  latestFrames.clear();
+  await recording.seek(tMs);
+  renderTransport(recording.positionMs);
+  recording.play();
 }
 
 function enterViewerMode(snapshot: ShareSnapshot): void {
