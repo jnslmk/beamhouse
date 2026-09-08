@@ -40,6 +40,28 @@ describe("changed-only fixture updates", () => {
     ]);
   });
 
+  test("moving equal bytes between fixture breaks reads as changed", () => {
+    const gate = new FixtureChangeGate();
+    const fixtures = [
+      {
+        id: 1,
+        addresses: [
+          { universe: 1, address: 1, footprint: 1 },
+          { universe: 2, address: 1, footprint: 1 },
+        ],
+      },
+    ];
+    const breakOneOnly = new Map([[1, slots([42])]]);
+    const breakTwoOnly = new Map([[2, slots([42])]]);
+
+    expect([...gate.changed(fixtures, breakOneOnly)]).toEqual([1]);
+    expect([...gate.changed(fixtures, breakOneOnly)]).toEqual([]);
+    expect([...gate.changed(fixtures, breakTwoOnly)]).toEqual([1]);
+    expect([...gate.changed(fixtures, breakTwoOnly)]).toEqual([]);
+    expect([...gate.changed(fixtures, breakOneOnly)]).toEqual([1]);
+    expect([...gate.changed(fixtures, breakOneOnly)]).toEqual([]);
+  });
+
   test("invalidated fixtures read as changed", () => {
     const gate = new FixtureChangeGate();
     const fixtures = [{ id: 1, addresses: breaks }];

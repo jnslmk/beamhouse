@@ -68,7 +68,7 @@ export class RawSlotChangeGate {
   }
 }
 
-/** Concatenated break bytes for one fixture; null when no addressed universe has a frame yet. */
+/** Break-presence flags followed by break bytes; null when no addressed universe has a frame yet. */
 export function fixtureSlotBytes(
   frames: ReadonlyMap<number, Uint8Array>,
   addresses: readonly SlotBreak[],
@@ -78,11 +78,12 @@ export function fixtureSlotBytes(
     if (frames.has(address.universe)) length += address.footprint;
   }
   if (length === 0) return null;
-  const bytes = new Uint8Array(length);
-  let offset = 0;
-  for (const address of addresses) {
+  const bytes = new Uint8Array(addresses.length + length);
+  let offset = addresses.length;
+  for (const [index, address] of addresses.entries()) {
     const slots = frames.get(address.universe);
     if (!slots) continue;
+    bytes[index] = 1;
     bytes.set(slots.subarray(address.address - 1, address.address - 1 + address.footprint), offset);
     offset += address.footprint;
   }
