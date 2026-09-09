@@ -135,13 +135,16 @@ export function createViewport(
   host.append(renderer.domElement);
 
   // Post chain (ADR-0017): RenderPass → UnrealBloomPass → OutputPass into the
-  // composer's default HalfFloat HDR target. OutputPass reads tone mapping +
-  // color space off the renderer, so ACES/sRGB stay renderer settings.
-  // Threshold sits above the 0.32-density haze body so only lens/pool
-  // hotspots bloom; strength stays modest to avoid a whole-scene wash.
+  // composer's default HalfFloat HDR target. The composer bypasses the
+  // canvas MSAA from `antialias` above, so the targets carry 4x MSAA
+  // themselves — this is what smooths the beam spokes + gizmo edges.
+  // OutputPass reads tone mapping + color space off the renderer, so
+  // ACES/sRGB stay renderer settings.
   const composer = new EffectComposer(renderer);
   composer.addPass(new RenderPass(scene, camera));
   const bloom = new UnrealBloomPass(
+  composer.renderTarget1.samples = 4;
+  composer.renderTarget2.samples = 4;
     new THREE.Vector2(host.clientWidth || 1, host.clientHeight || 1),
     0.25,
     0.55,
