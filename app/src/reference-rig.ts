@@ -112,7 +112,7 @@ function gledBreaksForArm(arm: number): BreakAddress[] {
   return breaks;
 }
 
-const REFERENCE_STRIP_DEFINITION = "bhs:reference-strip";
+export const REFERENCE_STRIP_DEFINITION = "bhs:reference-strip";
 /** Hung house rig: authored tungsten conventionals, one dimmer channel each. */
 export const par38DefinitionId = "gdtf:FFC1C66D-905A-47AB-87DB-5FCEEF121B1A";
 export const practicalDefinitionId = "gdtf:AD8F1059-A90D-4477-85EB-FD93C185D1B3";

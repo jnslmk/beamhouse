@@ -1,10 +1,12 @@
 import type { UniverseFrame, UniverseHealth, UniversesMessage } from "@beamhouse/wire";
 import { parseGdtf, proxyPrimitive, type GdtfGeometryNode } from "gdtf-ts";
-import { Box3, Group, Vector3, type Object3D } from "three";
+import { Box3, BufferAttribute, BufferGeometry, Group, Vector3, type Object3D } from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { LiveFeed } from "./live-feed.ts";
 import {
   gledSceneFixtures,
+  referenceDefinitionId,
+  REFERENCE_STRIP_DEFINITION as referenceStripDefinitionId,
   referenceSceneDefinitions,
   referenceSceneFixtures,
   referenceScenePlacements,
@@ -20,6 +22,8 @@ import practicalGdtfUrl from "./stage/Beamhouse@generic E27 practical@v1.gdtf?ur
 import profileGdtfUrl from "./stage/Beamhouse@generic profile@v1.gdtf?url";
 import singerGlbUrl from "./stage/singer.glb?url";
 import trussGlbUrl from "./stage/truss.glb?url";
+import ledProfileBodyUrl from "./stage/led_profiles.previz_body.glb?url";
+import ledProfileDiffuserUrl from "./stage/led_profiles.previz_diffuser.glb?url";
 import {
   hasDefinition,
   hasMode,
@@ -266,6 +270,8 @@ let selectedIds: number[] = [];
 let holdActive = false;
 let renderMode: "live" | "intensity" = "live";
 const heldIds = new Set<number>();
+/** Per-fixture hang values for Zoom channels with no wire (ADR-0037 decision 7). */
+const zoomOverrides = new Map<number, number>();
 let editingDefinition: string | null = null;
 const commands = await SceneCommands.create({ control: viewerSnapshot === null });
 let playbackScene: SnapshotScene | null = null;
@@ -541,6 +547,50 @@ async function loadStageMesh(
   }
 }
 
+/** LED-profile spoke halves: aluminium body plus diffuser, Y-up, centred, diffuser UVs along the tube. */
+async function loadLedProfile(): Promise<{ body: Group; diffuser: Group } | null> {
+  try {
+    const [bodyRoot, diffuserRoot] = await Promise.all(
+      [ledProfileBodyUrl, ledProfileDiffuserUrl].map(async (url) => {
+        const bytes = await (await fetch(url)).arrayBuffer();
+        return (await new GLTFLoader().parseAsync(bytes, "")).scene;
+      }),
+    );
+    if (!bodyRoot || !diffuserRoot) return null;
+    const body = new Group();
+    body.add(bodyRoot);
+    const diffuser = new Group();
+    diffuser.add(diffuserRoot);
+    // The previz export is Z-up with the tube running along X: tip it so the
+    // diffuser hangs underneath (+90 about X maps +Z to -Y), then centre both
+    // halves on the same point so the stack survives.
+    for (const half of [body, diffuser]) half.rotation.x = Math.PI / 2;
+    const centre = new Box3().setFromObject(body).expandByObject(diffuser).getCenter(new Vector3());
+    body.position.sub(centre);
+    diffuser.position.sub(centre);
+    // The export carries no UVs: pixel texels run the tube's length (local X).
+    const seen = new Set<object>();
+    diffuser.traverse((entry) => {
+      if (!("geometry" in entry) || !(entry.geometry instanceof BufferGeometry)) return;
+      const geometry = entry.geometry;
+      if (seen.has(geometry)) return;
+      seen.add(geometry);
+      geometry.computeBoundingBox();
+      const bounds = geometry.boundingBox;
+      if (!bounds) return;
+      const span = Math.max(bounds.max.x - bounds.min.x, 1e-6);
+      const position = geometry.getAttribute("position") as BufferAttribute;
+      const uv = new Float32Array(position.count * 2);
+      for (let index = 0; index < position.count; index += 1)
+        uv[index * 2] = (position.getX(index) - bounds.min.x) / span;
+      geometry.setAttribute("uv", new BufferAttribute(uv, 2));
+    });
+    return { body, diffuser };
+  } catch {
+    return null;
+  }
+}
+
 await registerHouseDefinitions();
 for (const [definitionId, mesh] of [
   [stageTrussDefinitionId, await loadStageMesh(trussGlbUrl, 2, false)],
@@ -548,6 +598,11 @@ for (const [definitionId, mesh] of [
 ] as const) {
   if (mesh) viewportApi.defineStageMesh(definitionId, mesh);
 }
+const ledProfile = await loadLedProfile();
+// A missing template keeps the proxy box: the spokes stay lit, just square.
+if (ledProfile)
+  for (const id of [referenceStripDefinitionId, referenceDefinitionId])
+    viewportApi.defineStripTemplate(id, ledProfile.body, ledProfile.diffuser);
 
 syncSceneFixtures();
 commands.onChanged(() => {
@@ -1485,8 +1540,6 @@ function localFixtureLevels(changed: ReadonlySet<number>): Map<number, number> {
   }
   return levels;
 }
-/** Per-fixture hang values for Zoom channels with no wire (ADR-0037 decision 7). */
-const zoomOverrides = new Map<number, number>();
 
 function localFixtureStates(changed: ReadonlySet<number>): Map<number, FixtureState> {
   const states = new Map<number, FixtureState>();

@@ -81,6 +81,8 @@ export interface Viewport {
   fixtures: EditableFixture[];
   /** Vendored stage mesh: swaps live fixtures now and templates every later sync. */
   defineStageMesh(definitionId: string, template: THREE.Object3D): void;
+  /** LED-profile spoke template: the body stays dark, the diffuser carries the pixel texture. */
+  defineStripTemplate(definitionId: string, body: THREE.Object3D, diffuser: THREE.Object3D): void;
   selectFixtures(ids: readonly number[]): void;
   setEditable(editable: boolean): void;
   setRenderMode(mode: "live" | "intensity"): void;
@@ -141,10 +143,10 @@ export function createViewport(
   // OutputPass reads tone mapping + color space off the renderer, so
   // ACES/sRGB stay renderer settings.
   const composer = new EffectComposer(renderer);
-  composer.addPass(new RenderPass(scene, camera));
-  const bloom = new UnrealBloomPass(
   composer.renderTarget1.samples = 4;
   composer.renderTarget2.samples = 4;
+  composer.addPass(new RenderPass(scene, camera));
+  const bloom = new UnrealBloomPass(
     new THREE.Vector2(host.clientWidth || 1, host.clientHeight || 1),
     0.25,
     0.55,
@@ -381,6 +383,32 @@ export function createViewport(
   // Vendored GLB templates by definition id: clones share geometry, and every
   // later setSceneFixtures re-clones, so async loads survive re-ingest.
   const stageMeshTemplates = new Map<string, THREE.Object3D>();
+  // LED-profile spoke halves by definition id: previz body + diffuser. Clones
+  // share geometry; every fixture owns its diffuser material (its texture is).
+  const stripTemplates = new Map<
+    string,
+    { body: THREE.Object3D; diffuser: THREE.Object3D; length: number }
+  >();
+  const cloneBody = (template: THREE.Object3D): THREE.Object3D => {
+    const clone = template.clone();
+    const materialClones = new Map<THREE.Material, THREE.Material>();
+    clone.traverse((entry) => {
+      if (!isMaterialMesh(entry)) return;
+      const mesh = entry;
+      const cloneMaterial = (material: THREE.Material): THREE.Material => {
+        const existing = materialClones.get(material);
+        if (existing) return existing;
+        const copy = material.clone();
+        materialClones.set(material, copy);
+        return copy;
+      };
+      const source = mesh.material;
+      mesh.material = Array.isArray(source) ? source.map(cloneMaterial) : cloneMaterial(source);
+    });
+    // Geometry belongs to the loaded template and is shared by every lamp.
+    clone.userData.sharedGeometry = true;
+    return clone;
+  };
   const localDefinitions = new Map<number, string>();
   const localMaterials = new Map<number, THREE.MeshStandardMaterial>();
   interface LocalBeam {
@@ -471,6 +499,50 @@ export function createViewport(
     localStripLengths.set(id, (definition.pixels * definition.pitchMm) / 1000);
     return mesh;
   };
+  const stripCountOf = (
+    definition: BhsDefinition | undefined,
+    statics: FixtureStatics | null,
+  ): number | null => {
+    if (definition?.kind === "strip") return definition.pixels;
+    if (statics?.layout.kind === "discrete") return statics.layout.positions.length;
+    if (statics?.layout.kind === "tiled") return statics.layout.count;
+    return null;
+  };
+  const buildStripMesh = (
+    id: number,
+    count: number,
+    template: { body: THREE.Object3D; diffuser: THREE.Object3D; length: number },
+  ): THREE.Group => {
+    const pixels = new Float32Array(count * 4);
+    const texture = new THREE.DataTexture(pixels, count, 1, THREE.RGBAFormat, THREE.FloatType);
+    texture.colorSpace = THREE.LinearSRGBColorSpace;
+    texture.magFilter = THREE.LinearFilter;
+    texture.minFilter = THREE.LinearFilter;
+    texture.generateMipmaps = false;
+    const diffuserMaterial = new THREE.MeshStandardMaterial({
+      color: 0x141312,
+      map: texture,
+      emissiveMap: texture,
+      emissive: 0xffffff,
+      // Grade fallback (one step): pull the spoke hub below the bloom
+      // threshold so the starburst core keeps separation instead of a blob.
+      emissiveIntensity: 0.8,
+      roughness: 0.35,
+    });
+    const group = new THREE.Group();
+    // Both halves borrow the loaded template geometry; materials/textures are local.
+    group.userData.sharedGeometry = true;
+    const body = cloneBody(template.body);
+    const diffuser = template.diffuser.clone();
+    diffuser.traverse((entry) => {
+      if (entry instanceof THREE.Mesh) entry.material = diffuserMaterial;
+    });
+    group.add(body, diffuser);
+    localTexels.set(id, { texture, pixels, count });
+    localMaterials.set(id, diffuserMaterial);
+    localStripLengths.set(id, template.length);
+    return group;
+  };
   let gdtfPreview: THREE.Object3D | null = null;
   let gdtfPreviewOwned = false;
   const showGdtfFixture = (definition: BhsDefinition, mesh: THREE.Object3D | null) => {
@@ -518,12 +590,19 @@ export function createViewport(
     for (const fixture of nextFixtures) {
       const template = stageMeshTemplates.get(fixture.definition);
       const statics = template ? null : staticsFor(fixture.definition, fixture.mode);
+      // ponytail: the spoke's previz halves replace the proxy box; the diffuser emits.
+      const stripTemplate = template ? undefined : stripTemplates.get(fixture.definition);
+      const stripCount = stripTemplate
+        ? stripCountOf(definitions[fixture.definition], statics)
+        : null;
       // ponytail: template clones share geometry; only unaddressed stage objects use them.
       const mesh =
         template?.clone() ??
-        (statics
-          ? buildStaticsMesh(fixture.id, statics)
-          : buildSceneMesh(fixture.id, definitions[fixture.definition], fixture.definition));
+        (stripTemplate && stripCount
+          ? buildStripMesh(fixture.id, stripCount, stripTemplate)
+          : statics
+            ? buildStaticsMesh(fixture.id, statics)
+            : buildSceneMesh(fixture.id, definitions[fixture.definition], fixture.definition));
       mesh.position.set(0, 0.5, 0);
       mesh.userData.baseRotation = [0, 0, 0];
       scene.add(mesh);
@@ -895,6 +974,13 @@ export function createViewport(
     setSceneFixtures,
     defineStageMesh,
     showGdtfFixture,
+    defineStripTemplate(definitionId, body, diffuser) {
+      stripTemplates.set(definitionId, {
+        body,
+        diffuser,
+        length: new THREE.Box3().setFromObject(body).getSize(new THREE.Vector3()).x,
+      });
+    },
     setAtmosphere(density, lengthM) {
       beamDensity = density;
       if (lengthM !== beamLengthM) {
@@ -937,6 +1023,7 @@ export function createViewport(
           copy.width = width;
           copy.height = height;
           const context = copy.getContext("2d");
+
           if (!context) {
             reject(new Error("capture could not downscale"));
             return;
@@ -949,10 +1036,17 @@ export function createViewport(
   };
 }
 
+function isMaterialMesh(
+  object: THREE.Object3D,
+): object is THREE.Mesh<THREE.BufferGeometry, THREE.Material | THREE.Material[]> {
+  return object instanceof THREE.Mesh;
+}
+
 function disposeObject(object: THREE.Object3D): void {
+  const sharedGeometry = object.userData.sharedGeometry === true;
   object.traverse((entry) => {
     if (!("geometry" in entry) || !(entry.geometry instanceof THREE.BufferGeometry)) return;
-    entry.geometry.dispose();
+    if (!sharedGeometry) entry.geometry.dispose();
     if (!("material" in entry)) return;
     const materials = entry.material;
     for (const material of Array.isArray(materials) ? materials : [materials])
