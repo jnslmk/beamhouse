@@ -47,6 +47,19 @@ stays free and the bridge can bind it. Mitigations, preferred first:
 3. **Send gled2's Art-Net to a non-standard port** — its output destination is a configurable
    `SocketAddr`. No gled2 change, but a non-standard setup.
 
+**[implemented 2026-09-10 — demo box]** Mitigation 3 landed, extended to both
+directions. Mizer's project schema already took a per-connection Art-Net port
+(`ArtnetOutput { host, port }`, default 6454), so the show file splits its two
+localhost receivers: gled2 keeps 6454 (its trigger input is hardcoded there)
+and the bridge listens on 6455 (`BEAMHOUSE_ARTNET_PORT` in `bridge/.env`).
+gled2's output device gained a `port` field — this ADR's "configurable
+`SocketAddr`" claim was wrong: the destination *IP* was configurable, the port
+was hardcoded. Mitigation 2 is rejected for this topology: the reuseport hash
+assigns a unicast 4-tuple to exactly one group member, so Mizer's unicast
+trigger stream and gled2's star stream would each land wholly and
+unpredictably in one receiver. The three-socket fan-out measured above
+transfers to broadcast only.
+
 ## Consequences
 
 - The bridge grows a second receive path, against §02's promise that it is ~150 lines written
