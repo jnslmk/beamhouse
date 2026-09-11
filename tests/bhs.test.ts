@@ -1,4 +1,6 @@
 import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import {
   parseBhs,
   serializeBhs,
@@ -8,6 +10,7 @@ import {
   BhsEmittersBlockError,
   BhsDefinitionError,
   BhsFixtureError,
+  BhsOverrideError,
   BhsMissingPropertyError,
   isShareableBhsPatch,
   bhsPatchPath,
@@ -602,5 +605,174 @@ describe("patch shareability", () => {
 
   test("bhsPatchPath returns null for snapshot variant", () => {
     expect(bhsPatchPath({ kind: "snapshot", fixtures: [] })).toBeNull();
+  });
+});
+
+// ── Issue #85: ten-spoke star fixture ──
+// The landed .bhs schema stores fixture metadata (id, definition, mode,
+// addresses) but has no "placements" block — Placement lives in the scene's
+// overrides (PersistedScene.overrides) or in share snapshot fixture entries.
+// The fixture file therefore defines the ten spokes' metadata only; rotation
+// and origin-pivot semantics are verified in the share round-trip and
+// eulerMatrix/applyMatrix tests in beam.test.ts.
+
+describe("star tent fixture", () => {
+  const fixtureDir = resolve(import.meta.dir, "fixtures");
+  const starFixtureText = readFileSync(resolve(fixtureDir, "star-tent.bhs"), "utf-8");
+
+  test("star file loads with ten spokes and the definition", () => {
+    const doc = parseBhs(starFixtureText);
+    expect(doc.definitions).toBeDefined();
+    const definition = doc.definitions!["bhs:star-spoke"];
+    expect(definition).toBeDefined();
+    expect(definition!.kind).toBe("strip");
+    if (definition!.kind === "strip") {
+      expect(definition!.pixels).toBe(23);
+    }
+
+    expect(doc.fixtures).toBeDefined();
+    expect(doc.fixtures!.length).toBe(10);
+    for (const fixture of doc.fixtures!) {
+      expect(fixture.id).toBeLessThan(0); // local fixtures are negative ids
+      expect(fixture.definition).toBe("bhs:star-spoke");
+      expect(fixture.mode).toBe("23px RGB");
+      expect(fixture.addresses.length).toBe(1);
+    }
+    expect(doc.density).toBe(0.32);
+    expect(doc.beamLength).toBe(10);
+  });
+
+  test("star fixture round-trips byte-identical", () => {
+    const doc = parseBhs(starFixtureText);
+    const serialized = JSON.stringify(doc);
+    expect(serialized).toBe(starFixtureText);
+  });
+
+  test("star fixture with modified density round-trips", () => {
+    const text =
+      '{"patch":{"kind":"snapshot","fixtures":[]},"definitions":{"bhs:star-spoke":{"kind":"strip","pixels":23,"pitchMm":65,"channelsPerPixel":3,"primitive":"Cube"}},"fixtures":[{"id":-1,"definition":"bhs:star-spoke","mode":"23px RGB","addresses":[{"universe":2,"address":1,"footprint":69}]},{"id":-2,"definition":"bhs:star-spoke","mode":"23px RGB","addresses":[{"universe":2,"address":70,"footprint":69}]},{"id":-3,"definition":"bhs:star-spoke","mode":"23px RGB","addresses":[{"universe":2,"address":139,"footprint":69}]},{"id":-4,"definition":"bhs:star-spoke","mode":"23px RGB","addresses":[{"universe":2,"address":208,"footprint":69}]},{"id":-5,"definition":"bhs:star-spoke","mode":"23px RGB","addresses":[{"universe":2,"address":277,"footprint":69}]},{"id":-6,"definition":"bhs:star-spoke","mode":"23px RGB","addresses":[{"universe":2,"address":346,"footprint":69}]},{"id":-7,"definition":"bhs:star-spoke","mode":"23px RGB","addresses":[{"universe":2,"address":415,"footprint":69}]},{"id":-8,"definition":"bhs:star-spoke","mode":"23px RGB","addresses":[{"universe":3,"address":1,"footprint":69}]},{"id":-9,"definition":"bhs:star-spoke","mode":"23px RGB","addresses":[{"universe":3,"address":70,"footprint":69}]},{"id":-10,"definition":"bhs:star-spoke","mode":"23px RGB","addresses":[{"universe":3,"address":139,"footprint":69}]}],"density":0.42,"beamLength":8}';
+    const doc = parseBhs(text);
+    expect(doc.density).toBe(0.42);
+    expect(doc.beamLength).toBe(8);
+    expect(serializeBhs(doc)).toBe(text);
+  });
+});
+
+// ── Issue #85: overrides block ──
+
+describe("overrides block", () => {
+  test("overrides with pos and rot round-trips byte-identical", () => {
+    const text =
+      '{"patch":{"kind":"snapshot","fixtures":[]},"overrides":{"-1":{"pos":[0,3,0],"rot":[0,0,0]}},"density":0.32,"beamLength":10}';
+    const doc = parseBhs(text);
+    expect(doc.overrides).toBeDefined();
+    expect(doc.overrides!["-1"]!.pos).toEqual([0, 3, 0]);
+    expect(doc.overrides!["-1"]!.rot).toEqual([0, 0, 0]);
+    expect(serializeBhs(doc)).toBe(text);
+  });
+
+  test("multiple overrides round-trip byte-identical", () => {
+    const text =
+      '{"patch":{"kind":"snapshot","fixtures":[]},"overrides":{"-1":{"pos":[0,3,0],"rot":[0,0,0]},"-2":{"pos":[2,1.5,-3],"rot":[45,0,0]}},"density":0.32,"beamLength":10}';
+    const doc = parseBhs(text);
+    expect(Object.keys(doc.overrides!)).toEqual(["-1", "-2"]);
+    expect(serializeBhs(doc)).toBe(text);
+  });
+
+  test("mixed integer-string override keys parse correctly", () => {
+    const doc = parseBhs(
+      '{"patch":{"kind":"snapshot","fixtures":[]},"overrides":{"-1":{"pos":[0,3,0],"rot":[0,0,0]},"12":{"pos":[2,1.5,-3],"rot":[45,0,0]}},"density":0.32,"beamLength":10}',
+    );
+    expect(doc.overrides!["-1"]!.pos).toEqual([0, 3, 0]);
+    expect(doc.overrides!["12"]!.rot).toEqual([45, 0, 0]);
+  });
+
+  test("overrides with definitions and fixtures round-trips byte-identical", () => {
+    const text =
+      '{"patch":{"kind":"snapshot","fixtures":[]},"definitions":{"bhs:spoke":{"kind":"strip","pixels":23,"pitchMm":65,"channelsPerPixel":3,"primitive":"Cube"}},"fixtures":[{"id":-1,"definition":"bhs:spoke","mode":"23px RGB","addresses":[{"universe":2,"address":1,"footprint":69}]}],"overrides":{"-1":{"pos":[0,3,0],"rot":[0,0,0]}},"density":0.32,"beamLength":10}';
+    const doc = parseBhs(text);
+    expect(doc.overrides!["-1"]!.pos).toEqual([0, 3, 0]);
+    expect(serializeBhs(doc)).toBe(text);
+  });
+
+  test("rejects overrides with non-object value", () => {
+    expect(() =>
+      parseBhs(
+        '{"patch":{"kind":"snapshot","fixtures":[]},"overrides":"string","density":0.32,"beamLength":10}',
+      ),
+    ).toThrow(BhsOverrideError);
+  });
+
+  test("rejects overrides with array value", () => {
+    expect(() =>
+      parseBhs(
+        '{"patch":{"kind":"snapshot","fixtures":[]},"overrides":[],"density":0.32,"beamLength":10}',
+      ),
+    ).toThrow(BhsOverrideError);
+  });
+
+  test("rejects override entry with non-object value", () => {
+    expect(() =>
+      parseBhs(
+        '{"patch":{"kind":"snapshot","fixtures":[]},"overrides":{"-1":"string"},"density":0.32,"beamLength":10}',
+      ),
+    ).toThrow(BhsOverrideError);
+  });
+
+  test("rejects override entry with unknown key", () => {
+    expect(() =>
+      parseBhs(
+        '{"patch":{"kind":"snapshot","fixtures":[]},"overrides":{"-1":{"pos":[0,0,0],"rot":[0,0,0],"uuid":"abc"}},"density":0.32,"beamLength":10}',
+      ),
+    ).toThrow(BhsOverrideError);
+  });
+
+  test("rejects override entry missing pos", () => {
+    expect(() =>
+      parseBhs(
+        '{"patch":{"kind":"snapshot","fixtures":[]},"overrides":{"-1":{"rot":[0,0,0]}},"density":0.32,"beamLength":10}',
+      ),
+    ).toThrow(BhsOverrideError);
+  });
+
+  test("rejects override entry missing rot", () => {
+    expect(() =>
+      parseBhs(
+        '{"patch":{"kind":"snapshot","fixtures":[]},"overrides":{"-1":{"pos":[0,0,0]}},"density":0.32,"beamLength":10}',
+      ),
+    ).toThrow(BhsOverrideError);
+  });
+
+  test("rejects override pos with non-array", () => {
+    expect(() =>
+      parseBhs(
+        '{"patch":{"kind":"snapshot","fixtures":[]},"overrides":{"-1":{"pos":"string","rot":[0,0,0]}},"density":0.32,"beamLength":10}',
+      ),
+    ).toThrow(BhsOverrideError);
+  });
+
+  test("rejects override pos with wrong length", () => {
+    expect(() =>
+      parseBhs(
+        '{"patch":{"kind":"snapshot","fixtures":[]},"overrides":{"-1":{"pos":[0,0],"rot":[0,0,0]}},"density":0.32,"beamLength":10}',
+      ),
+    ).toThrow(BhsOverrideError);
+  });
+
+  test("rejects override pos with non-finite value", () => {
+    // 1e999 overflows to Infinity in JavaScript's JSON parser
+    expect(() =>
+      parseBhs(
+        '{"patch":{"kind":"snapshot","fixtures":[]},"overrides":{"-1":{"pos":[0,1e999,0],"rot":[0,0,0]}},"density":0.32,"beamLength":10}',
+      ),
+    ).toThrow(BhsOverrideError);
+  });
+
+  test("rejects override rot with non-array", () => {
+    expect(() =>
+      parseBhs(
+        '{"patch":{"kind":"snapshot","fixtures":[]},"overrides":{"-1":{"pos":[0,0,0],"rot":45}},"density":0.32,"beamLength":10}',
+      ),
+    ).toThrow(BhsOverrideError);
   });
 });

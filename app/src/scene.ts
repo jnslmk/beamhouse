@@ -1188,9 +1188,13 @@ export function rotateTargets(
   return placements;
 }
 
-type Matrix3 = [[number, number, number], [number, number, number], [number, number, number]];
+export type Matrix3 = [
+  [number, number, number],
+  [number, number, number],
+  [number, number, number],
+];
 
-function multiplyMatrices(left: Matrix3, right: Matrix3): Matrix3 {
+export function multiplyMatrices(left: Matrix3, right: Matrix3): Matrix3 {
   const at = (row: 0 | 1 | 2, column: 0 | 1 | 2) =>
     left[row][0] * right[0][column] +
     left[row][1] * right[1][column] +
@@ -1216,7 +1220,7 @@ function eulerFromMatrix(matrix: Matrix3): [number, number, number] {
   return [toDegrees(Math.atan2(matrix[2][1], matrix[1][1])), toDegrees(Math.asin(clamped)), 0];
 }
 
-function eulerMatrix([x, y, z]: [number, number, number]): Matrix3 {
+export function eulerMatrix([x, y, z]: [number, number, number]): Matrix3 {
   const radians = (degrees: number) => (degrees * Math.PI) / 180;
   const [cx, sx] = [Math.cos(radians(x)), Math.sin(radians(x))];
   const [cy, sy] = [Math.cos(radians(y)), Math.sin(radians(y))];
@@ -1228,7 +1232,10 @@ function eulerMatrix([x, y, z]: [number, number, number]): Matrix3 {
   ];
 }
 
-function applyMatrix(matrix: Matrix3, vector: [number, number, number]): [number, number, number] {
+export function applyMatrix(
+  matrix: Matrix3,
+  vector: [number, number, number],
+): [number, number, number] {
   return [
     matrix[0][0] * vector[0] + matrix[0][1] * vector[1] + matrix[0][2] * vector[2],
     matrix[1][0] * vector[0] + matrix[1][1] * vector[1] + matrix[1][2] * vector[2],

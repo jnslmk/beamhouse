@@ -15,6 +15,15 @@ export interface BhsDocument {
   readonly fixtures?: readonly LocalFixture[];
   readonly density?: number;
   readonly beamLength?: number;
+  readonly overrides?: Readonly<
+    Record<
+      string,
+      {
+        readonly pos: readonly [number, number, number];
+        readonly rot: readonly [number, number, number];
+      }
+    >
+  >;
   readonly views?: Readonly<
     Record<
       string,
@@ -80,6 +89,17 @@ export class BhsFixtureError extends BhsError {
   }
 }
 
+/** An override entry is malformed (bad pos/rot type, negative id, unknown keys). */
+export class BhsOverrideError extends BhsError {
+  override name = "BhsOverrideError";
+  readonly id: string | undefined;
+
+  constructor(message: string, id?: string) {
+    super(message);
+    this.id = id;
+  }
+}
+
 /** A required scene property (density or beamLength) is missing from the document. */
 export class BhsMissingPropertyError extends BhsError {
   override name = "BhsMissingPropertyError";
@@ -95,6 +115,7 @@ const KNOWN_TOP_LEVEL_KEYS: Record<string, true> = {
   patch: true,
   definitions: true,
   fixtures: true,
+  overrides: true,
   density: true,
   beamLength: true,
   views: true,
@@ -192,6 +213,11 @@ export function parseBhs(text: string): BhsDocument {
   // Validate views block if present
   if ("views" in obj) {
     validateViewsBlock(obj.views);
+  }
+
+  // Validate overrides block if present
+  if ("overrides" in obj) {
+    validateOverridesBlock(obj.overrides);
   }
 
   return parsed as BhsDocument;
@@ -393,6 +419,66 @@ function validateViewsBlock(value: unknown): void {
       !v.target.every((n: unknown) => typeof n === "number" && Number.isFinite(n))
     ) {
       throw new BhsError(`View "${name}" must have a valid target [x, y, z]`);
+    }
+  }
+}
+
+const ALLOWED_OVERRIDE_KEYS: Record<string, true> = {
+  pos: true,
+  rot: true,
+};
+
+/** Validate the overrides block: object keyed by fixture-id string, each entry has pos and rot [x,y,z] triples. */
+function validateOverridesBlock(value: unknown): void {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new BhsOverrideError('"overrides" must be an object');
+  }
+
+  for (const [id, entry] of Object.entries(value as Record<string, unknown>)) {
+    if (typeof entry !== "object" || entry === null || Array.isArray(entry)) {
+      throw new BhsOverrideError(`Override "${id}" must be an object`, id);
+    }
+
+    const e = entry as Record<string, unknown>;
+
+    // Reject unknown keys
+    for (const key of Object.keys(e)) {
+      if (!ALLOWED_OVERRIDE_KEYS[key]) {
+        throw new BhsOverrideError(
+          `Override "${id}" has unknown key "${key}" — only "pos" and "rot" are allowed`,
+          id,
+        );
+      }
+    }
+
+    if (!("pos" in e)) {
+      throw new BhsOverrideError(`Override "${id}" is missing required key "pos"`, id);
+    }
+
+    if (
+      !Array.isArray(e.pos) ||
+      e.pos.length !== 3 ||
+      !e.pos.every((n: unknown) => typeof n === "number" && Number.isFinite(n))
+    ) {
+      throw new BhsOverrideError(
+        `Override "${id}" "pos" must be an array of 3 finite numbers [x, y, z]`,
+        id,
+      );
+    }
+
+    if (!("rot" in e)) {
+      throw new BhsOverrideError(`Override "${id}" is missing required key "rot"`, id);
+    }
+
+    if (
+      !Array.isArray(e.rot) ||
+      e.rot.length !== 3 ||
+      !e.rot.every((n: unknown) => typeof n === "number" && Number.isFinite(n))
+    ) {
+      throw new BhsOverrideError(
+        `Override "${id}" "rot" must be an array of 3 finite numbers [rx, ry, rz]`,
+        id,
+      );
     }
   }
 }
