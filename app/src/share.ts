@@ -1,4 +1,5 @@
 import type { BhsDefinition, LocalFixture, Placement, PrimitiveType } from "./scene.ts";
+import type { BhsPatch } from "./bhs.ts";
 
 // ponytail: columnar arrays + mm ints + deflate-raw keep the representative rig
 // at ~16% of the 4096-char budget (ADR-0031); no schema lib, no second renderer.
@@ -119,7 +120,20 @@ export async function encodeShareSnapshot(input: ShareBuildInput): Promise<Share
   return {
     kind: "file",
     filename: `beamhouse-snapshot-${payload.t}.bhs`,
-    json: JSON.stringify({ kind: "beamhouse-share-snapshot", snapshot: payload, dropped }),
+    // ponytail: wraps the columnar payload inside the snapshot patch variant so
+    // the download doubles as a valid .bhs patch block. add definitions/views as
+    // first-class keys when #82/#83 extend the schema.
+    json: JSON.stringify({
+      kind: "beamhouse-share-snapshot",
+      patch: {
+        kind: "snapshot",
+        fixtures: payload.f,
+        definitions: payload.d,
+        views: payload.views,
+        takenAt: payload.t,
+      },
+      dropped,
+    }),
     fragmentLength: fragment.length,
     dropped,
   };
@@ -216,6 +230,18 @@ export function snapshotScene(snapshot: ShareSnapshot): SnapshotScene {
   }));
   const placements = new Map(snapshot.fixtures.map((fixture) => [fixture.id, fixture.placement]));
   return { definitions, fixtures, placements };
+}
+
+/**
+ * Returns a human-readable reason why a patch variant cannot be shared,
+ * or `null` if it is shareable. The reason names the local path so the
+ * recipient knows which file was refused. Only the inline `snapshot`
+ * variant is shareable — path-bearing variants name files on the
+ * sender's disk.
+ */
+export function bhsPatchShareReason(patch: BhsPatch): string | null {
+  if (patch.kind === "snapshot") return null;
+  return `This patch references a local file: "${patch.path}". Only inline snapshots can be shared.`;
 }
 
 const RECORDING_NAME = /^[A-Za-z0-9][A-Za-z0-9._/-]{0,127}$/;

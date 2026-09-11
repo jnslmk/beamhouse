@@ -4,6 +4,7 @@ import { resolve } from "node:path";
 import { parseGdtf } from "../packages/gdtf-ts/src/index.ts";
 import {
   buildSharePayload,
+  bhsPatchShareReason,
   decodeShareFragment,
   encodeShareSnapshot,
   formatSnapshotAge,
@@ -253,5 +254,51 @@ describe("share snapshot codec", () => {
     expect(label.startsWith("Snapshot · ")).toBe(true);
     expect(label).toContain("3h ago");
     expect(formatSnapshotAge(1756730620000, 1756730620000 + 10 * 1000)).toContain("just now");
+  });
+});
+
+describe("snapshot .bhs file format", () => {
+  test("file output wraps the snapshot data inside a patch block", async () => {
+    const fixtures: LocalFixture[] = Array.from({ length: 700 }, (_, index) => ({
+      id: -index - 1,
+      definition: "bhs:box",
+      mode: `long-mode-name-${index}`,
+      addresses: [{ universe: 1 + (index % 3), address: 1 + (index % 512), footprint: 10 }],
+    }));
+    const result = await encodeShareSnapshot({
+      fixtures,
+      definitions: { "bhs:box": boxDef },
+      placements: new Map(),
+    });
+    expect(result.kind).toBe("file");
+    if (result.kind !== "file") return;
+    const parsed = JSON.parse(result.json) as {
+      kind: string;
+      patch: { kind: string; fixtures: unknown };
+      dropped: unknown[];
+    };
+    expect(parsed.kind).toBe("beamhouse-share-snapshot");
+    expect(parsed.patch).toBeDefined();
+    expect(parsed.patch.kind).toBe("snapshot");
+    expect(Array.isArray(parsed.patch.fixtures)).toBe(true);
+    expect((parsed.patch.fixtures as unknown[]).length).toBe(700);
+    expect(Array.isArray(parsed.dropped)).toBe(true);
+  });
+});
+
+describe("patch shareability", () => {
+  test("snapshot patch is shareable — no reason", () => {
+    const reason = bhsPatchShareReason({ kind: "snapshot", fixtures: [] });
+    expect(reason).toBeNull();
+  });
+
+  test("mizer path variant refused with reason naming the local path", () => {
+    const reason = bhsPatchShareReason({ kind: "mizer", path: "~/mizer/warehouse.yml" });
+    expect(reason).toContain("~/mizer/warehouse.yml");
+  });
+
+  test("mvr path variant refused with reason naming the local path", () => {
+    const reason = bhsPatchShareReason({ kind: "mvr", path: "shows/warehouse.mvr" });
+    expect(reason).toContain("shows/warehouse.mvr");
   });
 });
