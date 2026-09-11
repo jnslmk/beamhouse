@@ -158,6 +158,7 @@ either one unblocks it.
 python universe-semantics.py [node-ip]   # read-only     no config change at all
 python confirm-fix.py                    # transient     writes uni=2, measures, reverts in a finally
 python cutover-tent.py                   # PERSISTENT    uni 2 / port 5568 / multicast on + reboot
+python cutover-tent-unicast.py          # PERSISTENT    uni 2 / port 5568 / multicast on + reboot, proof by UNICAST sACN (#44; multicast unreceivable per #53)
 python revert-tent.py                    # PERSISTENT    uni 1 / port 6454 / multicast off + reboot
 ```
 
@@ -174,6 +175,13 @@ and `addr 30` survive, because those are the patch's own preconditions and a reb
 verified after `revert-tent.py`. That is where the rig needs it until
 [#52](https://github.com/jnslmk/beamhouse/issues/52) or
 [#53](https://github.com/jnslmk/beamhouse/issues/53) lands.
+
+**Update 2026-09-11 ([#44](https://github.com/jnslmk/beamhouse/issues/44)):** the
+cutover re-landed via sACN *unicast* (Mizer `host`, #52) with
+`cutover-tent-unicast.py` — node at `uni 2` / port 5568 / multicast on,
+confirmed on the wire (`capture/cutover-unicast.json`). The bridge-visibility
+checkbox from #44 is unsatisfiable under unicast and stays open as a
+ticket-text item, not a cutover defect.
 
 `universe-semantics.py` and `confirm-fix.py` leave the node exactly as they found it —
 `confirm-fix.py` reverts in a `finally` and prints the readback, so even an interrupted run says
