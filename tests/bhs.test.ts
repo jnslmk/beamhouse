@@ -8,6 +8,7 @@ import {
   BhsEmittersBlockError,
   BhsDefinitionError,
   BhsFixtureError,
+  BhsMissingPropertyError,
   isShareableBhsPatch,
   bhsPatchPath,
 } from "../app/src/bhs.ts";
@@ -16,32 +17,35 @@ import {
 
 describe("bhs document round-trip", () => {
   test("mizer path variant round-trips byte-identical", () => {
-    const text = '{"patch":{"kind":"mizer","path":"~/mizer/warehouse.yml"}}';
+    const text =
+      '{"patch":{"kind":"mizer","path":"~/mizer/warehouse.yml"},"density":0.32,"beamLength":10}';
     const doc = parseBhs(text);
     expect(serializeBhs(doc)).toBe(text);
   });
 
   test("mvr path variant round-trips byte-identical", () => {
-    const text = '{"patch":{"kind":"mvr","path":"shows/warehouse.mvr"}}';
+    const text =
+      '{"patch":{"kind":"mvr","path":"shows/warehouse.mvr"},"density":0.32,"beamLength":10}';
     const doc = parseBhs(text);
     expect(serializeBhs(doc)).toBe(text);
   });
 
   test("snapshot variant round-trips byte-identical with fixture data", () => {
-    const text = '{"patch":{"kind":"snapshot","fixtures":[{"id":1,"position":[0,0,0]}]}}';
+    const text =
+      '{"patch":{"kind":"snapshot","fixtures":[{"id":1,"position":[0,0,0]}]},"density":0.32,"beamLength":10}';
     const doc = parseBhs(text);
     expect(serializeBhs(doc)).toBe(text);
   });
 
   test("snapshot variant with empty fixtures array round-trips", () => {
-    const text = '{"patch":{"kind":"snapshot","fixtures":[]}}';
+    const text = '{"patch":{"kind":"snapshot","fixtures":[]},"density":0.32,"beamLength":10}';
     const doc = parseBhs(text);
     expect(serializeBhs(doc)).toBe(text);
   });
 
   test("snapshot variant with full columnar payload round-trips", () => {
     const text =
-      '{"patch":{"kind":"snapshot","fixtures":[[-1,0,"default",[[1,1,69]],[0,500,0],[0,0,0]]],"definitions":[["p",0,1000,1000,1000]],"views":{"Front":[0,3,8,0,1,0]},"takenAt":1756730620000}}';
+      '{"patch":{"kind":"snapshot","fixtures":[[-1,0,"default",[[1,1,69]],[0,500,0],[0,0,0]]],"definitions":[["p",0,1000,1000,1000]],"views":{"Front":[0,3,8,0,1,0]},"takenAt":1756730620000},"density":0.32,"beamLength":10}';
     const doc = parseBhs(text);
     expect(serializeBhs(doc)).toBe(text);
   });
@@ -50,35 +54,57 @@ describe("bhs document round-trip", () => {
 
   test("with strip definition and local fixture round-trips byte-identical", () => {
     const text =
-      '{"patch":{"kind":"snapshot","fixtures":[]},"definitions":{"bhs:spoke":{"kind":"strip","pixels":23,"pitchMm":33.33,"channelsPerPixel":3,"primitive":"Cube"}},"fixtures":[{"id":-1,"definition":"bhs:spoke","mode":"default","addresses":[{"universe":100,"address":1,"footprint":69}]}]}';
+      '{"patch":{"kind":"snapshot","fixtures":[]},"definitions":{"bhs:spoke":{"kind":"strip","pixels":23,"pitchMm":33.33,"channelsPerPixel":3,"primitive":"Cube"}},"fixtures":[{"id":-1,"definition":"bhs:spoke","mode":"default","addresses":[{"universe":100,"address":1,"footprint":69}]}],"density":0.32,"beamLength":10}';
     const doc = parseBhs(text);
     expect(serializeBhs(doc)).toBe(text);
   });
 
   test("with primitive definition round-trips byte-identical", () => {
     const text =
-      '{"patch":{"kind":"snapshot","fixtures":[]},"definitions":{"bhs:scenery":{"kind":"primitive","primitive":"Cube","width":1,"depth":2,"height":0.5}}}';
+      '{"patch":{"kind":"snapshot","fixtures":[]},"definitions":{"bhs:scenery":{"kind":"primitive","primitive":"Cube","width":1,"depth":2,"height":0.5}},"density":0.32,"beamLength":10}';
     const doc = parseBhs(text);
     expect(serializeBhs(doc)).toBe(text);
   });
 
   test("with gdtf fixture id round-trips byte-identical", () => {
     const text =
-      '{"patch":{"kind":"snapshot","fixtures":[]},"fixtures":[{"id":-1,"definition":"gdtf:9C7854E1-32D5-4DE9-BB8E-6D121F27CF48","mode":"Normal","addresses":[{"universe":1,"address":1,"footprint":1}]}]}';
+      '{"patch":{"kind":"snapshot","fixtures":[]},"fixtures":[{"id":-1,"definition":"gdtf:9C7854E1-32D5-4DE9-BB8E-6D121F27CF48","mode":"Normal","addresses":[{"universe":1,"address":1,"footprint":1}]}],"density":0.32,"beamLength":10}';
     const doc = parseBhs(text);
     expect(serializeBhs(doc)).toBe(text);
   });
 
   test("with ofl fixture id round-trips byte-identical", () => {
     const text =
-      '{"patch":{"kind":"snapshot","fixtures":[]},"fixtures":[{"id":-2,"definition":"ofl:generic:dimmer","mode":"Dimmer","addresses":[{"universe":1,"address":85,"footprint":1}]}]}';
+      '{"patch":{"kind":"snapshot","fixtures":[]},"fixtures":[{"id":-2,"definition":"ofl:generic:dimmer","mode":"Dimmer","addresses":[{"universe":1,"address":85,"footprint":1}]}],"density":0.32,"beamLength":10}';
     const doc = parseBhs(text);
     expect(serializeBhs(doc)).toBe(text);
   });
 
   test("scene object fixture round-trips byte-identical", () => {
     const text =
-      '{"patch":{"kind":"snapshot","fixtures":[]},"fixtures":[{"id":-3,"definition":"bhs:scenery","mode":"","addresses":[]}]}';
+      '{"patch":{"kind":"snapshot","fixtures":[]},"fixtures":[{"id":-3,"definition":"bhs:scenery","mode":"","addresses":[]}],"density":0.32,"beamLength":10}';
+    const doc = parseBhs(text);
+    expect(serializeBhs(doc)).toBe(text);
+  });
+
+  // ── Issue #83: density, beamLength, and views ──
+
+  test("with density and beamLength round-trips byte-identical", () => {
+    const text = '{"patch":{"kind":"snapshot","fixtures":[]},"density":0.42,"beamLength":8}';
+    const doc = parseBhs(text);
+    expect(serializeBhs(doc)).toBe(text);
+  });
+
+  test("with density, beamLength, and views round-trips byte-identical", () => {
+    const text =
+      '{"patch":{"kind":"snapshot","fixtures":[]},"density":0.42,"beamLength":8,"views":{"Front":{"position":[0,3,8],"target":[0,1,0]}}}';
+    const doc = parseBhs(text);
+    expect(serializeBhs(doc)).toBe(text);
+  });
+
+  test("with density, beamLength, views, definitions, and fixtures round-trips byte-identical", () => {
+    const text =
+      '{"patch":{"kind":"snapshot","fixtures":[]},"density":0.32,"beamLength":10,"views":{"Front":{"position":[0,3,8],"target":[0,1,0]},"Side":{"position":[8,3,0],"target":[0,1,0]}},"definitions":{"bhs:spoke":{"kind":"strip","pixels":23,"pitchMm":33.33,"channelsPerPixel":3,"primitive":"Cube"}},"fixtures":[{"id":-1,"definition":"bhs:spoke","mode":"default","addresses":[{"universe":100,"address":1,"footprint":69}]}]}';
     const doc = parseBhs(text);
     expect(serializeBhs(doc)).toBe(text);
   });
@@ -438,21 +464,134 @@ describe("bhs document validation", () => {
   });
 });
 
+// ── Issue #83: scene property validation ──
+
+test("rejects missing density with named BhsMissingPropertyError", () => {
+  expect(() => parseBhs('{"patch":{"kind":"snapshot","fixtures":[]},"beamLength":10}')).toThrow(
+    BhsMissingPropertyError,
+  );
+});
+
+test("rejects missing beamLength with named BhsMissingPropertyError", () => {
+  expect(() => parseBhs('{"patch":{"kind":"snapshot","fixtures":[]},"density":0.32}')).toThrow(
+    BhsMissingPropertyError,
+  );
+});
+
+test("rejects missing both density and beamLength with named BhsMissingPropertyError", () => {
+  expect(() => parseBhs('{"patch":{"kind":"snapshot","fixtures":[]}}')).toThrow(
+    BhsMissingPropertyError,
+  );
+});
+
+test("rejects density out of 0-1 range", () => {
+  expect(() =>
+    parseBhs('{"patch":{"kind":"snapshot","fixtures":[]},"density":1.5,"beamLength":10}'),
+  ).toThrow(BhsError);
+  expect(() =>
+    parseBhs('{"patch":{"kind":"snapshot","fixtures":[]},"density":-0.1,"beamLength":10}'),
+  ).toThrow(BhsError);
+});
+
+test("rejects density with non-finite value", () => {
+  expect(() =>
+    parseBhs('{"patch":{"kind":"snapshot","fixtures":[]},"density":NaN,"beamLength":10}'),
+  ).toThrow(BhsError);
+});
+
+test("rejects beamLength out of 1-40 range", () => {
+  expect(() =>
+    parseBhs('{"patch":{"kind":"snapshot","fixtures":[]},"density":0.32,"beamLength":0}'),
+  ).toThrow(BhsError);
+  expect(() =>
+    parseBhs('{"patch":{"kind":"snapshot","fixtures":[]},"density":0.32,"beamLength":50}'),
+  ).toThrow(BhsError);
+});
+
+test("rejects beamLength with non-finite value", () => {
+  expect(() =>
+    parseBhs('{"patch":{"kind":"snapshot","fixtures":[]},"density":0.32,"beamLength":Infinity}'),
+  ).toThrow(BhsError);
+});
+
+test("density and beamLength are validated even when other keys present", () => {
+  expect(() =>
+    parseBhs(
+      '{"patch":{"kind":"snapshot","fixtures":[]},"definitions":{},"fixtures":[],"views":{}}',
+    ),
+  ).toThrow(BhsMissingPropertyError);
+});
+
+test("rejects views with non-object value", () => {
+  expect(() =>
+    parseBhs(
+      '{"patch":{"kind":"snapshot","fixtures":[]},"density":0.32,"beamLength":10,"views":"string"}',
+    ),
+  ).toThrow(BhsError);
+  expect(() =>
+    parseBhs(
+      '{"patch":{"kind":"snapshot","fixtures":[]},"density":0.32,"beamLength":10,"views":[]}',
+    ),
+  ).toThrow(BhsError);
+});
+
+test("rejects view entry with missing position", () => {
+  expect(() =>
+    parseBhs(
+      '{"patch":{"kind":"snapshot","fixtures":[]},"density":0.32,"beamLength":10,"views":{"Front":{"target":[0,1,0]}}}',
+    ),
+  ).toThrow(BhsError);
+});
+
+test("rejects view entry with non-array position", () => {
+  expect(() =>
+    parseBhs(
+      '{"patch":{"kind":"snapshot","fixtures":[]},"density":0.32,"beamLength":10,"views":{"Front":{"position":"invalid","target":[0,1,0]}}}',
+    ),
+  ).toThrow(BhsError);
+});
+
+test("rejects view entry with position of wrong length", () => {
+  expect(() =>
+    parseBhs(
+      '{"patch":{"kind":"snapshot","fixtures":[]},"density":0.32,"beamLength":10,"views":{"Front":{"position":[0,3],"target":[0,1,0]}}}',
+    ),
+  ).toThrow(BhsError);
+});
+
+test("rejects view entry with missing target", () => {
+  expect(() =>
+    parseBhs(
+      '{"patch":{"kind":"snapshot","fixtures":[]},"density":0.32,"beamLength":10,"views":{"Front":{"position":[0,3,8]}}}',
+    ),
+  ).toThrow(BhsError);
+});
+
+test("rejects view entry with non-finite values in position", () => {
+  expect(() =>
+    parseBhs(
+      '{"patch":{"kind":"snapshot","fixtures":[]},"density":0.32,"beamLength":10,"views":{"Front":{"position":[0,NaN,8],"target":[0,1,0]}}}',
+    ),
+  ).toThrow(BhsError);
+});
+
 // ── Patch shareability: only snapshot is shareable ──
 
 describe("patch shareability", () => {
   test("mizer patch is not shareable", () => {
-    const doc = parseBhs('{"patch":{"kind":"mizer","path":"x"}}');
+    const doc = parseBhs('{"patch":{"kind":"mizer","path":"x"},"density":0.32,"beamLength":10}');
     expect(isShareableBhsPatch(doc.patch)).toBe(false);
   });
 
   test("mvr patch is not shareable", () => {
-    const doc = parseBhs('{"patch":{"kind":"mvr","path":"x"}}');
+    const doc = parseBhs('{"patch":{"kind":"mvr","path":"x"},"density":0.32,"beamLength":10}');
     expect(isShareableBhsPatch(doc.patch)).toBe(false);
   });
 
   test("snapshot patch is shareable", () => {
-    const doc = parseBhs('{"patch":{"kind":"snapshot","fixtures":[]}}');
+    const doc = parseBhs(
+      '{"patch":{"kind":"snapshot","fixtures":[]},"density":0.32,"beamLength":10}',
+    );
     expect(isShareableBhsPatch(doc.patch)).toBe(true);
   });
 

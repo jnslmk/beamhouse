@@ -608,7 +608,10 @@ syncSceneFixtures();
 commands.onChanged(() => {
   // A shared link is frozen: later scene traffic never rewrites the snapshot rig.
   if (!viewerSnapshot) syncSceneFixtures();
-  viewportApi.setAtmosphere(commands.atmosphere().density, commands.atmosphere().beamLengthM);
+  // Viewer mode supplies its own atmosphere from the snapshot; live scene changes
+  // must not override it.
+  if (!viewerActive)
+    viewportApi.setAtmosphere(commands.atmosphere().density, commands.atmosphere().beamLengthM);
   renderPlacementEditor();
   void maybeIngestPatch();
 });
@@ -2212,11 +2215,14 @@ function resolveShareReference(id: string): BhsDefinition | null {
 
 async function shareScene(): Promise<string | null> {
   const state = required("[data-share-state]");
+  const atmosphere = commands.atmosphere();
   const result = await encodeShareSnapshot({
     fixtures: visibleFixtures(),
     definitions: visibleDefinitions(),
     placements: visiblePlacements(),
     views: commands.views(),
+    density: atmosphere.density,
+    beamLength: atmosphere.beamLengthM,
     resolveReference: resolveShareReference,
   });
   if (result.kind === "link") {
@@ -2352,6 +2358,8 @@ function enterViewerMode(snapshot: ShareSnapshot): void {
   playbackScene = snapshotSceneState;
   const { fixtures, placements } = snapshotSceneState;
   viewportApi.setSceneFixtures(fixtures, snapshotSceneState.definitions);
+  // Render with the sender's atmosphere, not the local scene defaults.
+  viewportApi.setAtmosphere(snapshot.density, snapshot.beamLength);
   fixtureGate.invalidate();
   // Objects joins the viewer list only when non-empty (ADR-0032 §5).
   if (!fixtures.some((fixture) => fixture.addresses.length === 0))

@@ -13,6 +13,17 @@ export interface BhsDocument {
   readonly patch: BhsPatch;
   readonly definitions?: Readonly<Record<string, BhsDefinition>>;
   readonly fixtures?: readonly LocalFixture[];
+  readonly density?: number;
+  readonly beamLength?: number;
+  readonly views?: Readonly<
+    Record<
+      string,
+      {
+        readonly position: readonly [number, number, number];
+        readonly target: readonly [number, number, number];
+      }
+    >
+  >;
 }
 
 /** Generic .bhs error. */
@@ -69,10 +80,24 @@ export class BhsFixtureError extends BhsError {
   }
 }
 
+/** A required scene property (density or beamLength) is missing from the document. */
+export class BhsMissingPropertyError extends BhsError {
+  override name = "BhsMissingPropertyError";
+  readonly key: string;
+
+  constructor(key: string) {
+    super(`Missing required scene property: "${key}"`);
+    this.key = key;
+  }
+}
+
 const KNOWN_TOP_LEVEL_KEYS: Record<string, true> = {
   patch: true,
   definitions: true,
   fixtures: true,
+  density: true,
+  beamLength: true,
+  views: true,
 };
 const FORBIDDEN_OPTICS_KEYS: Record<string, true> = {
   BeamType: true,
@@ -88,10 +113,12 @@ const VALID_PRIMITIVES: Record<string, true> = {
 
 /**
  * Parse a .bhs document from JSON text. The loader is strict: any top-level
- * key other than `patch`, `definitions`, or `fixtures` is a `BhsUnknownKeyError`;
- * `classes` and `emitters` have their own named errors. Returns the parsed object
- * directly (key order preserved by JSON.parse) so that round-trip serialization
- * reproduces compact input byte-identically.
+ * key other than `patch`, `definitions`, `fixtures`, `density`, `beamLength`,
+ * or `views` is a `BhsUnknownKeyError`; `classes` and `emitters` have their
+ * own named errors. `density` and `beamLength` are required — missing either
+ * is a `BhsMissingPropertyError`. Returns the parsed object directly (key
+ * order preserved by JSON.parse) so that round-trip serialization reproduces
+ * compact input byte-identically.
  */
 export function parseBhs(text: string): BhsDocument {
   let parsed: unknown;
@@ -157,6 +184,14 @@ export function parseBhs(text: string): BhsDocument {
   // Parse fixtures block
   if ("fixtures" in obj) {
     validateFixturesBlock(obj.fixtures);
+  }
+
+  // Validate required scene properties: density and beamLength
+  validateSceneProperties(obj);
+
+  // Validate views block if present
+  if ("views" in obj) {
+    validateViewsBlock(obj.views);
   }
 
   return parsed as BhsDocument;
@@ -310,6 +345,54 @@ function validateFixturesBlock(value: unknown): void {
       throw new BhsFixtureError(
         `Fixture at index ${i}: scene objects have an empty mode and no addresses; fixtures need both`,
       );
+    }
+  }
+}
+
+function validateSceneProperties(obj: Record<string, unknown>): void {
+  if (!("density" in obj)) {
+    throw new BhsMissingPropertyError("density");
+  }
+  if (!("beamLength" in obj)) {
+    throw new BhsMissingPropertyError("beamLength");
+  }
+  const density = obj.density;
+  if (typeof density !== "number" || !Number.isFinite(density) || density < 0 || density > 1) {
+    throw new BhsError('"density" must be a finite number between 0 and 1');
+  }
+  const beamLength = obj.beamLength;
+  if (
+    typeof beamLength !== "number" ||
+    !Number.isFinite(beamLength) ||
+    beamLength < 1 ||
+    beamLength > 40
+  ) {
+    throw new BhsError('"beamLength" must be a finite number between 1 and 40');
+  }
+}
+
+function validateViewsBlock(value: unknown): void {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new BhsError('"views" must be an object');
+  }
+  for (const [name, view] of Object.entries(value as Record<string, unknown>)) {
+    if (typeof view !== "object" || view === null || Array.isArray(view)) {
+      throw new BhsError(`View "${name}" must be an object`);
+    }
+    const v = view as Record<string, unknown>;
+    if (
+      !Array.isArray(v.position) ||
+      v.position.length !== 3 ||
+      !v.position.every((n: unknown) => typeof n === "number" && Number.isFinite(n))
+    ) {
+      throw new BhsError(`View "${name}" must have a valid position [x, y, z]`);
+    }
+    if (
+      !Array.isArray(v.target) ||
+      v.target.length !== 3 ||
+      !v.target.every((n: unknown) => typeof n === "number" && Number.isFinite(n))
+    ) {
+      throw new BhsError(`View "${name}" must have a valid target [x, y, z]`);
     }
   }
 }

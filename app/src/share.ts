@@ -1,4 +1,11 @@
-import type { BhsDefinition, LocalFixture, Placement, PrimitiveType } from "./scene.ts";
+import {
+  SCENE_BEAM_LENGTH_M,
+  SCENE_DENSITY,
+  type BhsDefinition,
+  type LocalFixture,
+  type Placement,
+  type PrimitiveType,
+} from "./scene.ts";
 import type { BhsPatch } from "./bhs.ts";
 
 // ponytail: columnar arrays + mm ints + deflate-raw keep the representative rig
@@ -12,6 +19,8 @@ export interface ShareBuildInput {
   fixtures: readonly LocalFixture[];
   definitions: Readonly<Record<string, BhsDefinition>>;
   placements: ReadonlyMap<number, Placement>;
+  density?: number;
+  beamLength?: number;
   views?: Readonly<
     Record<string, { position: [number, number, number]; target: [number, number, number] }>
   >;
@@ -31,6 +40,8 @@ export interface ShareSnapshot {
   takenAt: number;
   definitions: BhsDefinition[];
   fixtures: ShareSnapshotFixture[];
+  density: number;
+  beamLength: number;
   views: Record<string, { position: [number, number, number]; target: [number, number, number] }>;
 }
 
@@ -54,6 +65,8 @@ interface ColumnarPayload {
   t: number;
   d: ColumnarDef[];
   f: ColumnarFixture[];
+  den?: number;
+  bl?: number;
   views: Record<string, [number, number, number, number, number, number]>;
 }
 
@@ -107,8 +120,18 @@ export function buildSharePayload(input: ShareBuildInput): BuiltSnapshot {
   const views: ColumnarPayload["views"] = {};
   for (const [name, view] of Object.entries(input.views ?? {}))
     views[name] = [...view.position, ...view.target] as ColumnarPayload["views"][string];
+  const density = input.density ?? SCENE_DENSITY;
+  const beamLength = input.beamLength ?? SCENE_BEAM_LENGTH_M;
   return {
-    payload: { v: SHARE_VERSION, t: input.now ?? Date.now(), d: defs, f: fixtures, views },
+    payload: {
+      v: SHARE_VERSION,
+      t: input.now ?? Date.now(),
+      d: defs,
+      f: fixtures,
+      den: density,
+      bl: beamLength,
+      views,
+    },
     dropped,
   };
 }
@@ -121,8 +144,7 @@ export async function encodeShareSnapshot(input: ShareBuildInput): Promise<Share
     kind: "file",
     filename: `beamhouse-snapshot-${payload.t}.bhs`,
     // ponytail: wraps the columnar payload inside the snapshot patch variant so
-    // the download doubles as a valid .bhs patch block. add definitions/views as
-    // first-class keys when #82/#83 extend the schema.
+    // the download doubles as a valid .bhs patch block.
     json: JSON.stringify({
       kind: "beamhouse-share-snapshot",
       patch: {
@@ -132,6 +154,8 @@ export async function encodeShareSnapshot(input: ShareBuildInput): Promise<Share
         views: payload.views,
         takenAt: payload.t,
       },
+      density: payload.den,
+      beamLength: payload.bl,
       dropped,
     }),
     fragmentLength: fragment.length,
@@ -204,7 +228,22 @@ export async function decodeShareFragment(hash: string): Promise<ShareSnapshot |
         return null;
       views[name] = { position: [view[0], view[1], view[2]], target: [view[3], view[4], view[5]] };
     }
-    return { takenAt: payload.t!, definitions: definitions as BhsDefinition[], fixtures, views };
+    const density =
+      payload.den !== undefined && typeof payload.den === "number" && Number.isFinite(payload.den)
+        ? payload.den
+        : SCENE_DENSITY;
+    const beamLength =
+      payload.bl !== undefined && typeof payload.bl === "number" && Number.isFinite(payload.bl)
+        ? payload.bl
+        : SCENE_BEAM_LENGTH_M;
+    return {
+      takenAt: payload.t!,
+      definitions: definitions as BhsDefinition[],
+      fixtures,
+      density,
+      beamLength,
+      views,
+    };
   } catch {
     return null;
   }
@@ -215,6 +254,8 @@ export interface SnapshotScene {
   definitions: Record<string, BhsDefinition>;
   fixtures: LocalFixture[];
   placements: Map<number, Placement>;
+  density: number;
+  beamLength: number;
 }
 
 export function snapshotScene(snapshot: ShareSnapshot): SnapshotScene {
@@ -229,7 +270,13 @@ export function snapshotScene(snapshot: ShareSnapshot): SnapshotScene {
     addresses: fixture.addresses.map((address) => ({ ...address })),
   }));
   const placements = new Map(snapshot.fixtures.map((fixture) => [fixture.id, fixture.placement]));
-  return { definitions, fixtures, placements };
+  return {
+    definitions,
+    fixtures,
+    placements,
+    density: snapshot.density,
+    beamLength: snapshot.beamLength,
+  };
 }
 
 /**

@@ -23,7 +23,13 @@ import {
   referenceSceneFixtures,
   referenceScenePlacements,
 } from "../app/src/reference-rig.ts";
-import type { BhsDefinition, LocalFixture, Placement } from "../app/src/scene.ts";
+import {
+  SCENE_BEAM_LENGTH_M,
+  SCENE_DENSITY,
+  type BhsDefinition,
+  type LocalFixture,
+  type Placement,
+} from "../app/src/scene.ts";
 
 const stripDef: BhsDefinition = {
   kind: "strip",
@@ -97,6 +103,31 @@ describe("share snapshot codec", () => {
     const scene = snapshotScene(snapshot!);
     expect(Object.keys(scene.definitions)).toEqual(["bhs:share-0", "bhs:share-1"]);
     expect(scene.placements.get(-1)?.position).toEqual([0, 0.5, 0]);
+  });
+
+  test("the fragment carries default density and beamLength when input omits them", async () => {
+    const result = await encodeShareSnapshot(representativeRig());
+    expect(result.kind).toBe("link");
+    if (result.kind !== "link") return;
+    const snapshot = await decodeShareFragment(`#${result.fragment}`);
+    expect(snapshot?.density).toBe(SCENE_DENSITY);
+    expect(snapshot?.beamLength).toBe(SCENE_BEAM_LENGTH_M);
+  });
+
+  test("the fragment carries explicit density and beamLength from the sender", async () => {
+    const result = await encodeShareSnapshot({
+      ...representativeRig(),
+      density: 0.5,
+      beamLength: 15,
+    });
+    expect(result.kind).toBe("link");
+    if (result.kind !== "link") return;
+    const snapshot = await decodeShareFragment(`#${result.fragment}`);
+    expect(snapshot?.density).toBe(0.5);
+    expect(snapshot?.beamLength).toBe(15);
+    const scene = snapshotScene(snapshot!);
+    expect(scene.density).toBe(0.5);
+    expect(scene.beamLength).toBe(15);
   });
 
   test("the fragment carries no sender paths or library identifiers", async () => {
