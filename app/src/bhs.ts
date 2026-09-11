@@ -1,3 +1,5 @@
+import type { BhsDefinition, LocalFixture } from "./scene.ts";
+
 // .bhs document envelope and patch block types (issue #81).
 // This loader covers the `patch` block only. Later issues (#82/#83) extend
 // the schema with definitions, fixtures, scene properties, and views.
@@ -9,6 +11,8 @@ export type BhsPatch =
 
 export interface BhsDocument {
   readonly patch: BhsPatch;
+  readonly definitions?: Readonly<Record<string, BhsDefinition>>;
+  readonly fixtures?: readonly LocalFixture[];
 }
 
 /** Generic .bhs error. */
@@ -27,9 +31,65 @@ export class BhsUnknownKeyError extends BhsError {
   }
 }
 
+/** A "classes" block is not supported. */
+export class BhsClassesBlockError extends BhsError {
+  override name = "BhsClassesBlockError";
+
+  constructor() {
+    super('"classes" block is not supported');
+  }
+}
+
+/** An "emitters" block is not supported — definition defects go to the quirks table. */
+export class BhsEmittersBlockError extends BhsError {
+  override name = "BhsEmittersBlockError";
+
+  constructor() {
+    super('"emitters" block is not supported');
+  }
+}
+
+/** A definition entry is malformed (e.g. forbidden optics keys, bad field types). */
+export class BhsDefinitionError extends BhsError {
+  override name = "BhsDefinitionError";
+  readonly key: string | undefined;
+
+  constructor(message: string, key?: string) {
+    super(message);
+    this.key = key;
+  }
+}
+
+/** A fixture entry is malformed. */
+export class BhsFixtureError extends BhsError {
+  override name = "BhsFixtureError";
+
+  constructor(message: string) {
+    super(message);
+  }
+}
+
+const KNOWN_TOP_LEVEL_KEYS: Record<string, true> = {
+  patch: true,
+  definitions: true,
+  fixtures: true,
+};
+const FORBIDDEN_OPTICS_KEYS: Record<string, true> = {
+  BeamType: true,
+  BeamAngle: true,
+  BeamRadius: true,
+  ColorTemperature: true,
+};
+const VALID_PRIMITIVES: Record<string, true> = {
+  Cube: true,
+  Cylinder: true,
+  Sphere: true,
+};
+
 /**
  * Parse a .bhs document from JSON text. The loader is strict: any top-level
- * key other than `patch` is a `BhsUnknownKeyError`. Returns the parsed object
+ * key other than `patch`, `definitions`, or `fixtures` is a `BhsUnknownKeyError`;
+ * `classes` and `emitters` have their own named errors. Returns the parsed object
  * directly (key order preserved by JSON.parse) so that round-trip serialization
  * reproduces compact input byte-identically.
  */
@@ -47,9 +107,13 @@ export function parseBhs(text: string): BhsDocument {
 
   const obj = parsed as Record<string, unknown>;
 
+  // Check forbidden blocks before the generic key check
+  if ("classes" in obj) throw new BhsClassesBlockError();
+  if ("emitters" in obj) throw new BhsEmittersBlockError();
+
   // Strict: reject any unknown top-level key
   for (const key of Object.keys(obj)) {
-    if (key !== "patch") {
+    if (!KNOWN_TOP_LEVEL_KEYS[key]) {
       throw new BhsUnknownKeyError(key);
     }
   }
@@ -75,14 +139,178 @@ export function parseBhs(text: string): BhsDocument {
       if (typeof patchObj.path !== "string" || patchObj.path.length === 0) {
         throw new BhsError(`"patch.path" must be a non-empty string for kind "${patchObj.kind}"`);
       }
-      return parsed as BhsDocument;
+      break;
     case "snapshot":
       if (!("fixtures" in patchObj)) {
         throw new BhsError('"patch.fixtures" is required for kind "snapshot"');
       }
-      return parsed as BhsDocument;
+      break;
     default:
       throw new BhsError(`Unknown patch kind: "${patchObj.kind}"`);
+  }
+
+  // Parse definitions block
+  if ("definitions" in obj) {
+    validateDefinitionsBlock(obj.definitions);
+  }
+
+  // Parse fixtures block
+  if ("fixtures" in obj) {
+    validateFixturesBlock(obj.fixtures);
+  }
+
+  return parsed as BhsDocument;
+}
+
+function validateDefinitionsBlock(value: unknown): void {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new BhsDefinitionError('"definitions" must be an object');
+  }
+
+  const dict = value as Record<string, Record<string, unknown>>;
+  for (const [id, def] of Object.entries(dict)) {
+    if (!id.startsWith("bhs:")) {
+      throw new BhsDefinitionError(`Definition id must start with "bhs:", got "${id}"`, id);
+    }
+
+    if (typeof def !== "object" || def === null || Array.isArray(def)) {
+      throw new BhsDefinitionError(`Definition "${id}" must be an object`, id);
+    }
+
+    const d = def;
+
+    // Reject forbidden optics keys before checking kind
+    for (const optKeyStr of Object.keys(FORBIDDEN_OPTICS_KEYS)) {
+      if (optKeyStr in d) {
+        throw new BhsDefinitionError(
+          `Definition "${id}" has forbidden optics key "${optKeyStr}"`,
+          id,
+        );
+      }
+    }
+
+    if (d.kind === "strip") {
+      if (typeof d.pixels !== "number" || !Number.isInteger(d.pixels) || d.pixels < 1) {
+        throw new BhsDefinitionError(
+          `Definition "${id}" strip.pixels must be a positive integer`,
+          id,
+        );
+      }
+      if (typeof d.pitchMm !== "number" || !Number.isFinite(d.pitchMm) || d.pitchMm <= 0) {
+        throw new BhsDefinitionError(
+          `Definition "${id}" strip.pitchMm must be a positive number`,
+          id,
+        );
+      }
+      if (
+        typeof d.channelsPerPixel !== "number" ||
+        !Number.isInteger(d.channelsPerPixel) ||
+        d.channelsPerPixel < 1
+      ) {
+        throw new BhsDefinitionError(
+          `Definition "${id}" strip.channelsPerPixel must be a positive integer`,
+          id,
+        );
+      }
+      if (!VALID_PRIMITIVES[String(d.primitive)]) {
+        throw new BhsDefinitionError(
+          `Definition "${id}" strip.primitive must be "Cube", "Cylinder", or "Sphere"`,
+          id,
+        );
+      }
+    } else if (d.kind === "primitive") {
+      if (!VALID_PRIMITIVES[String(d.primitive)]) {
+        throw new BhsDefinitionError(
+          `Definition "${id}" primitive.primitive must be "Cube", "Cylinder", or "Sphere"`,
+          id,
+        );
+      }
+      if (typeof d.width !== "number" || !Number.isFinite(d.width) || d.width <= 0) {
+        throw new BhsDefinitionError(
+          `Definition "${id}" primitive.width must be a positive number`,
+          id,
+        );
+      }
+      if (typeof d.depth !== "number" || !Number.isFinite(d.depth) || d.depth <= 0) {
+        throw new BhsDefinitionError(
+          `Definition "${id}" primitive.depth must be a positive number`,
+          id,
+        );
+      }
+      if (typeof d.height !== "number" || !Number.isFinite(d.height) || d.height <= 0) {
+        throw new BhsDefinitionError(
+          `Definition "${id}" primitive.height must be a positive number`,
+          id,
+        );
+      }
+    } else {
+      throw new BhsDefinitionError(
+        `Definition "${id}" must have kind "strip" or "primitive", got "${String(d.kind)}"`,
+        id,
+      );
+    }
+  }
+}
+
+function validateFixturesBlock(value: unknown): void {
+  if (!Array.isArray(value)) {
+    throw new BhsFixtureError('"fixtures" must be an array');
+  }
+
+  const fixtures = value as Array<Record<string, unknown>>;
+  for (let i = 0; i < fixtures.length; i++) {
+    const f = fixtures[i];
+    if (typeof f !== "object" || f === null || Array.isArray(f)) {
+      throw new BhsFixtureError(`Fixture at index ${i} must be an object`);
+    }
+
+    if (typeof f.id !== "number" || !Number.isInteger(f.id)) {
+      throw new BhsFixtureError(`Fixture at index ${i} must have an integer id`);
+    }
+
+    if (typeof f.definition !== "string" || f.definition.length === 0) {
+      throw new BhsFixtureError(`Fixture at index ${i} must have a non-empty definition string`);
+    }
+
+    if (typeof f.mode !== "string") {
+      throw new BhsFixtureError(`Fixture at index ${i} must have a string mode`);
+    }
+
+    if (!Array.isArray(f.addresses)) {
+      throw new BhsFixtureError(`Fixture at index ${i} must have an array of addresses`);
+    }
+
+    for (let j = 0; j < f.addresses.length; j++) {
+      const a = f.addresses[j] as Record<string, unknown>;
+      if (typeof a !== "object" || a === null || Array.isArray(a)) {
+        throw new BhsFixtureError(`Fixture at index ${i} address ${j} must be an object`);
+      }
+
+      if (typeof a.universe !== "number" || !Number.isInteger(a.universe) || a.universe < 1) {
+        throw new BhsFixtureError(
+          `Fixture at index ${i} address ${j}.universe must be a positive integer`,
+        );
+      }
+      if (typeof a.address !== "number" || !Number.isInteger(a.address) || a.address < 1) {
+        throw new BhsFixtureError(
+          `Fixture at index ${i} address ${j}.address must be a positive integer`,
+        );
+      }
+      if (typeof a.footprint !== "number" || !Number.isInteger(a.footprint) || a.footprint < 1) {
+        throw new BhsFixtureError(
+          `Fixture at index ${i} address ${j}.footprint must be a positive integer`,
+        );
+      }
+    }
+
+    // Scene object invariant: empty mode ⇔ empty addresses, fixture needs both
+    const hasEmptyMode = f.mode.length === 0;
+    const hasEmptyAddresses = f.addresses.length === 0;
+    if (hasEmptyMode !== hasEmptyAddresses) {
+      throw new BhsFixtureError(
+        `Fixture at index ${i}: scene objects have an empty mode and no addresses; fixtures need both`,
+      );
+    }
   }
 }
 
