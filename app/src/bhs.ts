@@ -1,4 +1,4 @@
-import type { BhsDefinition, LocalFixture } from "./scene.ts";
+import type { BhsDefinition, LocalFixture, PersistedScene } from "./scene.ts";
 
 // .bhs document envelope and patch block types (issue #81).
 // This loader covers the `patch` block only. Later issues (#82/#83) extend
@@ -507,4 +507,51 @@ export function bhsPatchPath(patch: BhsPatch): string | null {
  */
 export function isShareableBhsPatch(patch: BhsPatch): boolean {
   return patch.kind === "snapshot";
+}
+
+/**
+ * Serialize a PersistedScene to a BhsDocument. Used to prove write-separation
+ * properties at the document boundary: N commands emit zero patch writes; an
+ * ingest emits zero non-patch writes.
+ *
+ * Note: `PersistedScene.arrays` does NOT appear in the BhsDocument — the
+ * document schema (spec #80) lists only patch, definitions, fixtures, scene
+ * properties (density/beamLength), overrides, and views. Arrays are a
+ * per-session live-editing concern, not a persisted block.
+ */
+export function sceneToDocument(scene: PersistedScene): BhsDocument {
+  const overrides: Record<
+    string,
+    {
+      readonly pos: readonly [number, number, number];
+      readonly rot: readonly [number, number, number];
+    }
+  > = {};
+  for (const [key, placement] of Object.entries(scene.overrides)) {
+    overrides[key] = {
+      pos: placement.position,
+      rot: placement.rotation,
+    };
+  }
+  // Re-emit the original patch block verbatim so a path-bearing variant
+  // cannot be shape-shifted into a snapshot by any command.
+  let patch: BhsPatch;
+  if (scene.patchKind === "mizer" && scene.patchPath) {
+    patch = { kind: "mizer" as const, path: scene.patchPath };
+  } else if (scene.patchKind === "mvr" && scene.patchPath) {
+    patch = { kind: "mvr" as const, path: scene.patchPath };
+  } else {
+    patch = { kind: "snapshot" as const, fixtures: scene.patch };
+  }
+  return {
+    patch,
+    ...(Object.keys(scene.definitions).length > 0 ? { definitions: scene.definitions } : {}),
+    ...(Object.values(scene.fixtures).length > 0
+      ? { fixtures: Object.values(scene.fixtures) }
+      : {}),
+    density: scene.atmosphere.density,
+    beamLength: scene.atmosphere.beamLengthM,
+    ...(Object.keys(overrides).length > 0 ? { overrides } : {}),
+    ...(Object.keys(scene.views).length > 0 ? { views: scene.views } : {}),
+  };
 }

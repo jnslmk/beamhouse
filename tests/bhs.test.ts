@@ -1,4 +1,6 @@
 import { describe, expect, test } from "bun:test";
+import type { PersistedScene } from "../app/src/scene.ts";
+import { apply, applyPatchIngest, undoEntry } from "../app/src/scene.ts";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import {
@@ -14,6 +16,7 @@ import {
   BhsMissingPropertyError,
   isShareableBhsPatch,
   bhsPatchPath,
+  sceneToDocument,
 } from "../app/src/bhs.ts";
 
 // ── Round-trip: load text → model → save text → byte-identical ──
@@ -774,5 +777,276 @@ describe("overrides block", () => {
         '{"patch":{"kind":"snapshot","fixtures":[]},"overrides":{"-1":{"pos":[0,0,0],"rot":45}},"density":0.32,"beamLength":10}',
       ),
     ).toThrow(BhsOverrideError);
+  });
+});
+
+// ── Issue #84: command/ingest write separation ──
+
+function sceneWithData(): PersistedScene {
+  return {
+    overrides: { "1": { position: [1, 2, 3], rotation: [10, 0, 0] } },
+    views: { Front: { position: [0, 3, 8], target: [0, 1, 0] } },
+    arrays: {},
+    definitions: {
+      "bhs:test": {
+        kind: "strip",
+        pixels: 10,
+        pitchMm: 33.33,
+        channelsPerPixel: 3,
+        primitive: "Cube" as const,
+      },
+    },
+    fixtures: {
+      "-1": {
+        id: -1,
+        definition: "bhs:test",
+        mode: "default",
+        addresses: [{ universe: 1, address: 1, footprint: 30 }],
+      },
+    },
+    patchPath: "/test/project.mizer",
+    patch: {
+      "1": {
+        id: 1,
+        definition: "gdtf:foo",
+        mode: "Normal",
+        addresses: [{ universe: 1, address: 1, footprint: 1 }],
+      },
+    },
+    patchKind: null,
+    atmosphere: { density: 0.32, beamLengthM: 10 },
+  };
+}
+
+describe("write separation", () => {
+  test("N placement.set commands produce zero patch writes", () => {
+    const scene = sceneWithData();
+    const docBefore = sceneToDocument(scene);
+    // Apply two placement commands
+    const after1 = apply(
+      {
+        kind: "placement.set",
+        fixtureIds: [1],
+        placements: { "1": { position: [0, 0, 5], rotation: [0, 0, 0] } },
+      },
+      scene,
+    );
+    const after2 = apply(
+      {
+        kind: "placement.set",
+        fixtureIds: [2],
+        placements: { "2": { position: [4, 0, 0], rotation: [90, 0, 0] } },
+      },
+      after1,
+    );
+    const docAfter = sceneToDocument(after2);
+    // Patch block is untouched
+    expect(docAfter.patch).toEqual(docBefore.patch);
+    // Override did change — verify the invariant isn't vacuous
+    expect(docAfter.overrides!["1"]!.pos).toEqual([0, 0, 5]);
+  });
+
+  test("placement.clear command produces zero patch writes", () => {
+    const scene = sceneWithData();
+    const docBefore = sceneToDocument(scene);
+    const after = apply({ kind: "placement.clear", fixtureIds: [1] }, scene);
+    const docAfter = sceneToDocument(after);
+    expect(docAfter.patch).toEqual(docBefore.patch);
+    // Override was removed — overrides block absent when empty
+    expect(docAfter.overrides).toBeUndefined();
+  });
+
+  test("camera.saveView command produces zero patch writes", () => {
+    const scene = sceneWithData();
+    const docBefore = sceneToDocument(scene);
+    const after = apply(
+      { kind: "camera.saveView", name: "Side", view: { position: [8, 3, 0], target: [0, 1, 0] } },
+      scene,
+    );
+    const docAfter = sceneToDocument(after);
+    expect(docAfter.patch).toEqual(docBefore.patch);
+    // A new view appeared
+    expect(docAfter.views!["Side"]).toBeDefined();
+  });
+
+  test("array.set command produces zero patch writes", () => {
+    const scene = sceneWithData();
+    const docBefore = sceneToDocument(scene);
+    const after = apply(
+      {
+        kind: "array.set",
+        id: "line1",
+        array: {
+          kind: "line",
+          id: "line1",
+          memberIds: [1, 2],
+          origin: [0, 0, 0] as [number, number, number],
+          spacing: [1, 0, 0] as [number, number, number],
+        },
+      },
+      scene,
+    );
+    const docAfter = sceneToDocument(after);
+    expect(docAfter.patch).toEqual(docBefore.patch);
+  });
+
+  test("definition.set command produces zero patch writes", () => {
+    const scene = sceneWithData();
+    const docBefore = sceneToDocument(scene);
+    const after = apply(
+      {
+        kind: "definition.set",
+        id: "bhs:test",
+        value: {
+          kind: "strip",
+          pixels: 20,
+          pitchMm: 50,
+          channelsPerPixel: 3,
+          primitive: "Cube" as const,
+        },
+      },
+      scene,
+    );
+    const docAfter = sceneToDocument(after);
+    expect(docAfter.patch).toEqual(docBefore.patch);
+    // Definition changed — narrow the union
+    const def = docAfter.definitions!["bhs:test"]!;
+    expect(def.kind === "strip" ? def.pixels : 0).toBe(20);
+  });
+
+  test("patch ingest produces zero non-patch writes", () => {
+    const scene = sceneWithData();
+    const docBefore = sceneToDocument(scene);
+    const after = applyPatchIngest(
+      scene,
+      {
+        fixtures: [
+          {
+            id: 2,
+            definition: "gdtf:bar",
+            mode: "Normal",
+            addresses: [{ universe: 1, address: 5, footprint: 1 }],
+          },
+        ],
+      },
+      "/new/path.mizer",
+    );
+    const docAfter = sceneToDocument(after);
+    // Patch changed — verify every non-patch block individually unchanged
+    expect(docAfter.patch).not.toEqual(docBefore.patch);
+    expect(docAfter.definitions).toEqual(docBefore.definitions);
+    expect(docAfter.fixtures).toEqual(docBefore.fixtures);
+    expect(docAfter.density).toEqual(docBefore.density);
+    expect(docAfter.beamLength).toEqual(docBefore.beamLength);
+    expect(docAfter.overrides).toEqual(docBefore.overrides);
+    expect(docAfter.views).toEqual(docBefore.views);
+  });
+
+  test("fixture.add command produces zero patch writes", () => {
+    const scene = sceneWithData();
+    const docBefore = sceneToDocument(scene);
+    const after = apply(
+      {
+        kind: "fixture.add",
+        fixture: {
+          id: -2,
+          definition: "bhs:test",
+          mode: "default",
+          addresses: [{ universe: 1, address: 31, footprint: 30 }],
+        },
+        placement: { position: [0, 0, 0], rotation: [0, 0, 0] },
+      },
+      scene,
+    );
+    const docAfter = sceneToDocument(after);
+    expect(docAfter.patch).toEqual(docBefore.patch);
+    // Fixtures block gained a new entry — not vacuous
+    expect(docAfter.fixtures!.length).toBe(2);
+  });
+
+  test("path-bearing patch kind survives command round-trip", () => {
+    // Start from a scene loaded from a document with {"patch":{"kind":"mizer","path":"/original/project.mizer"}}
+    const scene: PersistedScene = {
+      ...sceneWithData(),
+      patchKind: "mizer",
+      patchPath: "/original/project.mizer",
+    };
+    const docBefore = sceneToDocument(scene);
+    expect(docBefore.patch).toEqual({ kind: "mizer", path: "/original/project.mizer" });
+
+    // Run every command kind that writes a non-patch block
+    let s = apply(
+      {
+        kind: "placement.set",
+        fixtureIds: [1],
+        placements: { "1": { position: [0, 3, 0], rotation: [0, 0, 0] } },
+      },
+      scene,
+    );
+    s = apply({ kind: "placement.clear", fixtureIds: [2] }, s);
+    s = apply(
+      {
+        kind: "fixture.add",
+        fixture: {
+          id: -2,
+          definition: "bhs:test",
+          mode: "default",
+          addresses: [{ universe: 1, address: 31, footprint: 30 }],
+        },
+        placement: { position: [1, 2, 3], rotation: [0, 0, 0] },
+      },
+      s,
+    );
+    s = apply(
+      {
+        kind: "definition.set",
+        id: "bhs:test",
+        value: {
+          kind: "strip",
+          pixels: 20,
+          pitchMm: 50,
+          channelsPerPixel: 3,
+          primitive: "Cube" as const,
+        },
+      },
+      s,
+    );
+    s = apply(
+      { kind: "camera.saveView", name: "Side", view: { position: [8, 3, 0], target: [0, 1, 0] } },
+      s,
+    );
+    const docAfter = sceneToDocument(s);
+    // The mizer path-bearing patch block must still be verbatim — NOT shape-shifted to snapshot
+    expect(docAfter.patch).toEqual({ kind: "mizer", path: "/original/project.mizer" });
+  });
+
+  test("undo of a placement.set restores prior placement with patch untouched", () => {
+    const scene = sceneWithData();
+    const docBefore = sceneToDocument(scene);
+    // Apply a command and push to a history stack
+    const after = apply(
+      {
+        kind: "placement.set",
+        fixtureIds: [1],
+        placements: { "1": { position: [9, 9, 9], rotation: [0, 0, 0] } },
+      },
+      scene,
+    );
+    // Build a history entry like SceneCommands does (before=scene, after=result)
+    const history = [
+      {
+        command: {} as never,
+        before: structuredClone(scene),
+        after: structuredClone(after),
+        agent: false,
+      },
+    ];
+    // Drive the real undoEntry pure function — the same logic SceneCommands.undo uses
+    const undone = undoEntry(history, 1)!;
+    const docUndone = sceneToDocument(undone.scene);
+    // Placement is back to original
+    expect(undone.scene.overrides["1"]).toEqual(scene.overrides["1"]);
+    // Patch is untouched before, after, and undone
+    expect(docUndone.patch).toEqual(docBefore.patch);
   });
 });

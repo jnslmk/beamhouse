@@ -70,6 +70,15 @@ export interface PersistedScene {
   patchPath: string | null;
   /** Last ingested patch, keyed by integer fixture id. Only ingests write here. */
   patch: Record<string, PatchFixture>;
+  /**
+   * The .bhs patch-block kind from the last load or ingest.
+   * - `"mizer"` / `"mvr"` — path-bearing variants; sceneToDocument re-emits {kind, path} verbatim.
+   * - `null` — snapshot variant; sceneToDocument emits {kind:"snapshot", fixtures: scene.patch}.
+   *
+   * Retained so commands cannot shape-shift the patch block: a path-bearing
+   * patch stays path-bearing through N commands.
+   */
+  patchKind: "mizer" | "mvr" | null;
   /** Scene-wide atmosphere (ADR-0013.4, ADR-0013.6): stored, never defaulted at read. */
   atmosphere: SceneAtmosphere;
 }
@@ -129,7 +138,8 @@ export type SceneCommand =
     }
   | { kind: "definition.set"; id: string; value: BhsDefinition };
 
-interface HistoryEntry {
+/** One entry on the undo/redo stack, recording the full scene before and after the command. */
+export interface HistoryEntry {
   command: SceneCommand;
   before: PersistedScene;
   after: PersistedScene;
@@ -368,19 +378,19 @@ export class SceneCommands {
 
   undo(): void {
     if (!this.#owner) return;
-    const entry = this.#history[this.#cursor - 1];
-    if (!entry) return;
-    this.#scene = clone(entry.before);
-    this.#cursor -= 1;
+    const result = undoEntry(this.#history, this.#cursor);
+    if (!result) return;
+    this.#scene = result.scene;
+    this.#cursor = result.cursor;
     void this.#saveAndNotify();
   }
 
   redo(): void {
     if (!this.#owner) return;
-    const entry = this.#history[this.#cursor];
-    if (!entry) return;
-    this.#scene = clone(entry.after);
-    this.#cursor += 1;
+    const result = redoEntry(this.#history, this.#cursor);
+    if (!result) return;
+    this.#scene = result.scene;
+    this.#cursor = result.cursor;
     void this.#saveAndNotify();
   }
 
@@ -529,7 +539,7 @@ export class SceneCommands {
   }
 }
 
-function apply(command: SceneCommand, scene: PersistedScene): PersistedScene {
+export function apply(command: SceneCommand, scene: PersistedScene): PersistedScene {
   const after = clone(scene);
   if (command.kind === "placement.set") {
     for (const id of command.fixtureIds) {
@@ -771,6 +781,7 @@ export function normalize(value: unknown): PersistedScene {
       fixtures: {},
       patchPath: null,
       patch: {},
+      patchKind: null,
       atmosphere: { density: SCENE_DENSITY, beamLengthM: SCENE_BEAM_LENGTH_M },
     };
   const scene = value as Partial<PersistedScene>;
@@ -819,6 +830,7 @@ export function normalize(value: unknown): PersistedScene {
     fixtures,
     patchPath: typeof scene.patchPath === "string" ? scene.patchPath : null,
     patch,
+    patchKind: scene.patchKind === "mizer" || scene.patchKind === "mvr" ? scene.patchKind : null,
     atmosphere: normalizeAtmosphere(scene.atmosphere),
   };
 }
@@ -931,6 +943,7 @@ export function applyPatchIngest(
 ): PersistedScene {
   const after = clone(scene);
   after.patchPath = path;
+  after.patchKind = "mizer";
   after.patch = {};
   for (const fixture of patch.fixtures)
     after.patch[String(fixture.id)] = {
@@ -952,6 +965,7 @@ export function applyMvrIngest(
 ): PersistedScene {
   const after = clone(scene);
   after.patchPath = path;
+  after.patchKind = "mvr";
   after.patch = {};
   for (const fixture of ingest.patch.fixtures)
     after.patch[String(fixture.id)] = {
@@ -1265,4 +1279,30 @@ function clone(scene: PersistedScene): PersistedScene {
 
 function sameScene(left: PersistedScene, right: PersistedScene): boolean {
   return JSON.stringify(left) === JSON.stringify(right);
+}
+
+/**
+ * Pure undo: restore the scene before the last applied command.
+ * Returns null when there is nothing to undo.
+ */
+export function undoEntry(
+  history: readonly HistoryEntry[],
+  cursor: number,
+): { scene: PersistedScene; cursor: number } | null {
+  const entry = history[cursor - 1];
+  if (!entry) return null;
+  return { scene: structuredClone(entry.before), cursor: cursor - 1 };
+}
+
+/**
+ * Pure redo: re-apply the last undone command.
+ * Returns null when there is nothing to redo.
+ */
+export function redoEntry(
+  history: readonly HistoryEntry[],
+  cursor: number,
+): { scene: PersistedScene; cursor: number } | null {
+  const entry = history[cursor];
+  if (!entry) return null;
+  return { scene: structuredClone(entry.after), cursor: cursor + 1 };
 }
