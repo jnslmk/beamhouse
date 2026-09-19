@@ -13,7 +13,11 @@
       "typescript": "5.9.2"
     }
   },
+  "bin": {
+    "beamhouse": "bridge/src/bin.ts"
+  },
   "scripts": {
+    "beamhouse": "bun run --cwd bridge src/bin.ts",
     "build": "bun run --cwd app build",
     "dev": "bun run --cwd bridge dev",
     "format": "prettier --write app bridge packages tests .github README.md package.json tsconfig.json tsconfig.tests.json eslint.config.mjs .prettierrc .lintstagedrc",

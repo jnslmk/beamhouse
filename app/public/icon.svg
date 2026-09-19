@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="96" fill="#11100f"/>
+  <!-- stylised light-beam wedge from a lantern body, kept within center 80% for maskable safety -->
+  <g transform="rotate(-45 256 256)">
+    <rect x="216" y="96" width="80" height="64" rx="12" fill="#f5efdf"/>
+    <polygon points="216,160 296,160 400,346 112,346" fill="#e8d9a0"/>
+    <polygon points="236,160 276,160 320,266 192,266" fill="#f5efdf"/>
+  </g>
+</svg>
