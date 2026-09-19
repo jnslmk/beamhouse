@@ -9,9 +9,17 @@ export type BhsPatch =
   | { readonly kind: "mvr"; readonly path: string }
   | { readonly kind: "snapshot"; readonly fixtures: unknown };
 
+export interface BhsPreviewAsset {
+  readonly body: string;
+  readonly diffuser: string;
+}
+
+export type BhsPreviewAssets = Readonly<Record<string, BhsPreviewAsset>>;
+
 export interface BhsDocument {
   readonly patch: BhsPatch;
   readonly definitions?: Readonly<Record<string, BhsDefinition>>;
+  readonly assets?: BhsPreviewAssets;
   readonly fixtures?: readonly LocalFixture[];
   readonly density?: number;
   readonly beamLength?: number;
@@ -115,6 +123,7 @@ const KNOWN_TOP_LEVEL_KEYS: Record<string, true> = {
   patch: true,
   definitions: true,
   fixtures: true,
+  assets: true,
   overrides: true,
   density: true,
   beamLength: true,
@@ -134,12 +143,11 @@ const VALID_PRIMITIVES: Record<string, true> = {
 
 /**
  * Parse a .bhs document from JSON text. The loader is strict: any top-level
- * key other than `patch`, `definitions`, `fixtures`, `density`, `beamLength`,
- * or `views` is a `BhsUnknownKeyError`; `classes` and `emitters` have their
- * own named errors. `density` and `beamLength` are required — missing either
- * is a `BhsMissingPropertyError`. Returns the parsed object directly (key
- * order preserved by JSON.parse) so that round-trip serialization reproduces
- * compact input byte-identically.
+ * key other than `patch`, `definitions`, `fixtures`, `assets`, `density`,
+ * `beamLength`, or `views` is a `BhsUnknownKeyError`; `classes` and `emitters`
+ * have their own named errors. `density` and `beamLength` are required —
+ * `assets` contains project-relative preview meshes and never affects patch
+ * resolution.
  */
 export function parseBhs(text: string): BhsDocument {
   let parsed: unknown;
@@ -206,6 +214,9 @@ export function parseBhs(text: string): BhsDocument {
   if ("fixtures" in obj) {
     validateFixturesBlock(obj.fixtures);
   }
+  if ("assets" in obj) {
+    validateAssetsBlock(obj.assets);
+  }
 
   // Validate required scene properties: density and beamLength
   validateSceneProperties(obj);
@@ -221,6 +232,32 @@ export function parseBhs(text: string): BhsDocument {
   }
 
   return parsed as BhsDocument;
+}
+function validateAssetsBlock(value: unknown): void {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new BhsDefinitionError('"assets" must be an object');
+  }
+  for (const [id, asset] of Object.entries(value as Record<string, unknown>)) {
+    if (!id || typeof asset !== "object" || asset === null || Array.isArray(asset)) {
+      throw new BhsDefinitionError(`Preview assets for "${id}" must be an object`, id);
+    }
+    const entry = asset as Record<string, unknown>;
+    for (const key of ["body", "diffuser"]) {
+      const path = entry[key];
+      if (
+        typeof path !== "string" ||
+        path.length === 0 ||
+        path.startsWith("/") ||
+        path.includes("://") ||
+        path.split("/").includes("..")
+      ) {
+        throw new BhsDefinitionError(
+          `Preview asset "${id}.${key}" must be a non-empty relative URL`,
+          id,
+        );
+      }
+    }
+  }
 }
 
 function validateDefinitionsBlock(value: unknown): void {
@@ -549,6 +586,7 @@ export function sceneToDocument(scene: PersistedScene): BhsDocument {
     ...(Object.values(scene.fixtures).length > 0
       ? { fixtures: Object.values(scene.fixtures) }
       : {}),
+    ...(Object.keys(scene.assets ?? {}).length > 0 ? { assets: scene.assets } : {}),
     density: scene.atmosphere.density,
     beamLength: scene.atmosphere.beamLengthM,
     ...(Object.keys(overrides).length > 0 ? { overrides } : {}),

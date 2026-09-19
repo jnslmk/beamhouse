@@ -83,6 +83,7 @@ export interface Viewport {
   defineStageMesh(definitionId: string, template: THREE.Object3D): void;
   /** LED-profile spoke template: the body stays dark, the diffuser carries the pixel texture. */
   defineStripTemplate(definitionId: string, body: THREE.Object3D, diffuser: THREE.Object3D): void;
+  clearStripTemplates(): void;
   selectFixtures(ids: readonly number[]): void;
   setEditable(editable: boolean): void;
   setRenderMode(mode: "live" | "intensity"): void;
@@ -980,6 +981,9 @@ export function createViewport(
         diffuser,
         length: new THREE.Box3().setFromObject(body).getSize(new THREE.Vector3()).x,
       });
+    },
+    clearStripTemplates() {
+      stripTemplates.clear();
     },
     setAtmosphere(density, lengthM) {
       beamDensity = density;

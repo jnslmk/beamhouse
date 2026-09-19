@@ -71,6 +71,13 @@ describe("bhs document round-trip", () => {
     const doc = parseBhs(text);
     expect(serializeBhs(doc)).toBe(text);
   });
+  test("with scene-relative preview assets round-trips byte-identical", () => {
+    const text =
+      '{"patch":{"kind":"snapshot","fixtures":[]},"definitions":{"bhs:spoke":{"kind":"strip","pixels":23,"pitchMm":33.33,"channelsPerPixel":3,"primitive":"Cube"}},"assets":{"bhs:spoke":{"body":"meshes/body.glb","diffuser":"meshes/diffuser.glb"}},"density":0.32,"beamLength":10}';
+    const doc = parseBhs(text);
+    expect(doc.assets?.["bhs:spoke"]?.body).toBe("meshes/body.glb");
+    expect(serializeBhs(doc)).toBe(text);
+  });
 
   test("with gdtf fixture id round-trips byte-identical", () => {
     const text =
@@ -126,6 +133,17 @@ describe("bhs document validation", () => {
     expect(() => parseBhs('{"patch":{"kind":"mizer","path":"x"},"scene":{}}')).toThrow(
       BhsUnknownKeyError,
     );
+  });
+  test("rejects non-relative preview asset URLs", () => {
+    const prefix = '{"patch":{"kind":"mizer","path":"x"},"density":0.32,"beamLength":10,';
+    expect(() =>
+      parseBhs(`${prefix}"assets":{"bhs:spoke":{"body":"/body.glb","diffuser":"diffuser.glb"}}}`),
+    ).toThrow(BhsDefinitionError);
+    expect(() =>
+      parseBhs(
+        `${prefix}"assets":{"bhs:spoke":{"body":"https://host/body.glb","diffuser":"diffuser.glb"}}}`,
+      ),
+    ).toThrow(BhsDefinitionError);
   });
 
   test("rejects missing patch key", () => {

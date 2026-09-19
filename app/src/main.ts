@@ -5,8 +5,6 @@ import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { LiveFeed } from "./live-feed.ts";
 import {
   gledSceneFixtures,
-  referenceDefinitionId,
-  REFERENCE_STRIP_DEFINITION as referenceStripDefinitionId,
   referenceSceneDefinitions,
   referenceSceneFixtures,
   referenceScenePlacements,
@@ -22,8 +20,6 @@ import practicalGdtfUrl from "./stage/Beamhouse@generic E27 practical@v1.gdtf?ur
 import profileGdtfUrl from "./stage/Beamhouse@generic profile@v1.gdtf?url";
 import singerGlbUrl from "./stage/singer.glb?url";
 import trussGlbUrl from "./stage/truss.glb?url";
-import ledProfileBodyUrl from "./stage/led_profiles.previz_body.glb?url";
-import ledProfileDiffuserUrl from "./stage/led_profiles.previz_diffuser.glb?url";
 import {
   hasDefinition,
   hasMode,
@@ -47,6 +43,7 @@ import {
   type ShareSnapshot,
   type SnapshotScene,
 } from "./share.ts";
+import { parseBhs, type BhsPreviewAssets } from "./bhs.ts";
 import {
   alignTargets,
   distributeTargets,
@@ -283,7 +280,9 @@ let playbackScene: SnapshotScene | null = null;
 const gled2Stream = new URLSearchParams(location.search).has("gled2");
 
 function visibleFixtures(): LocalFixture[] {
-  const fixtures = new Map(referenceSceneFixtures.map((fixture) => [fixture.id, fixture]));
+  const fixtures = new Map(
+    (commands.isBhsScene() ? [] : referenceSceneFixtures).map((fixture) => [fixture.id, fixture]),
+  );
   // gled2's layout shadows the same-id reference spokes; commands still win below.
   if (gled2Stream) for (const fixture of gledSceneFixtures) fixtures.set(fixture.id, fixture);
   for (const fixture of commands.fixtures()) fixtures.set(fixture.id, fixture);
@@ -291,11 +290,15 @@ function visibleFixtures(): LocalFixture[] {
 }
 
 function visibleDefinitions(): Record<string, BhsDefinition> {
-  return { ...referenceSceneDefinitions, ...commands.definitions() };
+  return commands.isBhsScene()
+    ? { ...commands.definitions() }
+    : { ...referenceSceneDefinitions, ...commands.definitions() };
 }
 
 function visiblePlacements(): Map<number, Placement> {
-  const placements = new Map(referenceScenePlacements);
+  const placements = commands.isBhsScene()
+    ? new Map<number, Placement>()
+    : new Map(referenceScenePlacements);
   for (const [id, placement] of effectivePlacements()) placements.set(id, placement);
   return placements;
 }
@@ -437,6 +440,20 @@ async function maybeIngestPatch(): Promise<void> {
     renderSceneFixtures(visibleFixtures());
     return;
   }
+  if (path.toLowerCase().endsWith(".bhs")) {
+    try {
+      const document = parseBhs(new TextDecoder().decode(bytes));
+      commands.ingestBhs(document, path);
+      await loadBhsPreviewAssets(document.assets ?? {}, path);
+      syncSceneFixtures();
+      if (hadIssue) renderSceneFixtures(visibleFixtures());
+    } catch {
+      patchIssue = `Scene ${path} does not parse; keeping the last ingested scene.`;
+      renderSceneFixtures(visibleFixtures());
+    }
+    return;
+  }
+
   if (path.toLowerCase().endsWith(".mvr")) {
     await ingestMvrBytes(bytes, path);
     return;
@@ -548,12 +565,16 @@ async function loadStageMesh(
 }
 
 /** LED-profile spoke halves: aluminium body plus diffuser, Y-up, centred, diffuser UVs along the tube. */
-async function loadLedProfile(): Promise<{ body: Group; diffuser: Group } | null> {
+async function loadLedProfile(
+  bodyUrl: string,
+  diffuserUrl: string,
+): Promise<{ body: Group; diffuser: Group } | null> {
   try {
     const [bodyRoot, diffuserRoot] = await Promise.all(
-      [ledProfileBodyUrl, ledProfileDiffuserUrl].map(async (url) => {
-        const bytes = await (await fetch(url)).arrayBuffer();
-        return (await new GLTFLoader().parseAsync(bytes, "")).scene;
+      [bodyUrl, diffuserUrl].map(async (url) => {
+        const response = await fetch(url);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        return (await new GLTFLoader().parseAsync(await response.arrayBuffer(), "")).scene;
       }),
     );
     if (!bodyRoot || !diffuserRoot) return null;
@@ -591,6 +612,20 @@ async function loadLedProfile(): Promise<{ body: Group; diffuser: Group } | null
   }
 }
 
+async function loadBhsPreviewAssets(assets: BhsPreviewAssets, scenePath: string): Promise<void> {
+  viewportApi.clearStripTemplates();
+  const sceneUrl = new URL(scenePath, location.href);
+  await Promise.all(
+    Object.entries(assets).map(async ([definitionId, asset]) => {
+      const preview = await loadLedProfile(
+        new URL(asset.body, sceneUrl).href,
+        new URL(asset.diffuser, sceneUrl).href,
+      );
+      if (preview) viewportApi.defineStripTemplate(definitionId, preview.body, preview.diffuser);
+    }),
+  );
+}
+
 await registerHouseDefinitions();
 for (const [definitionId, mesh] of [
   [stageTrussDefinitionId, await loadStageMesh(trussGlbUrl, 2, false)],
@@ -598,11 +633,6 @@ for (const [definitionId, mesh] of [
 ] as const) {
   if (mesh) viewportApi.defineStageMesh(definitionId, mesh);
 }
-const ledProfile = await loadLedProfile();
-// A missing template keeps the proxy box: every strip stays lit, just square.
-if (ledProfile)
-  for (const id of [referenceStripDefinitionId, referenceDefinitionId, "bhs:stella-lamp"])
-    viewportApi.defineStripTemplate(id, ledProfile.body, ledProfile.diffuser);
 
 syncSceneFixtures();
 commands.onChanged(() => {
@@ -620,8 +650,8 @@ commands.onReload((path) => {
   pendingPatchPath = path;
   void maybeIngestPatch();
 });
-pendingPatchPath = commands.patchPath();
-void maybeIngestPatch();
+const scenePath = new URLSearchParams(location.search).get("scene");
+pendingPatchPath = scenePath ?? commands.patchPath();
 // The owning page applies control-channel requests; followers never see them.
 commands.onRequest((requestId, request) => void handleAgentRequest(requestId, request));
 required("#viewport").dataset.feed = resolvingFeed();

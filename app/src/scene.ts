@@ -6,6 +6,8 @@ import {
   type RegisteredDefinition,
 } from "./resolve.ts";
 
+import type { BhsDocument, BhsPreviewAssets } from "./bhs.ts";
+
 export interface Placement {
   position: [number, number, number];
   rotation: [number, number, number];
@@ -66,19 +68,17 @@ export interface PersistedScene {
   arrays: Record<string, ArrayDef>;
   definitions: Record<string, BhsDefinition>;
   fixtures: Record<string, LocalFixture>;
-  /** Watched Mizer project this patch was ingested from; null before the first ingest. */
+  assets?: BhsPreviewAssets;
+  /** Watched patch or .bhs project this scene was ingested from. */
   patchPath: string | null;
   /** Last ingested patch, keyed by integer fixture id. Only ingests write here. */
   patch: Record<string, PatchFixture>;
   /**
-   * The .bhs patch-block kind from the last load or ingest.
-   * - `"mizer"` / `"mvr"` — path-bearing variants; sceneToDocument re-emits {kind, path} verbatim.
-   * - `null` — snapshot variant; sceneToDocument emits {kind:"snapshot", fixtures: scene.patch}.
-   *
-   * Retained so commands cannot shape-shift the patch block: a path-bearing
-   * patch stays path-bearing through N commands.
+   * The patch-block kind from the last load or ingest.
+   * - `"mizer"` / `"mvr"` / `"bhs"` — path-bearing variants.
+   * - `null` — snapshot variant.
    */
-  patchKind: "mizer" | "mvr" | null;
+  patchKind: "mizer" | "mvr" | "bhs" | null;
   /** Scene-wide atmosphere (ADR-0013.4, ADR-0013.6): stored, never defaulted at read. */
   atmosphere: SceneAtmosphere;
 }
@@ -277,6 +277,14 @@ export class SceneCommands {
     return this.#scene.definitions;
   }
 
+  assets(): BhsPreviewAssets {
+    return this.#scene.assets ?? {};
+  }
+
+  isBhsScene(): boolean {
+    return this.#scene.patchKind === "bhs";
+  }
+
   fixtures(): readonly LocalFixture[] {
     // The rendered patch is ingested patch plus local contributions; every
     // consumer (viewport, resolution, subscriptions, lists) routes through here.
@@ -299,6 +307,49 @@ export class SceneCommands {
   ingestMvr(ingest: MvrIngest, path: string): void {
     if (!this.#owner) return;
     const after = applyMvrIngest(this.#scene, ingest, path);
+    if (sameScene(this.#scene, after)) return;
+    this.#scene = after;
+    void this.#saveAndNotify();
+  }
+  /** Ingest a project document, replacing the project-owned scene state. */
+  ingestBhs(document: BhsDocument, path: string): void {
+    if (!this.#owner) return;
+    const definitions = { ...document.definitions };
+    const fixtures = Object.fromEntries(
+      (document.fixtures ?? []).map((fixture) => [String(fixture.id), { ...fixture }]),
+    );
+    const patch = Object.fromEntries(
+      (document.fixtures ?? []).map((fixture) => [String(fixture.id), { ...fixture }]),
+    );
+    const overrides: Record<string, Placement> = {};
+    for (const [id, value] of Object.entries(document.overrides ?? {})) {
+      overrides[id] = {
+        position: [...value.pos],
+        rotation: [...value.rot],
+      };
+    }
+    const views: Record<string, CameraView> = {};
+    for (const [id, value] of Object.entries(document.views ?? {})) {
+      views[id] = {
+        position: [...value.position],
+        target: [...value.target],
+      };
+    }
+    const after = normalize({
+      overrides,
+      views,
+      arrays: {},
+      definitions,
+      fixtures,
+      assets: document.assets ?? {},
+      patchPath: path,
+      patch,
+      patchKind: "bhs",
+      atmosphere: {
+        density: document.density,
+        beamLengthM: document.beamLength,
+      },
+    });
     if (sameScene(this.#scene, after)) return;
     this.#scene = after;
     void this.#saveAndNotify();
@@ -779,6 +830,7 @@ export function normalize(value: unknown): PersistedScene {
       arrays: {},
       definitions: {},
       fixtures: {},
+      assets: {},
       patchPath: null,
       patch: {},
       patchKind: null,
@@ -805,6 +857,8 @@ export function normalize(value: unknown): PersistedScene {
       if (valid && String(valid.id) === id) fixtures[id] = valid;
     }
   }
+  const assets: BhsPreviewAssets =
+    scene.assets && typeof scene.assets === "object" ? scene.assets : {};
   const patch: Record<string, PatchFixture> = {};
   if (scene.patch && typeof scene.patch === "object") {
     for (const [id, fixture] of Object.entries(scene.patch)) {
@@ -828,9 +882,13 @@ export function normalize(value: unknown): PersistedScene {
     arrays,
     definitions,
     fixtures,
+    assets,
     patchPath: typeof scene.patchPath === "string" ? scene.patchPath : null,
     patch,
-    patchKind: scene.patchKind === "mizer" || scene.patchKind === "mvr" ? scene.patchKind : null,
+    patchKind:
+      scene.patchKind === "mizer" || scene.patchKind === "mvr" || scene.patchKind === "bhs"
+        ? scene.patchKind
+        : null,
     atmosphere: normalizeAtmosphere(scene.atmosphere),
   };
 }
@@ -934,7 +992,6 @@ function isPatchFixture(value: unknown): value is PatchFixture {
     fixture.addresses.every(isBreakAddress)
   );
 }
-
 /** Re-ingest replaces the patch record and source path wholesale; every other layer is untouched. */
 export function applyPatchIngest(
   scene: PersistedScene,
@@ -944,6 +1001,7 @@ export function applyPatchIngest(
   const after = clone(scene);
   after.patchPath = path;
   after.patchKind = "mizer";
+  after.assets = {};
   after.patch = {};
   for (const fixture of patch.fixtures)
     after.patch[String(fixture.id)] = {
@@ -966,6 +1024,7 @@ export function applyMvrIngest(
   const after = clone(scene);
   after.patchPath = path;
   after.patchKind = "mvr";
+  after.assets = {};
   after.patch = {};
   for (const fixture of ingest.patch.fixtures)
     after.patch[String(fixture.id)] = {
