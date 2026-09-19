@@ -599,9 +599,9 @@ for (const [definitionId, mesh] of [
   if (mesh) viewportApi.defineStageMesh(definitionId, mesh);
 }
 const ledProfile = await loadLedProfile();
-// A missing template keeps the proxy box: the spokes stay lit, just square.
+// A missing template keeps the proxy box: every strip stays lit, just square.
 if (ledProfile)
-  for (const id of [referenceStripDefinitionId, referenceDefinitionId])
+  for (const id of [referenceStripDefinitionId, referenceDefinitionId, "bhs:stella-lamp"])
     viewportApi.defineStripTemplate(id, ledProfile.body, ledProfile.diffuser);
 
 syncSceneFixtures();
