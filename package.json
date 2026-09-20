@@ -1,7 +1,16 @@
 {
   "name": "beamhouse",
-  "private": true,
+  "version": "0.1.0",
   "packageManager": "bun@1.3.14",
+  "main": "electron/dist/main.cjs",
+  "bin": {
+    "beamhouse": "electron/bin.js"
+  },
+  "files": [
+    "app/dist",
+    "electron/dist",
+    "electron/bin.js"
+  ],
   "workspaces": {
     "packages": [
       "app",
@@ -13,26 +22,31 @@
       "typescript": "5.9.2"
     }
   },
-  "bin": {
-    "beamhouse": "bridge/src/bin.ts"
+  "optionalDependencies": {
+    "electron": "44.4.3"
   },
   "scripts": {
-    "beamhouse": "bun run --cwd bridge src/bin.ts",
+    "beamhouse": "bun run build:electron && node electron/bin.js",
     "build": "bun run --cwd app build",
+    "build:electron": "bun build electron/main.ts --outfile electron/dist/main.cjs --target=node --format=cjs --packages bundle",
+    "dist": "bun run build:electron && electron-builder --linux AppImage --publish never",
+    "dist:dir": "bun run build:electron && electron-builder --linux --dir --publish never",
     "dev": "bun run --cwd bridge dev",
-    "format": "prettier --write app bridge packages tests .github README.md package.json tsconfig.json tsconfig.tests.json eslint.config.mjs .prettierrc .lintstagedrc",
-    "format:check": "prettier --check app bridge packages tests .github README.md package.json tsconfig.json tsconfig.tests.json eslint.config.mjs .prettierrc .lintstagedrc",
+    "format": "prettier --write app bridge packages tests electron .github README.md package.json tsconfig.json tsconfig.tests.json eslint.config.mjs .prettierrc .lintstagedrc",
+    "format:check": "prettier --check app bridge packages tests electron .github README.md package.json tsconfig.json tsconfig.tests.json eslint.config.mjs .prettierrc .lintstagedrc",
     "lint": "eslint .",
     "start": "bun run --cwd bridge start",
     "test": "bun test --timeout 20000",
     "test:local": "bun test --timeout 20000 --path-ignore-patterns 'tests/product.test.ts'",
     "test:browser": "bun test --timeout 180000 tests/product.test.ts",
-    "typecheck": "bun run --cwd packages/wire typecheck && bun run --cwd packages/gdtf-ts typecheck && bun run --cwd bridge typecheck && bun run --cwd app typecheck && tsc -p tsconfig.tests.json",
+    "typecheck": "bun run --cwd packages/wire typecheck && bun run --cwd packages/gdtf-ts typecheck && bun run --cwd bridge typecheck && bun run --cwd app typecheck && tsc -p electron/tsconfig.json && tsc -p tsconfig.tests.json",
+    "prepack": "bun run build && bun run build:electron",
     "prepare": "husky && bun run build"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
     "@types/bun": "catalog:",
+    "electron-builder": "26.15.3",
     "eslint": "10.9.1",
     "husky": "9.1.7",
     "lint-staged": "17.4.1",

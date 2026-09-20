@@ -1,3 +1,4 @@
+import { pathToFileURL } from "node:url";
 // One MCP server over the bridge control channel (ADR-0026, ADR-0028).
 //
 // The server is a client of the control channel: it joins the bridge as a
@@ -357,11 +358,13 @@ export class McpBridgeClient {
   >();
   #ready: Promise<void>;
   #resolveReady!: () => void;
+  private readonly bridgeUrl: string;
+  private readonly timeoutMs: number;
 
-  constructor(
-    private readonly bridgeUrl: string,
-    private readonly timeoutMs = 15_000,
-  ) {
+  constructor(bridgeUrl: string, timeoutMs = 15_000) {
+    // Explicit fields: node's type stripper rejects constructor parameter properties.
+    this.bridgeUrl = bridgeUrl;
+    this.timeoutMs = timeoutMs;
     this.#ready = new Promise<void>((resolve) => (this.#resolveReady = resolve));
   }
 
@@ -434,7 +437,7 @@ export class McpBridgeClient {
   }
 }
 
-if (import.meta.main) {
+async function runMcp(): Promise<void> {
   const bridgeUrl = process.env.BEAMHOUSE_BRIDGE_URL ?? "http://127.0.0.1:7070";
   const client = new McpBridgeClient(bridgeUrl);
   await client.connect();
@@ -508,7 +511,9 @@ if (import.meta.main) {
     const response = await handleJsonRpc(parsed, ctx);
     if (response) console.log(JSON.stringify(response));
   };
-  for await (const chunk of Bun.stdin.stream() as unknown as AsyncIterable<Uint8Array>) {
+  // process.stdin is async-iterable in node; chunks arrive as Buffers and the
+  // TextDecoder above already accepts them.
+  for await (const chunk of process.stdin as AsyncIterable<Uint8Array>) {
     buffer += decoder.decode(chunk, { stream: true });
     const lines = buffer.split("\n");
     buffer = lines.pop() ?? "";
@@ -516,4 +521,8 @@ if (import.meta.main) {
   }
   if (buffer.trim().length > 0) await handleLine(buffer);
   client.close();
+}
+
+if (!process.versions.electron && import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
+  void runMcp();
 }

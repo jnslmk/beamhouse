@@ -1,0 +1,15 @@
+appId: dev.beamhouse.app
+productName: Beamhouse
+executableName: beamhouse
+directories:
+  app: .
+  output: electron/release
+files:
+  - electron/dist/main.cjs
+  - app/dist/**/*
+  - package.json
+linux:
+  target:
+    - AppImage
+  icon: app/public/icon-512.png
+  category: Utility

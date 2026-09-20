@@ -1,5 +1,7 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test } from "bun:test";
+import { spawn, type ChildProcess } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { once } from "node:events";
 import { createServer } from "node:net";
 import { createSocket } from "node:dgram";
 import { tmpdir } from "node:os";
@@ -16,7 +18,7 @@ const auditPath = resolve(repository, ".codex-tmp/udp-send-audit.log");
 // every browser test so multi-second actionability waits fail alone, never cascade.
 const BROWSER_TEST_TIMEOUT = 120_000;
 const BROWSER_HEAVY_TIMEOUT = 180_000;
-let bridge: Bun.Subprocess;
+let bridge: ChildProcess;
 let browser: Browser;
 let context: BrowserContext;
 let page: Page;
@@ -80,7 +82,7 @@ describe("running Beamhouse", () => {
     await context?.close();
     await browser?.close();
     bridge?.kill("SIGTERM");
-    await bridge?.exited;
+    if (bridge) await childExit(bridge);
   });
 
   test(
@@ -97,11 +99,13 @@ describe("running Beamhouse", () => {
       sacnPort = await freeUdpPort();
       artnetPort = await freeUdpPort();
       const startedAt = performance.now();
-      bridge = Bun.spawn(["bun", "run", "start"], {
+      // The bridge's real runtime is node (ADR-0047); preload the passive
+      // dgram audit with Node's native module hook.
+      bridge = spawn("node", ["bridge/src/main.ts"], {
         cwd: repository,
         env: {
           ...process.env,
-          BUN_OPTIONS: `--preload=${resolve(repository, "tests/udp-send-audit.ts")}`,
+          NODE_OPTIONS: `--import=${resolve(repository, "tests/udp-send-audit.ts")}`,
           BEAMHOUSE_HOST: "127.0.0.1",
           BEAMHOUSE_PORT: String(httpPort),
           BEAMHOUSE_SACN_PORT: String(sacnPort),
@@ -110,8 +114,7 @@ describe("running Beamhouse", () => {
           BEAMHOUSE_ARTNET_STALE_MS: "400",
           BEAMHOUSE_UDP_AUDIT: auditPath,
         },
-        stdout: "pipe",
-        stderr: "pipe",
+        stdio: "pipe",
       });
       await waitUntilReachable(`http://127.0.0.1:${httpPort}`);
       await page.goto(`http://127.0.0.1:${httpPort}`, {
@@ -1662,7 +1665,7 @@ describe("running Beamhouse", () => {
         const recordSacn = await freeUdpPort();
         const recordArt = await freeUdpPort();
         const take = join(watchDir, "take.bhr");
-        const recorder = Bun.spawn(["bun", "bridge/src/main.ts", "--record", take], {
+        const recorder = spawn("node", ["bridge/src/main.ts", "--record", take], {
           cwd: repository,
           env: {
             ...process.env,
@@ -1672,8 +1675,7 @@ describe("running Beamhouse", () => {
             BEAMHOUSE_ARTNET_PORT: String(recordArt),
             BEAMHOUSE_WATCH_DIR: watchDir,
           },
-          stdout: "pipe",
-          stderr: "pipe",
+          stdio: "pipe",
         });
         try {
           await waitUntilReachable("http://127.0.0.1:" + recordHttp, recorder);
@@ -1728,7 +1730,7 @@ describe("running Beamhouse", () => {
             await desk.close();
           }
           recorder.kill("SIGTERM");
-          await recorder.exited;
+          await childExit(recorder);
           const raw = readFileSync(take);
           const taken = new Recording(new Uint8Array(raw.buffer, raw.byteOffset, raw.byteLength));
           expect(taken.memberCount).toBeGreaterThanOrEqual(1);
@@ -1739,7 +1741,7 @@ describe("running Beamhouse", () => {
           );
         } finally {
           if (recorder.exitCode === null) recorder.kill("SIGTERM");
-          await recorder.exited;
+          await childExit(recorder);
         }
       } finally {
         rmSync(scratch, { recursive: true, force: true });
@@ -2240,8 +2242,8 @@ describe("running Beamhouse", () => {
       const watchHttp = await freeTcpPort();
       const watchSacn = await freeUdpPort();
       const watchArtnet = await freeUdpPort();
-      // Spawned directly (not via `bun run`) so SIGTERM lands on the process owning the handler.
-      const patchBridge = Bun.spawn(["bun", "src/main.ts"], {
+      // Spawned directly so SIGTERM lands on the process owning the handler.
+      const patchBridge = spawn("node", ["src/main.ts"], {
         cwd: resolve(repository, "bridge"),
         env: {
           ...process.env,
@@ -2251,8 +2253,7 @@ describe("running Beamhouse", () => {
           BEAMHOUSE_ARTNET_PORT: String(watchArtnet),
           BEAMHOUSE_WATCH_DIR: watchDir,
         },
-        stdout: "pipe",
-        stderr: "pipe",
+        stdio: "pipe",
       });
       const patchPage = await browser.newPage({ viewport: { width: 1280, height: 800 } });
       try {
@@ -2335,12 +2336,12 @@ describe("running Beamhouse", () => {
         // Bridge shutdown occasionally ignores SIGTERM; SIGKILL always lands.
         patchBridge.kill("SIGTERM");
         const exited = await Promise.race([
-          patchBridge.exited.then(() => true),
+          childExit(patchBridge).then(() => true),
           Bun.sleep(5_000).then(() => false),
         ]);
         if (!exited) {
           patchBridge.kill("SIGKILL");
-          await patchBridge.exited;
+          await childExit(patchBridge);
         }
         rmSync(watchDir, { recursive: true, force: true });
       }
@@ -2360,7 +2361,7 @@ describe("running Beamhouse", () => {
       const watchHttp = await freeTcpPort();
       const watchSacn = await freeUdpPort();
       const watchArtnet = await freeUdpPort();
-      const mvrBridge = Bun.spawn(["bun", "src/main.ts"], {
+      const mvrBridge = spawn("node", ["src/main.ts"], {
         cwd: resolve(repository, "bridge"),
         env: {
           ...process.env,
@@ -2370,8 +2371,7 @@ describe("running Beamhouse", () => {
           BEAMHOUSE_ARTNET_PORT: String(watchArtnet),
           BEAMHOUSE_WATCH_DIR: watchDir,
         },
-        stdout: "pipe",
-        stderr: "pipe",
+        stdio: "pipe",
       });
       const mvrPage = await browser.newPage({ viewport: { width: 1280, height: 800 } });
       try {
@@ -2480,12 +2480,12 @@ describe("running Beamhouse", () => {
         await mvrPage.close();
         mvrBridge.kill("SIGTERM");
         const exited = await Promise.race([
-          mvrBridge.exited.then(() => true),
+          childExit(mvrBridge).then(() => true),
           Bun.sleep(5_000).then(() => false),
         ]);
         if (!exited) {
           mvrBridge.kill("SIGKILL");
-          await mvrBridge.exited;
+          await childExit(mvrBridge);
         }
         rmSync(watchDir, { recursive: true, force: true });
       }
@@ -3167,7 +3167,13 @@ async function freeUdpPort(): Promise<number> {
   return address.port;
 }
 
-async function waitUntilReachable(url: string, owner: Bun.Subprocess = bridge): Promise<void> {
+/** Bun.Subprocess exposed `.exited`; node children answer through the exit event. */
+function childExit(child: ChildProcess): Promise<number | null> {
+  if (child.exitCode !== null || child.signalCode !== null) return Promise.resolve(child.exitCode);
+  return once(child, "exit").then(() => child.exitCode);
+}
+
+async function waitUntilReachable(url: string, owner: ChildProcess = bridge): Promise<void> {
   const deadline = Date.now() + 30_000;
   while (Date.now() < deadline) {
     if (owner.exitCode !== null) {

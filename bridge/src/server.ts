@@ -1,13 +1,18 @@
-import { watch } from "node:fs";
+import { createReadStream, watch } from "node:fs";
+import { access, appendFile, writeFile } from "node:fs/promises";
+import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { createSocket, type Socket } from "node:dgram";
 import { once } from "node:events";
-import { basename, resolve, sep } from "node:path";
+import { basename, extname, resolve, sep } from "node:path";
+import { Readable } from "node:stream";
+import type { ReadableStream as NodeReadableStream } from "node:stream/web";
+import { gzipSync } from "node:zlib";
+import { WebSocketServer, type WebSocket } from "ws";
 import { Receiver, type Packet } from "sacn";
 import { encodeFrame, encodeRecordMember, prefixFrame, RECORD_MEMBER_MS } from "@beamhouse/wire";
 import { parseArtDmx, parseSacn } from "./protocols.ts";
 import { BroadcastGate, groupBySubscription, subscriptionKey } from "./frame-dedup.ts";
 import { UniverseStore } from "./universe-store.ts";
-import { appendFile, writeFile } from "node:fs/promises";
 import type { UniverseFrame } from "@beamhouse/wire";
 import { createCaptureStore, validateCaptureUpload, type CaptureStore } from "./mcp.ts";
 
@@ -18,7 +23,8 @@ interface ClientData {
   lastLiveness: number;
 }
 
-type ControlSocket = Bun.ServerWebSocket<ClientData>;
+/** ws socket carrying the per-client state Bun used to store in its upgrade data. */
+type ControlSocket = WebSocket & { data: ClientData };
 
 interface PendingTakeover {
   requestId: number;
@@ -97,64 +103,97 @@ export async function startBridge(config: BridgeConfig): Promise<RunningBridge> 
   await once(artnet, "listening");
 
   const watchPrefix = basename(config.watchDirectory);
-  const server = Bun.serve<ClientData>({
-    hostname: config.hostname,
-    port: config.httpPort,
-    fetch(request, serverInstance) {
-      const url = new URL(request.url);
-      if (url.pathname === "/ws") {
-        return serverInstance.upgrade(request, {
-          data: { subscriptions: new Set(), lastHealth: "", controlId: null, lastLiveness: 0 },
-        })
-          ? undefined
-          : new Response("WebSocket upgrade failed", { status: 400 });
-      }
-      if (url.pathname.startsWith("/capture/")) {
-        return handleCapture(request, url.pathname.slice("/capture/".length), captures);
-      }
-      // Reload paths are watch-relative (`shows/rig.yml`), so the watched bytes
-      // are served under the same prefix; parsing stays in the browser.
-      if (url.pathname === `/${watchPrefix}` || url.pathname.startsWith(`/${watchPrefix}/`)) {
-        return serveWatched(request, url, config.watchDirectory, watchPrefix);
-      }
-      return serveApp(request, url, config.appDirectory);
-    },
-    websocket: {
-      open(socket) {
-        clients.add(socket);
-      },
-      message(socket, message) {
-        if (typeof message !== "string") return;
-        if (handleControl(socket, message)) return;
-        const subscriptions = parseSubscription(message);
-        if (!subscriptions) return;
-        socket.data.subscriptions = subscriptions;
-        reconcileMemberships();
-        sendHealth(socket, true);
-      },
-      close(socket) {
-        clients.delete(socket);
-        const ownerGone = socket === owner;
-        for (const [relayId, pending] of pendingRelay) {
-          if (pending.requester !== socket && !ownerGone) continue;
-          clearTimeout(pending.timer);
-          pendingRelay.delete(relayId);
-          if (pending.requester !== socket)
-            pending.requester.send(
-              JSON.stringify({
-                op: "response",
-                requestId: pending.requestId,
-                ok: false,
-                error: "owning page disconnected",
-              }),
-            );
-        }
-        if (socket === owner) releaseOwner();
-        else if (socket === pendingTakeover?.candidate) cancelTakeover();
-        reconcileMemberships();
-      },
-    },
+  async function route(request: Request): Promise<Response> {
+    const url = new URL(request.url);
+    // Without an Upgrade header this never reaches the "upgrade" handler below;
+    // keep Bun.serve's answer for a WebSocket path that cannot upgrade.
+    if (url.pathname === "/ws") {
+      return new Response("WebSocket upgrade failed", { status: 400 });
+    }
+    if (url.pathname.startsWith("/capture/")) {
+      return handleCapture(request, url.pathname.slice("/capture/".length), captures);
+    }
+    // Reload paths are watch-relative (`shows/rig.yml`), so the watched bytes
+    // are served under the same prefix; parsing stays in the browser.
+    if (url.pathname === `/${watchPrefix}` || url.pathname.startsWith(`/${watchPrefix}/`)) {
+      return serveWatched(request, url, config.watchDirectory, watchPrefix);
+    }
+    return serveApp(request, url, config.appDirectory);
+  }
+  const server = createServer((request, response) => {
+    void serveWebResponse(request, response);
   });
+  const sockets = new WebSocketServer({ noServer: true });
+  server.on("upgrade", (request, socket, head) => {
+    if (new URL(request.url ?? "/", "http://localhost").pathname !== "/ws") {
+      socket.destroy();
+      return;
+    }
+    sockets.handleUpgrade(request, socket, head, (socket) => {
+      const client = socket as ControlSocket;
+      client.data = { subscriptions: new Set(), lastHealth: "", controlId: null, lastLiveness: 0 };
+      sockets.emit("connection", client, request);
+    });
+  });
+  sockets.on("connection", (raw) => {
+    const socket = raw as ControlSocket;
+    clients.add(socket);
+    socket.on("message", (data: unknown, isBinary: boolean) => {
+      // ws hands text frames over as Buffers; isBinary is the text/binary gate
+      // that Bun's `typeof message === "string"` check used to be.
+      if (isBinary) return;
+      const message = typeof data === "string" ? data : String(data);
+      if (handleControl(socket, message)) return;
+      const subscriptions = parseSubscription(message);
+      if (!subscriptions) return;
+      socket.data.subscriptions = subscriptions;
+      reconcileMemberships();
+      sendHealth(socket, true);
+    });
+    socket.on("close", () => {
+      clients.delete(socket);
+      const ownerGone = socket === owner;
+      for (const [relayId, pending] of pendingRelay) {
+        if (pending.requester !== socket && !ownerGone) continue;
+        clearTimeout(pending.timer);
+        pendingRelay.delete(relayId);
+        if (pending.requester !== socket)
+          pending.requester.send(
+            JSON.stringify({
+              op: "response",
+              requestId: pending.requestId,
+              ok: false,
+              error: "owning page disconnected",
+            }),
+          );
+      }
+      if (socket === owner) releaseOwner();
+      else if (socket === pendingTakeover?.candidate) cancelTakeover();
+      reconcileMemberships();
+    });
+  });
+  server.listen(config.httpPort, config.hostname);
+  await once(server, "listening");
+  const address = server.address();
+  const port = typeof address === "object" && address !== null ? address.port : config.httpPort;
+
+  /** Node request in, Web Response out: handlers above and below stay Web-shaped. */
+  async function serveWebResponse(
+    request: IncomingMessage,
+    response: ServerResponse,
+  ): Promise<void> {
+    const webResponse = await route(toWebRequest(request));
+    const headers: Record<string, string> = {};
+    webResponse.headers.forEach((value, key) => {
+      headers[key] = value;
+    });
+    response.writeHead(webResponse.status, headers);
+    if (!webResponse.body) {
+      response.end();
+      return;
+    }
+    Readable.fromWeb(webResponse.body as unknown as NodeReadableStream).pipe(response);
+  }
 
   // Idle-frame gating: one shared immutable encoding per subscription set per
   // tick, skip-on-identical payloads, heartbeat so quiet never reads as dead.
@@ -408,8 +447,9 @@ export async function startBridge(config: BridgeConfig): Promise<RunningBridge> 
     }
   }
 
+  const urlHost = config.hostname.includes(":") ? `[${config.hostname}]` : config.hostname;
   return {
-    url: server.url.toString().replace(/\/$/, ""),
+    url: new URL(`http://${urlHost}:${port}/`).toString().replace(/\/$/, ""),
     async stop() {
       clearInterval(frameTimer);
       // Flush the partial member so even a short take stays a readable .bhr.
@@ -417,7 +457,10 @@ export async function startBridge(config: BridgeConfig): Promise<RunningBridge> 
       clearInterval(healthTimer);
       clearInterval(ownershipTimer);
       for (const client of clients) client.close(1001, "bridge stopping");
-      await server.stop(true);
+      sockets.close();
+      server.close();
+      server.closeAllConnections();
+      await once(server, "close");
       patchWatcher.close();
       await new Promise<void>((done) => artnet.close(done));
       await new Promise<void>((done) => sacn.close(done));
@@ -458,7 +501,7 @@ function createRecorder(path: string): Recorder {
       .then(() =>
         appendFile(
           path,
-          encodeRecordMember(pending, (raw) => Bun.gzipSync(raw)),
+          encodeRecordMember(pending, (raw) => gzipSync(raw)),
         ),
       )
       .catch((error: unknown) => {
@@ -538,6 +581,50 @@ function parseSubscription(message: string): Set<number> | null {
   }
 }
 
+/** Adapter: node request in, Web Request out — every handler keeps its Web shape. */
+function toWebRequest(request: IncomingMessage): Request {
+  const init: RequestInit & { duplex?: "half" } = {
+    method: request.method ?? "GET",
+    headers: request.headers as Record<string, string>,
+  };
+  if (init.method !== "GET" && init.method !== "HEAD") {
+    init.body = Readable.toWeb(request) as unknown as ReadableStream<Uint8Array>;
+    init.duplex = "half";
+  }
+  return new Request(`http://${request.headers.host ?? "localhost"}${request.url ?? "/"}`, init);
+}
+
+// Bun.file inferred this from the extension; these are the types the app bundle
+// and its assets actually travel as. Unknown extensions stay opaque bytes.
+const CONTENT_TYPES: Record<string, string> = {
+  css: "text/css",
+  gif: "image/gif",
+  glb: "model/gltf-binary",
+  htm: "text/html; charset=utf-8",
+  html: "text/html; charset=utf-8",
+  ico: "image/x-icon",
+  jpeg: "image/jpeg",
+  jpg: "image/jpeg",
+  js: "text/javascript",
+  json: "application/json",
+  mjs: "text/javascript",
+  png: "image/png",
+  svg: "image/svg+xml",
+  txt: "text/plain; charset=utf-8",
+  wasm: "application/wasm",
+  webmanifest: "application/manifest+json",
+  xml: "application/xml",
+};
+
+function contentType(absolutePath: string): string {
+  return CONTENT_TYPES[extname(absolutePath).slice(1).toLowerCase()] ?? "application/octet-stream";
+}
+
+/** GLB models stream off disk; buffering a model per request would spike RSS. */
+function fileBody(absolutePath: string): ReadableStream<Uint8Array> {
+  return Readable.toWeb(createReadStream(absolutePath)) as unknown as ReadableStream<Uint8Array>;
+}
+
 async function serveApp(request: Request, url: URL, appDirectory: string): Promise<Response> {
   if (request.method !== "GET" && request.method !== "HEAD") {
     return new Response("Method not allowed", { status: 405 });
@@ -549,10 +636,14 @@ async function serveApp(request: Request, url: URL, appDirectory: string): Promi
   if (absolutePath !== appRoot && !absolutePath.startsWith(`${appRoot}${sep}`)) {
     return new Response("Not found", { status: 404 });
   }
-  const file = Bun.file(absolutePath);
-  if (!(await file.exists())) return new Response("Not found", { status: 404 });
-  return new Response(request.method === "HEAD" ? null : file, {
+  try {
+    await access(absolutePath);
+  } catch {
+    return new Response("Not found", { status: 404 });
+  }
+  return new Response(request.method === "HEAD" ? null : fileBody(absolutePath), {
     headers: {
+      "Content-Type": contentType(absolutePath),
       "Cache-Control":
         relativePath === "index.html" ? "no-cache" : "public, max-age=31536000, immutable",
     },
@@ -580,9 +671,15 @@ async function serveWatched(
   if (!absolutePath.startsWith(`${watchRoot}${sep}`)) {
     return new Response("Not found", { status: 404 });
   }
-  const file = Bun.file(absolutePath);
-  if (!(await file.exists())) return new Response("Not found", { status: 404 });
-  return new Response(request.method === "HEAD" ? null : file, {
-    headers: { "Cache-Control": "no-cache" },
+  try {
+    await access(absolutePath);
+  } catch {
+    return new Response("Not found", { status: 404 });
+  }
+  return new Response(request.method === "HEAD" ? null : fileBody(absolutePath), {
+    headers: {
+      "Content-Type": contentType(absolutePath),
+      "Cache-Control": "no-cache",
+    },
   });
 }

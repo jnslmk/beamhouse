@@ -10,10 +10,12 @@
   },
   "dependencies": {
     "@beamhouse/wire": "workspace:*",
-    "sacn": "4.6.2"
+    "sacn": "4.6.2",
+    "ws": "8.21.3"
   },
   "devDependencies": {
     "@types/bun": "catalog:",
+    "@types/ws": "8.18.1",
     "typescript": "catalog:"
   }
 }

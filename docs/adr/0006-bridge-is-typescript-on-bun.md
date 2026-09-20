@@ -1,6 +1,6 @@
 # ADR-0006: The bridge is TypeScript on Bun
 
-- **Status:** Accepted
+- **Status:** Superseded by ADR-0047
 - **Date:** 2026-09-01
 - **Decides:** [#10](https://github.com/jnslmk/beamhouse/issues/10)
 
