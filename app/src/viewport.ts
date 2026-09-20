@@ -898,7 +898,9 @@ export function createViewport(
       renderMode = mode;
       // Cones leave the intensity map at once; pools render unchanged there.
       let cones = 0;
-      for (const entry of localBeams.values()) {
+      for (const id of localFixtures.keys()) {
+        const entry = localBeams.get(id);
+        if (!entry) continue;
         entry.cone.visible = entry.lit && mode === "live";
         if (entry.cone.visible) cones += 1;
       }
