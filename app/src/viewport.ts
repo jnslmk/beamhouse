@@ -763,8 +763,9 @@ export function createViewport(
         beam.pool.visible = false;
       }
     }
-    for (const entry of localBeams.values()) {
-      if (!entry.lit) continue;
+    for (const id of localFixtures.keys()) {
+      const entry = localBeams.get(id);
+      if (!entry?.lit) continue;
       if (entry.cone.visible) cones += 1;
       if (entry.pool.visible) pools += 1;
     }

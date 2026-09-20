@@ -1461,14 +1461,14 @@ function bindFixtureRows(): void {
     fixtureSelectionBound = true;
     document.addEventListener("click", (event) => {
       const target = event.target;
-      if (!(target instanceof Element) || target.closest("[data-edit-definition]")) return;
+      if (!(target instanceof Element)) return;
       const row = target.closest<HTMLElement>("[data-editable-fixture]");
       if (row) selectFixture(Number(row.dataset.editableFixture), event.shiftKey);
     });
     document.addEventListener("keydown", (event) => {
       if (event.key !== "Enter" && event.key !== " ") return;
       const target = event.target;
-      if (!(target instanceof Element) || target.closest("[data-edit-definition]")) return;
+      if (!(target instanceof Element)) return;
       const row = target.closest<HTMLElement>("[data-editable-fixture]");
       if (!row) return;
       event.preventDefault();
@@ -1478,8 +1478,7 @@ function bindFixtureRows(): void {
   for (const button of document.querySelectorAll<HTMLButtonElement>("[data-edit-definition]")) {
     if (button.dataset.definitionBound) continue;
     button.dataset.definitionBound = "true";
-    button.addEventListener("click", (event) => {
-      event.stopPropagation();
+    button.addEventListener("click", () => {
       openDefinitionEditor(button.dataset.editDefinition ?? "");
     });
   }
