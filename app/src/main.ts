@@ -264,6 +264,7 @@ let transportLead = "";
 let transportScrubbing = false;
 let viewerActive = false;
 let selectedIds: number[] = [];
+let fixtureSelectionBound = false;
 let holdActive = false;
 let renderMode: "live" | "intensity" = "live";
 const heldIds = new Set<number>();
@@ -1455,7 +1456,6 @@ function renderIssues(fixtures: readonly LocalFixture[], overlaps: Map<number, S
       : `reference · ${rows.length} issue${rows.length === 1 ? "" : "s"}`;
 }
 
-let fixtureSelectionBound = false;
 function bindFixtureRows(): void {
   if (!fixtureSelectionBound) {
     fixtureSelectionBound = true;
