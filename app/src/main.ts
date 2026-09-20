@@ -1282,8 +1282,31 @@ function renderSceneFixtures(fixtures: readonly LocalFixture[]): void {
       })
       .join(";");
     if (host.dataset.fixtureSignature !== signature) {
+      const retainedNames = [
+        "data-selected",
+        "data-local-level",
+        "data-state",
+        "data-pan",
+        "data-tilt",
+        "data-zoom",
+        "data-color",
+        "data-beam",
+      ];
+      const retained = new Map<number, Map<string, string>>();
+      for (const row of host.querySelectorAll<HTMLElement>("[data-local-fixture]")) {
+        const values = new Map<string, string>();
+        for (const name of retainedNames) {
+          const value = row.getAttribute(name);
+          if (value !== null) values.set(name, value);
+        }
+        retained.set(Number(row.dataset.localFixture), values);
+      }
       host.dataset.fixtureSignature = signature;
       host.innerHTML = list.map(item).join("");
+      for (const row of host.querySelectorAll<HTMLElement>("[data-local-fixture]")) {
+        for (const [name, value] of retained.get(Number(row.dataset.localFixture)) ?? [])
+          row.setAttribute(name, value);
+      }
       bindFixtureRows();
     }
   }
