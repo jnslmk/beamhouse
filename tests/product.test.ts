@@ -2649,7 +2649,7 @@ describe("running Beamhouse", () => {
       if (actualConeCount !== String(cones0 + 9)) {
         const activeRows = await page.locator("[data-local-fixture]").evaluateAll((rows) =>
           rows
-            .filter((row) => Number((row as HTMLElement).dataset.localLevel ?? 0) > 0)
+            .filter((row) => (row.getAttribute("data-beam") ?? "").startsWith("cone"))
             .map((row) => ({
               id: (row as HTMLElement).dataset.localFixture,
               level: (row as HTMLElement).dataset.localLevel,
