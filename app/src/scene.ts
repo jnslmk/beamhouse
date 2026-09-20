@@ -211,6 +211,7 @@ export class SceneCommands {
   #control: boolean;
   #liveness: number | null = null;
   #relinquishing = false;
+  #takeoverPending = false;
   #hidden = false;
   #lastTransport = 0;
 
@@ -249,7 +250,8 @@ export class SceneCommands {
   }
 
   takeover(): void {
-    this.#send({ op: "control.takeover" });
+    this.#takeoverPending = true;
+    this.#sendTakeover();
   }
 
   placement(id: number, fallback: Placement): Placement {
@@ -526,6 +528,7 @@ export class SceneCommands {
       if (socket !== this.#socket) return;
       this.#lastTransport = Date.now();
       socket.send(JSON.stringify({ op: "control.join", follow }));
+      this.#sendTakeover();
       this.#liveness = window.setInterval(() => {
         if (Date.now() - this.#lastTransport > 15_000) {
           this.#stepDown();
@@ -562,6 +565,11 @@ export class SceneCommands {
     this.#lastTransport = 0;
     this.#clearHistory();
     this.#notify();
+  }
+  #sendTakeover(): void {
+    if (!this.#takeoverPending || this.#socket?.readyState !== WebSocket.OPEN) return;
+    this.#takeoverPending = false;
+    this.#socket.send(JSON.stringify({ op: "control.takeover" }));
   }
   #send(message: object): void {
     if (this.#socket?.readyState === WebSocket.OPEN) this.#socket.send(JSON.stringify(message));
