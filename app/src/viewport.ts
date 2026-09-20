@@ -742,7 +742,6 @@ export function createViewport(
         entry.cone.position.copy(mesh.position);
         entry.cone.quaternion.copy(mesh.quaternion);
         setBeamUniforms(entry.cone.material, state, edge, beamDensity, beamLengthM);
-        if (live) cones += 1;
         // Analytic pool: the beam axis against y=0, sized by BeamAngle x
         // throw with FieldAngle softening. No occlusion, no interaction.
         beamAxis.set(0, 0, 1).applyQuaternion(mesh.quaternion);
@@ -758,13 +757,17 @@ export function createViewport(
           entry.pool.rotation.set(0, Math.atan2(beamAxis.x, beamAxis.z), 0);
           entry.pool.scale.set(radius, 1, radius * poolStretch(beamAxis.y));
           setPoolUniforms(entry.pool.material, state, edge);
-          pools += 1;
         }
       } else if (beam) {
         beam.lit = false;
         beam.cone.visible = false;
         beam.pool.visible = false;
       }
+    }
+    for (const entry of localBeams.values()) {
+      if (!entry.lit) continue;
+      if (entry.cone.visible) cones += 1;
+      if (entry.pool.visible) pools += 1;
     }
     host.dataset.fixtureCones = String(cones);
     host.dataset.beamPools = String(pools);
