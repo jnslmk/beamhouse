@@ -1455,17 +1455,24 @@ function renderIssues(fixtures: readonly LocalFixture[], overlaps: Map<number, S
       : `reference · ${rows.length} issue${rows.length === 1 ? "" : "s"}`;
 }
 
+let fixtureSelectionBound = false;
 function bindFixtureRows(): void {
-  for (const row of document.querySelectorAll<HTMLElement>("[data-editable-fixture]")) {
-    if (row.dataset.selectionBound) continue;
-    row.dataset.selectionBound = "true";
-    row.addEventListener("click", (event) => {
-      selectFixture(Number(row.dataset.editableFixture), event.shiftKey);
+  if (!fixtureSelectionBound) {
+    fixtureSelectionBound = true;
+    document.addEventListener("click", (event) => {
+      const target = event.target;
+      if (!(target instanceof Element) || target.closest("[data-edit-definition]")) return;
+      const row = target.closest<HTMLElement>("[data-editable-fixture]");
+      if (row) selectFixture(Number(row.dataset.editableFixture), event.shiftKey);
     });
-    row.addEventListener("keydown", (event) => {
+    document.addEventListener("keydown", (event) => {
       if (event.key !== "Enter" && event.key !== " ") return;
+      const target = event.target;
+      if (!(target instanceof Element) || target.closest("[data-edit-definition]")) return;
+      const row = target.closest<HTMLElement>("[data-editable-fixture]");
+      if (!row) return;
       event.preventDefault();
-      row.click();
+      selectFixture(Number(row.dataset.editableFixture), event.shiftKey);
     });
   }
   for (const button of document.querySelectorAll<HTMLButtonElement>("[data-edit-definition]")) {

@@ -565,19 +565,18 @@ export function createViewport(
   ) => {
     // The mark set itself changed: force one position rewrite through the gate.
     markGate.positionsChanged();
+    for (const beam of localBeams.values()) {
+      scene.remove(beam.cone);
+      scene.remove(beam.pool);
+      beam.cone.geometry.dispose();
+      beam.cone.material.dispose();
+      beam.pool.material.dispose();
+    }
+    localBeams.clear();
     for (const fixture of localFixtures.values()) {
       scene.remove(fixture.mesh);
       disposeObject(fixture.mesh);
       localMaterials.delete(fixture.id);
-      const beam = localBeams.get(fixture.id);
-      if (beam) {
-        scene.remove(beam.cone);
-        scene.remove(beam.pool);
-        beam.cone.geometry.dispose();
-        beam.cone.material.dispose();
-        beam.pool.material.dispose();
-        localBeams.delete(fixture.id);
-      }
       localOptics.delete(fixture.id);
       localTexels.get(fixture.id)?.texture.dispose();
       localTexels.delete(fixture.id);
