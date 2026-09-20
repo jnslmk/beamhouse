@@ -565,14 +565,16 @@ export function createViewport(
   ) => {
     // The mark set itself changed: force one position rewrite through the gate.
     markGate.positionsChanged();
-    for (const beam of localBeams.values()) {
+    const nextIds = new Set(nextFixtures.map((fixture) => fixture.id));
+    for (const [id, beam] of localBeams) {
+      if (nextIds.has(id)) continue;
       scene.remove(beam.cone);
       scene.remove(beam.pool);
       beam.cone.geometry.dispose();
       beam.cone.material.dispose();
       beam.pool.material.dispose();
+      localBeams.delete(id);
     }
-    localBeams.clear();
     for (const fixture of localFixtures.values()) {
       scene.remove(fixture.mesh);
       disposeObject(fixture.mesh);
@@ -763,18 +765,13 @@ export function createViewport(
         beam.pool.visible = false;
       }
     }
-    const coneIds: number[] = [];
     for (const id of localFixtures.keys()) {
       const entry = localBeams.get(id);
       if (!entry?.lit) continue;
-      if (entry.cone.visible) {
-        cones += 1;
-        coneIds.push(id);
-      }
+      if (entry.cone.visible) cones += 1;
       if (entry.pool.visible) pools += 1;
     }
     host.dataset.fixtureCones = String(cones);
-    host.dataset.fixtureConeIds = coneIds.join(",");
     host.dataset.beamPools = String(pools);
   };
 
@@ -903,18 +900,13 @@ export function createViewport(
       renderMode = mode;
       // Cones leave the intensity map at once; pools render unchanged there.
       let cones = 0;
-      const coneIds: number[] = [];
       for (const id of localFixtures.keys()) {
         const entry = localBeams.get(id);
         if (!entry) continue;
         entry.cone.visible = entry.lit && mode === "live";
-        if (entry.cone.visible) {
-          cones += 1;
-          coneIds.push(id);
-        }
+        if (entry.cone.visible) cones += 1;
       }
       host.dataset.fixtureCones = String(cones);
-      host.dataset.fixtureConeIds = coneIds.join(",");
     },
     setEditable(nextEditable) {
       editable = nextEditable;

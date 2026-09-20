@@ -295,6 +295,18 @@ function visibleDefinitions(): Record<string, BhsDefinition> {
     ? { ...commands.definitions() }
     : { ...referenceSceneDefinitions, ...commands.definitions() };
 }
+let syncedFixtureKeys = new Map<number, string>();
+function fixtureSyncKey(
+  fixture: LocalFixture,
+  definitions: Readonly<Record<string, BhsDefinition>>,
+): string {
+  return JSON.stringify([
+    fixture.definition,
+    fixture.mode,
+    fixture.addresses,
+    definitions[fixture.definition] ?? null,
+  ]);
+}
 
 function visiblePlacements(): Map<number, Placement> {
   const placements = commands.isBhsScene()
@@ -1192,9 +1204,16 @@ function setFixtureTrust(stale: boolean, contended: boolean): void {
 
 function syncSceneFixtures(): void {
   const fixtures = visibleFixtures();
-  viewportApi.setSceneFixtures(fixtures, visibleDefinitions());
-  // New patch, addresses, or definitions resolve differently on identical slots.
-  fixtureGate.invalidate();
+  const definitions = visibleDefinitions();
+  const nextKeys = new Map(
+    fixtures.map((fixture) => [fixture.id, fixtureSyncKey(fixture, definitions)]),
+  );
+  viewportApi.setSceneFixtures(fixtures, definitions);
+  // Re-resolve only fixtures whose wire or definition changed. New fixtures
+  // have no gate entry and therefore resolve on the next frame automatically.
+  for (const [id, key] of nextKeys)
+    if (syncedFixtureKeys.get(id) !== key) fixtureGate.invalidate(id);
+  syncedFixtureKeys = nextKeys;
   for (const fixture of fixtures) {
     if (defaultPlacements.has(fixture.id)) continue;
     defaultPlacements.set(
