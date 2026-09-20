@@ -2645,6 +2645,22 @@ describe("running Beamhouse", () => {
         x4,
       );
       expect(await page.locator(row(x4)).getAttribute("data-beam")).toBe("cone 28.4");
+      const actualConeCount = await cones();
+      if (actualConeCount !== String(cones0 + 9)) {
+        const activeRows = await page.locator("[data-local-fixture]").evaluateAll((rows) =>
+          rows
+            .filter((row) => Number((row as HTMLElement).dataset.localLevel ?? 0) > 0)
+            .map((row) => ({
+              id: (row as HTMLElement).dataset.localFixture,
+              level: (row as HTMLElement).dataset.localLevel,
+              beam: row.getAttribute("data-beam"),
+              text: row.textContent,
+            })),
+        );
+        throw new Error(
+          `cone debug expected=${cones0 + 9} actual=${actualConeCount} rows=${JSON.stringify(activeRows)}`,
+        );
+      }
       expect(await cones()).toBe(String(cones0 + 9));
       expect(await pools()).toBe(String(pools0 + 7));
     },
