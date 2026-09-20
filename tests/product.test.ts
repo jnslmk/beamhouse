@@ -2645,7 +2645,13 @@ describe("running Beamhouse", () => {
         x4,
       );
       expect(await page.locator(row(x4)).getAttribute("data-beam")).toBe("cone 28.4");
-      expect(await cones()).toBe(String(cones0 + 9));
+      const actualConeCount = await cones();
+      if (actualConeCount !== String(cones0 + 9)) {
+        const coneIds = await page.locator("#viewport").getAttribute("data-fixture-cone-ids");
+        throw new Error(
+          `cone debug expected=${cones0 + 9} actual=${actualConeCount} ids=${coneIds}`,
+        );
+      }
       expect(await pools()).toBe(String(pools0 + 7));
     },
     BROWSER_HEAVY_TIMEOUT,

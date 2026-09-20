@@ -763,13 +763,18 @@ export function createViewport(
         beam.pool.visible = false;
       }
     }
+    const coneIds: number[] = [];
     for (const id of localFixtures.keys()) {
       const entry = localBeams.get(id);
       if (!entry?.lit) continue;
-      if (entry.cone.visible) cones += 1;
+      if (entry.cone.visible) {
+        cones += 1;
+        coneIds.push(id);
+      }
       if (entry.pool.visible) pools += 1;
     }
     host.dataset.fixtureCones = String(cones);
+    host.dataset.fixtureConeIds = coneIds.join(",");
     host.dataset.beamPools = String(pools);
   };
 
@@ -898,13 +903,18 @@ export function createViewport(
       renderMode = mode;
       // Cones leave the intensity map at once; pools render unchanged there.
       let cones = 0;
+      const coneIds: number[] = [];
       for (const id of localFixtures.keys()) {
         const entry = localBeams.get(id);
         if (!entry) continue;
         entry.cone.visible = entry.lit && mode === "live";
-        if (entry.cone.visible) cones += 1;
+        if (entry.cone.visible) {
+          cones += 1;
+          coneIds.push(id);
+        }
       }
       host.dataset.fixtureCones = String(cones);
+      host.dataset.fixtureConeIds = coneIds.join(",");
     },
     setEditable(nextEditable) {
       editable = nextEditable;
