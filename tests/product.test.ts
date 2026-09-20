@@ -2556,6 +2556,7 @@ describe("running Beamhouse", () => {
       };
       const cones = () => page.locator("#viewport").getAttribute("data-fixture-cones");
       const pools = () => page.locator("#viewport").getAttribute("data-beam-pools");
+      const coneIds0 = await page.locator("#viewport").getAttribute("data-fixture-cone-ids");
       const cones0 = Number((await cones()) ?? 0);
       const pools0 = Number((await pools()) ?? 0);
       const frame = moverFrame();
@@ -2649,7 +2650,7 @@ describe("running Beamhouse", () => {
       if (actualConeCount !== String(cones0 + 9)) {
         const coneIds = await page.locator("#viewport").getAttribute("data-fixture-cone-ids");
         throw new Error(
-          `cone debug expected=${cones0 + 9} actual=${actualConeCount} ids=${coneIds}`,
+          `cone debug expected=${cones0 + 9} actual=${actualConeCount} initial=${coneIds0} ids=${coneIds}`,
         );
       }
       expect(await pools()).toBe(String(pools0 + 7));
