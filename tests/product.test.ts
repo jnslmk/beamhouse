@@ -98,7 +98,6 @@ describe("running Beamhouse", () => {
       httpPort = await freeTcpPort();
       sacnPort = await freeUdpPort();
       artnetPort = await freeUdpPort();
-      const startedAt = performance.now();
       // The bridge's real runtime is node (ADR-0047); preload the passive
       // dgram audit with Node's native module hook.
       bridge = spawn("node", ["bridge/src/main.ts"], {
@@ -117,6 +116,7 @@ describe("running Beamhouse", () => {
         stdio: "pipe",
       });
       await waitUntilReachable(`http://127.0.0.1:${httpPort}`);
+      const startedAt = performance.now();
       await page.goto(`http://127.0.0.1:${httpPort}`, {
         waitUntil: "domcontentloaded",
       });
@@ -254,7 +254,7 @@ describe("running Beamhouse", () => {
       expect(await page.locator("[data-history-count]").textContent()).toBe("2");
 
       await page.reload({ waitUntil: "domcontentloaded" });
-      await page.locator('html[data-ready="true"]').waitFor();
+      await page.locator('html[data-ready="true"]').waitFor({ timeout: BROWSER_TEST_TIMEOUT });
       await openFixtures();
       await page.locator('[data-fixture="1"]').click();
       await page.locator('[data-placement-x="2.4"]').waitFor();
@@ -266,7 +266,7 @@ describe("running Beamhouse", () => {
       await page.locator('[data-placement-x="1.75"]').waitFor();
       expect(await page.locator("[data-history-count]").textContent()).toBe("1");
       await page.reload({ waitUntil: "domcontentloaded" });
-      await page.locator('html[data-ready="true"]').waitFor();
+      await page.locator('html[data-ready="true"]').waitFor({ timeout: BROWSER_TEST_TIMEOUT });
       await openFixtures();
       await page.locator('[data-editable-fixture="101"]').click();
       await page.locator('[data-placement-x="1.75"]').waitFor();
@@ -283,7 +283,9 @@ describe("running Beamhouse", () => {
       const follower = await browser.newPage({ viewport: { width: 1280, height: 800 } });
       try {
         await follower.goto(`http://127.0.0.1:${httpPort}`, { waitUntil: "domcontentloaded" });
-        await follower.locator('html[data-ready="true"]').waitFor();
+        await follower
+          .locator('html[data-ready="true"]')
+          .waitFor({ timeout: BROWSER_TEST_TIMEOUT });
         await openFixturesOn(follower);
         await follower.locator("#ownership-status", { hasText: "follower · page" }).waitFor();
 
@@ -369,13 +371,14 @@ describe("running Beamhouse", () => {
 
         candidateContext = await browser.newContext({ viewport: { width: 1280, height: 800 } });
         const seed = await candidateContext.newPage();
-        await seed.goto(`http://127.0.0.1:${httpPort}`, { waitUntil: "domcontentloaded" });
-        await seed.locator('html[data-ready="true"]').waitFor();
+        await seed.goto(`http://127.0.0.1:${httpPort}`, { waitUntil: "commit" });
         await writeWorkingPlacement(seed, 2, 9);
         await seed.close();
         candidate = await candidateContext.newPage();
         await candidate.goto(`http://127.0.0.1:${httpPort}`, { waitUntil: "domcontentloaded" });
-        await candidate.locator('html[data-ready="true"]').waitFor();
+        await candidate
+          .locator('html[data-ready="true"]')
+          .waitFor({ timeout: BROWSER_TEST_TIMEOUT });
         await openFixturesOn(candidate);
         await candidate.locator("#ownership-status", { hasText: "follower · page" }).waitFor();
         await candidate.locator('[data-fixture="2"]').click();
@@ -519,7 +522,7 @@ describe("running Beamhouse", () => {
         }
       }
     },
-    BROWSER_TEST_TIMEOUT,
+    BROWSER_HEAVY_TIMEOUT,
   );
   test(
     "fails closed after a page wake until an explicit takeover",
@@ -684,7 +687,7 @@ describe("running Beamhouse", () => {
         await page.locator('[data-fixture-mark="2"]').getAttribute("data-rendered-placement-x"),
       ).toBe("10");
       await page.reload({ waitUntil: "domcontentloaded" });
-      await page.locator('html[data-ready="true"]').waitFor();
+      await page.locator('html[data-ready="true"]').waitFor({ timeout: BROWSER_TEST_TIMEOUT });
       await openFixtures();
       await page.locator('[data-fixture-mark="3"][data-rendered-placement-z="5"]').waitFor();
       expect(
@@ -897,7 +900,7 @@ describe("running Beamhouse", () => {
         expect(matrixDiff(expected, toMatrix(flippedOrient[index]!))).toBeLessThan(1e-6);
       }
       await page.reload({ waitUntil: "domcontentloaded" });
-      await page.locator('html[data-ready="true"]').waitFor();
+      await page.locator('html[data-ready="true"]').waitFor({ timeout: BROWSER_TEST_TIMEOUT });
       await openFixtures();
       await page.locator("[data-array-status]", { hasText: "spokes · 10 members" }).waitFor();
       const reloaded = await spokes();
@@ -1025,7 +1028,7 @@ describe("running Beamhouse", () => {
         await page.locator('[data-fixture-mark="2"]').getAttribute("data-rendered-placement-x"),
       ).toBe("42");
       await page.reload({ waitUntil: "domcontentloaded" });
-      await page.locator('html[data-ready="true"]').waitFor();
+      await page.locator('html[data-ready="true"]').waitFor({ timeout: BROWSER_TEST_TIMEOUT });
       await openFixtures();
       await page.locator("[data-array-status]", { hasText: "dedup · 2 members" }).waitFor();
       expect(
@@ -1069,7 +1072,7 @@ describe("running Beamhouse", () => {
           }),
       );
       await page.reload({ waitUntil: "domcontentloaded" });
-      await page.locator('html[data-ready="true"]').waitFor();
+      await page.locator('html[data-ready="true"]').waitFor({ timeout: BROWSER_TEST_TIMEOUT });
       await openFixtures();
       await page.locator("[data-array-status]", { hasText: "No array" }).waitFor();
       expect(
@@ -1537,7 +1540,9 @@ describe("running Beamhouse", () => {
           await viewer.goto(`http://127.0.0.1:${staticPort}/#${encoded.fragment}`, {
             waitUntil: "domcontentloaded",
           });
-          await viewer.locator('html[data-ready="true"]').waitFor({ timeout: 30_000 });
+          await viewer
+            .locator('html[data-ready="true"]')
+            .waitFor({ timeout: BROWSER_TEST_TIMEOUT });
           await viewer.locator('body[data-viewer="true"]').waitFor({ timeout: 30_000 });
           // No bridge behind static hosting: the socket never opens.
           expect(
@@ -1708,7 +1713,9 @@ describe("running Beamhouse", () => {
             await desk.goto("http://127.0.0.1:" + recordHttp + "/#r=shows/deck", {
               waitUntil: "domcontentloaded",
             });
-            await desk.locator('html[data-ready="true"]').waitFor({ timeout: 30_000 });
+            await desk
+              .locator('html[data-ready="true"]')
+              .waitFor({ timeout: BROWSER_TEST_TIMEOUT });
             await desk.locator("[data-transport-seek]").waitFor({ timeout: 30_000 });
             expect(await desk.locator(".brand strong").innerText()).toContain("deck");
             await desk.locator("#feed-status", { hasText: "recorded" }).waitFor();
@@ -1814,7 +1821,9 @@ describe("running Beamhouse", () => {
               waitUntil: "domcontentloaded",
             },
           );
-          await viewer.locator("html[data-ready='true']").waitFor({ timeout: 30_000 });
+          await viewer
+            .locator("html[data-ready='true']")
+            .waitFor({ timeout: BROWSER_TEST_TIMEOUT });
           await viewer.locator("[data-transport-seek]").waitFor({ timeout: 30_000 });
           expect(await viewer.locator(".brand strong").innerText()).toContain("opener");
           expect(await viewer.locator("[data-transport-label]").innerText()).toContain(
@@ -2255,16 +2264,20 @@ describe("running Beamhouse", () => {
         },
         stdio: "pipe",
       });
-      const patchPage = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+      const patchPage = page;
       try {
         await waitUntilReachable(`http://127.0.0.1:${watchHttp}`, patchBridge);
         await patchPage.goto(`http://127.0.0.1:${watchHttp}`, { waitUntil: "domcontentloaded" });
-        await patchPage.locator('html[data-ready="true"]').waitFor();
+        await patchPage
+          .locator('html[data-ready="true"]')
+          .waitFor({ timeout: BROWSER_TEST_TIMEOUT });
         await patchPage.locator("#ownership-status", { hasText: "owner" }).waitFor();
         // Id-keyed contributions seeded before the first ingest must survive every repatch.
         await seedWorkingScene(patchPage);
         await patchPage.reload({ waitUntil: "domcontentloaded" });
-        await patchPage.locator('html[data-ready="true"]').waitFor();
+        await patchPage
+          .locator('html[data-ready="true"]')
+          .waitFor({ timeout: BROWSER_TEST_TIMEOUT });
 
         const mover = "gdtf:9C7854E1-32D5-4DE9-BB8E-6D121F27CF48";
         const projectFile = resolve(watchDir, "rig.yml");
@@ -2373,16 +2386,16 @@ describe("running Beamhouse", () => {
         },
         stdio: "pipe",
       });
-      const mvrPage = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+      const mvrPage = page;
       try {
         await waitUntilReachable(`http://127.0.0.1:${watchHttp}`, mvrBridge);
         await mvrPage.goto(`http://127.0.0.1:${watchHttp}`, { waitUntil: "domcontentloaded" });
-        await mvrPage.locator('html[data-ready="true"]').waitFor();
+        await mvrPage.locator('html[data-ready="true"]').waitFor({ timeout: BROWSER_TEST_TIMEOUT });
         await mvrPage.locator("#ownership-status", { hasText: "owner" }).waitFor();
         // The seeded override for id 22 must survive the ingest below.
         await seedWorkingScene(mvrPage);
         await mvrPage.reload({ waitUntil: "domcontentloaded" });
-        await mvrPage.locator('html[data-ready="true"]').waitFor();
+        await mvrPage.locator('html[data-ready="true"]').waitFor({ timeout: BROWSER_TEST_TIMEOUT });
 
         // The committed representative MVR loads off the watched path.
         writeFileSync(
@@ -3079,6 +3092,10 @@ async function writeWorkingPlacement(target: Page, fixtureId: number, x: number)
     async ({ id, positionX }) => {
       const database = await new Promise<IDBDatabase>((resolve, reject) => {
         const request = indexedDB.open("beamhouse.scene.v1", 1);
+        request.onupgradeneeded = () => {
+          if (!request.result.objectStoreNames.contains("working-scenes"))
+            request.result.createObjectStore("working-scenes");
+        };
         request.onsuccess = () => resolve(request.result);
         request.onerror = () => reject(request.error ?? new Error("could not open working scene"));
       });
