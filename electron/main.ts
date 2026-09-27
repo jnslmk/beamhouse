@@ -8,7 +8,7 @@ import { startBridge, type BridgeConfig, type RunningBridge } from "../bridge/sr
 import { sceneFromArgv } from "./scene-arg.ts";
 
 const electron = createRequire(import.meta.url)("electron") as typeof Electron;
-const { app, BrowserWindow, shell } = electron;
+const { app, BrowserWindow, Menu, shell } = electron;
 const hasLock = app.requestSingleInstanceLock();
 let bridge: RunningBridge | null = null;
 let window: BrowserWindowType | null = null;
@@ -80,6 +80,7 @@ if (!hasLock) {
   void app
     .whenReady()
     .then(async () => {
+      Menu.setApplicationMenu(null);
       await createWindow();
       app.on("activate", () => {
         if (BrowserWindow.getAllWindows().length === 0) void createWindow();
