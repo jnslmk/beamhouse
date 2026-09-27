@@ -33,6 +33,14 @@ interface PendingTakeover {
   candidate: ControlSocket;
 }
 
+export interface SacnReceiverLike extends MembershipReceiver {
+  socket: Socket;
+  on<K extends keyof Receiver.EventMap>(
+    type: K,
+    listener: (event: Receiver.EventMap[K]) => void,
+  ): unknown;
+}
+
 export interface BridgeConfig {
   hostname: string;
   httpPort: number;
@@ -44,6 +52,7 @@ export interface BridgeConfig {
   artnetStaleMs: number;
   /** .bhr path when --record tees constructed section-07 bytes; null records nothing. */
   recordPath: string | null;
+  sacnReceiver?: SacnReceiverLike;
 }
 
 export interface RunningBridge {
@@ -75,7 +84,8 @@ export async function startBridge(config: BridgeConfig): Promise<RunningBridge> 
   // never waits on compression or disk.
   const recorder = config.recordPath ? createRecorder(config.recordPath) : null;
 
-  const sacn = new Receiver({ universes: [], port: config.sacnPort, reuseAddr: true });
+  const sacn =
+    config.sacnReceiver ?? new Receiver({ universes: [], port: config.sacnPort, reuseAddr: true });
   // Receiver's built-in ordering rejects before emitting and cannot report the source.
   // Clearing its JS-private cache leaves parsing and multicast membership to the package while
   // UniverseStore applies E1.31's per-source ordering rule with an observable drop count.
@@ -83,6 +93,7 @@ export async function startBridge(config: BridgeConfig): Promise<RunningBridge> 
     lastSequence: Record<string, number>;
     socket: Socket;
   };
+  const sacnLifecycle = createSacnLifecycle(sacn, libraryReceiver.socket);
   sacn.on("packet", (packet: Packet) => {
     libraryReceiver.lastSequence = {};
     const parsed = parseSacn(packet.buffer, packet.sourceAddress ?? "unknown", Date.now());
@@ -263,18 +274,7 @@ export async function startBridge(config: BridgeConfig): Promise<RunningBridge> 
     for (const client of clients) {
       for (const universe of client.data.subscriptions) wanted.add(universe);
     }
-    for (const universe of wanted) {
-      if (!joinedUniverses.has(universe)) {
-        sacn.addUniverse(universe);
-        joinedUniverses.add(universe);
-      }
-    }
-    for (const universe of joinedUniverses) {
-      if (!wanted.has(universe)) {
-        sacn.removeUniverse(universe);
-        joinedUniverses.delete(universe);
-      }
-    }
+    sacnLifecycle.reconcile(joinedUniverses, wanted);
   }
 
   function handleControl(socket: ControlSocket, message: string): boolean {
@@ -448,24 +448,119 @@ export async function startBridge(config: BridgeConfig): Promise<RunningBridge> 
   }
 
   const urlHost = config.hostname.includes(":") ? `[${config.hostname}]` : config.hostname;
+  const stop = createIdempotentStop(async () => {
+    sacnLifecycle.stop();
+    clearInterval(frameTimer);
+    // Flush the partial member so even a short take stays a readable .bhr.
+    await recorder?.flush();
+    clearInterval(healthTimer);
+    clearInterval(ownershipTimer);
+    for (const client of clients) client.close(1001, "bridge stopping");
+    sockets.close();
+    server.close();
+    server.closeAllConnections();
+    await once(server, "close");
+    patchWatcher.close();
+    await new Promise<void>((done) => artnet.close(done));
+    await sacnLifecycle.close();
+  });
   return {
     url: new URL(`http://${urlHost}:${port}/`).toString().replace(/\/$/, ""),
-    async stop() {
-      clearInterval(frameTimer);
-      // Flush the partial member so even a short take stays a readable .bhr.
-      await recorder?.flush();
-      clearInterval(healthTimer);
-      clearInterval(ownershipTimer);
-      for (const client of clients) client.close(1001, "bridge stopping");
-      sockets.close();
-      server.close();
-      server.closeAllConnections();
-      await once(server, "close");
-      patchWatcher.close();
-      await new Promise<void>((done) => artnet.close(done));
-      await new Promise<void>((done) => sacn.close(done));
+    stop,
+  };
+}
+
+export function createIdempotentStop(cleanup: () => Promise<void>): () => Promise<void> {
+  let stopPromise: Promise<void> | null = null;
+  return () => {
+    if (!stopPromise) stopPromise = cleanup();
+    return stopPromise;
+  };
+}
+
+interface MembershipReceiver {
+  addUniverse(universe: number): unknown;
+  removeUniverse(universe: number): unknown;
+  close(callback?: () => void): unknown;
+}
+
+interface ReceiverSocket {
+  on(event: "close", listener: () => void): unknown;
+}
+
+export function createSacnLifecycle(
+  receiver: MembershipReceiver,
+  socket: ReceiverSocket,
+): {
+  reconcile(joinedUniverses: Set<number>, wanted: ReadonlySet<number>): void;
+  stop(): void;
+  close(): Promise<void>;
+} {
+  let active = true;
+  let socketClosed = false;
+  let closing = false;
+  let closed = false;
+  socket.on("close", () => {
+    socketClosed = true;
+    active = false;
+  });
+  return {
+    reconcile(joinedUniverses, wanted) {
+      active = reconcileReceiverMemberships(receiver, joinedUniverses, wanted, active);
+    },
+    stop() {
+      active = false;
+    },
+    async close() {
+      if (closed) return;
+      closed = true;
+      if (socketClosed || closing) return;
+      closing = true;
+      try {
+        await new Promise<void>((resolve) => receiver.close(resolve));
+      } catch (error: unknown) {
+        if (!isSocketNotRunning(error)) throw error;
+      } finally {
+        active = false;
+      }
     },
   };
+}
+
+export function reconcileReceiverMemberships(
+  receiver: MembershipReceiver,
+  joinedUniverses: Set<number>,
+  wanted: ReadonlySet<number>,
+  active: boolean,
+): boolean {
+  if (!active) return false;
+  try {
+    for (const universe of wanted) {
+      if (!joinedUniverses.has(universe)) {
+        receiver.addUniverse(universe);
+        joinedUniverses.add(universe);
+      }
+    }
+    for (const universe of joinedUniverses) {
+      if (!wanted.has(universe)) {
+        receiver.removeUniverse(universe);
+        joinedUniverses.delete(universe);
+      }
+    }
+    return true;
+  } catch (error: unknown) {
+    if (isSocketNotRunning(error)) return false;
+    throw error;
+  }
+}
+
+function isSocketNotRunning(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    error.code === "ERR_SOCKET_DGRAM_NOT_RUNNING"
+  );
 }
 
 /** Merge per-group snapshots into one sorted union without re-snapshotting. */
