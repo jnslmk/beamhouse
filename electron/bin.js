@@ -4,7 +4,10 @@
 const { spawn } = require("node:child_process");
 const path = require("node:path");
 
-const child = spawn(require("electron"), [path.join(__dirname, "dist", "main.cjs")], {
+// CLI arguments (e.g. a .bhs show file to open) ride along after the main entry.
+const args = [path.join(__dirname, "dist", "main.cjs"), ...process.argv.slice(2)];
+
+const child = spawn(require("electron"), args, {
   stdio: "ignore",
   detached: true,
   windowsHide: true,
