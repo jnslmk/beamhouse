@@ -1,0 +1,617 @@
+{
+  "patch": {
+    "kind": "snapshot",
+    "fixtures": [
+      {
+        "id": 1,
+        "definition": "bhs:stella-T1-E1",
+        "mode": "default",
+        "addresses": [
+          {
+            "universe": 3,
+            "address": 1,
+            "footprint": 69
+          }
+        ]
+      },
+      {
+        "id": 2,
+        "definition": "bhs:stella-T1-E2",
+        "mode": "default",
+        "addresses": [
+          {
+            "universe": 3,
+            "address": 70,
+            "footprint": 69
+          }
+        ]
+      },
+      {
+        "id": 3,
+        "definition": "bhs:stella-T1-E3",
+        "mode": "default",
+        "addresses": [
+          {
+            "universe": 3,
+            "address": 139,
+            "footprint": 69
+          }
+        ]
+      },
+      {
+        "id": 4,
+        "definition": "bhs:stella-T1-E4",
+        "mode": "default",
+        "addresses": [
+          {
+            "universe": 3,
+            "address": 208,
+            "footprint": 69
+          }
+        ]
+      },
+      {
+        "id": 5,
+        "definition": "bhs:stella-T1-E5",
+        "mode": "default",
+        "addresses": [
+          {
+            "universe": 3,
+            "address": 277,
+            "footprint": 69
+          }
+        ]
+      },
+      {
+        "id": 6,
+        "definition": "bhs:stella-T1-E6",
+        "mode": "default",
+        "addresses": [
+          {
+            "universe": 3,
+            "address": 346,
+            "footprint": 69
+          }
+        ]
+      },
+      {
+        "id": 7,
+        "definition": "bhs:stella-T2-E1",
+        "mode": "default",
+        "addresses": [
+          {
+            "universe": 3,
+            "address": 415,
+            "footprint": 69
+          }
+        ]
+      },
+      {
+        "id": 8,
+        "definition": "bhs:stella-T2-E2",
+        "mode": "default",
+        "addresses": [
+          {
+            "universe": 3,
+            "address": 484,
+            "footprint": 27
+          },
+          {
+            "universe": 4,
+            "address": 1,
+            "footprint": 42
+          }
+        ]
+      },
+      {
+        "id": 9,
+        "definition": "bhs:stella-T2-E3",
+        "mode": "default",
+        "addresses": [
+          {
+            "universe": 4,
+            "address": 43,
+            "footprint": 69
+          }
+        ]
+      },
+      {
+        "id": 10,
+        "definition": "bhs:stella-T2-E4",
+        "mode": "default",
+        "addresses": [
+          {
+            "universe": 4,
+            "address": 112,
+            "footprint": 69
+          }
+        ]
+      },
+      {
+        "id": 11,
+        "definition": "bhs:stella-T2-E5",
+        "mode": "default",
+        "addresses": [
+          {
+            "universe": 4,
+            "address": 181,
+            "footprint": 69
+          }
+        ]
+      },
+      {
+        "id": 12,
+        "definition": "bhs:stella-T2-E6",
+        "mode": "default",
+        "addresses": [
+          {
+            "universe": 4,
+            "address": 250,
+            "footprint": 69
+          }
+        ]
+      }
+    ]
+  },
+  "definitions": {
+    "bhs:stella-T1-E1": {
+      "kind": "strip",
+      "pixels": 23,
+      "pitchMm": 65.21739130434783,
+      "channelsPerPixel": 3,
+      "primitive": "Cylinder"
+    },
+    "bhs:stella-T1-E2": {
+      "kind": "strip",
+      "pixels": 23,
+      "pitchMm": 65.21739130434783,
+      "channelsPerPixel": 3,
+      "primitive": "Cylinder"
+    },
+    "bhs:stella-T1-E3": {
+      "kind": "strip",
+      "pixels": 23,
+      "pitchMm": 65.21739130434783,
+      "channelsPerPixel": 3,
+      "primitive": "Cylinder"
+    },
+    "bhs:stella-T1-E4": {
+      "kind": "strip",
+      "pixels": 23,
+      "pitchMm": 65.21739130434783,
+      "channelsPerPixel": 3,
+      "primitive": "Cylinder"
+    },
+    "bhs:stella-T1-E5": {
+      "kind": "strip",
+      "pixels": 23,
+      "pitchMm": 65.21739130434783,
+      "channelsPerPixel": 3,
+      "primitive": "Cylinder"
+    },
+    "bhs:stella-T1-E6": {
+      "kind": "strip",
+      "pixels": 23,
+      "pitchMm": 65.21739130434783,
+      "channelsPerPixel": 3,
+      "primitive": "Cylinder"
+    },
+    "bhs:stella-T2-E1": {
+      "kind": "strip",
+      "pixels": 23,
+      "pitchMm": 65.21739130434783,
+      "channelsPerPixel": 3,
+      "primitive": "Cylinder"
+    },
+    "bhs:stella-T2-E2": {
+      "kind": "strip",
+      "pixels": 23,
+      "pitchMm": 65.21739130434783,
+      "channelsPerPixel": 3,
+      "primitive": "Cylinder"
+    },
+    "bhs:stella-T2-E3": {
+      "kind": "strip",
+      "pixels": 23,
+      "pitchMm": 65.21739130434783,
+      "channelsPerPixel": 3,
+      "primitive": "Cylinder"
+    },
+    "bhs:stella-T2-E4": {
+      "kind": "strip",
+      "pixels": 23,
+      "pitchMm": 65.21739130434783,
+      "channelsPerPixel": 3,
+      "primitive": "Cylinder"
+    },
+    "bhs:stella-T2-E5": {
+      "kind": "strip",
+      "pixels": 23,
+      "pitchMm": 65.21739130434783,
+      "channelsPerPixel": 3,
+      "primitive": "Cylinder"
+    },
+    "bhs:stella-T2-E6": {
+      "kind": "strip",
+      "pixels": 23,
+      "pitchMm": 65.21739130434783,
+      "channelsPerPixel": 3,
+      "primitive": "Cylinder"
+    }
+  },
+  "fixtures": [
+    {
+      "id": 1,
+      "definition": "bhs:stella-T1-E1",
+      "mode": "default",
+      "addresses": [
+        {
+          "universe": 3,
+          "address": 1,
+          "footprint": 69
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "definition": "bhs:stella-T1-E2",
+      "mode": "default",
+      "addresses": [
+        {
+          "universe": 3,
+          "address": 70,
+          "footprint": 69
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "definition": "bhs:stella-T1-E3",
+      "mode": "default",
+      "addresses": [
+        {
+          "universe": 3,
+          "address": 139,
+          "footprint": 69
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "definition": "bhs:stella-T1-E4",
+      "mode": "default",
+      "addresses": [
+        {
+          "universe": 3,
+          "address": 208,
+          "footprint": 69
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "definition": "bhs:stella-T1-E5",
+      "mode": "default",
+      "addresses": [
+        {
+          "universe": 3,
+          "address": 277,
+          "footprint": 69
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "definition": "bhs:stella-T1-E6",
+      "mode": "default",
+      "addresses": [
+        {
+          "universe": 3,
+          "address": 346,
+          "footprint": 69
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "definition": "bhs:stella-T2-E1",
+      "mode": "default",
+      "addresses": [
+        {
+          "universe": 3,
+          "address": 415,
+          "footprint": 69
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "definition": "bhs:stella-T2-E2",
+      "mode": "default",
+      "addresses": [
+        {
+          "universe": 3,
+          "address": 484,
+          "footprint": 27
+        },
+        {
+          "universe": 4,
+          "address": 1,
+          "footprint": 42
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "definition": "bhs:stella-T2-E3",
+      "mode": "default",
+      "addresses": [
+        {
+          "universe": 4,
+          "address": 43,
+          "footprint": 69
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "definition": "bhs:stella-T2-E4",
+      "mode": "default",
+      "addresses": [
+        {
+          "universe": 4,
+          "address": 112,
+          "footprint": 69
+        }
+      ]
+    },
+    {
+      "id": 11,
+      "definition": "bhs:stella-T2-E5",
+      "mode": "default",
+      "addresses": [
+        {
+          "universe": 4,
+          "address": 181,
+          "footprint": 69
+        }
+      ]
+    },
+    {
+      "id": 12,
+      "definition": "bhs:stella-T2-E6",
+      "mode": "default",
+      "addresses": [
+        {
+          "universe": 4,
+          "address": 250,
+          "footprint": 69
+        }
+      ]
+    }
+  ],
+  "density": 0.32,
+  "beamLength": 10,
+  "overrides": {
+    "1": {
+      "pos": [
+        0.3893756619431988,
+        0.3179238966730919,
+        -0.2248061432387945
+      ],
+      "rot": [
+        0,
+        -150.0,
+        54.735610317245346
+      ]
+    },
+    "2": {
+      "pos": [
+        -0.3893756619431988,
+        0.3179238966730919,
+        -0.2248061432387945
+      ],
+      "rot": [
+        0,
+        150.0,
+        -54.735610317245346
+      ]
+    },
+    "3": {
+      "pos": [
+        0.0,
+        -0.34728237986564636,
+        -0.491115927696228
+      ],
+      "rot": [
+        0,
+        -0.0,
+        0.0
+      ]
+    },
+    "4": {
+      "pos": [
+        0.3781846875185595,
+        -0.30305399000644684,
+        0.21834503114223472
+      ],
+      "rot": [
+        0,
+        -119.99999999999999,
+        0.0
+      ]
+    },
+    "5": {
+      "pos": [
+        -0.42531886958809506,
+        -0.34728237986564636,
+        0.2455579638481139
+      ],
+      "rot": [
+        0,
+        119.99999999999999,
+        0.0
+      ]
+    },
+    "6": {
+      "pos": [
+        2.9979356891644226e-17,
+        0.3461995175825811,
+        0.48960005305230897
+      ],
+      "rot": [
+        0,
+        -90.0,
+        -54.735610317245346
+      ]
+    },
+    "7": {
+      "pos": [
+        -0.40249744048762587,
+        -0.32863778399030735,
+        0.23238200561366612
+      ],
+      "rot": [
+        0,
+        -150.0,
+        54.735610317245346
+      ]
+    },
+    "8": {
+      "pos": [
+        -0.38453380960641464,
+        0.30672822147607803,
+        -0.2276958925383571
+      ],
+      "rot": [
+        0,
+        60.00000000000001,
+        0.0
+      ]
+    },
+    "9": {
+      "pos": [
+        0.38945733207879624,
+        0.30672822147607803,
+        -0.21916810146398502
+      ],
+      "rot": [
+        0,
+        -60.00000000000001,
+        0.0
+      ]
+    },
+    "10": {
+      "pos": [
+        0.44574962171085447,
+        -0.3639530420767399,
+        0.25735366408593563
+      ],
+      "rot": [
+        0,
+        150.0,
+        -54.735610317245346
+      ]
+    },
+    "11": {
+      "pos": [
+        3.151673409716842e-17,
+        -0.3639530420767399,
+        -0.5147073281718714
+      ],
+      "rot": [
+        0,
+        90.0,
+        54.735610317245346
+      ]
+    },
+    "12": {
+      "pos": [
+        6.321910799916868e-17,
+        0.36503590643405914,
+        0.5162231922149658
+      ],
+      "rot": [
+        0,
+        -180.0,
+        0.0
+      ]
+    }
+  },
+  "views": {
+    "iso": {
+      "position": [
+        2.5,
+        1.9,
+        2.5
+      ],
+      "target": [
+        0,
+        0,
+        0
+      ]
+    },
+    "underside": {
+      "position": [
+        2.5,
+        -1.9,
+        2.5
+      ],
+      "target": [
+        0,
+        0,
+        0
+      ]
+    }
+  },
+  "assets": {
+    "bhs:stella-T1-E1": {
+      "body": "meshes/T1-E1-body.glb",
+      "diffuser": "meshes/T1-E1-diffuser.glb"
+    },
+    "bhs:stella-T1-E2": {
+      "body": "meshes/T1-E2-body.glb",
+      "diffuser": "meshes/T1-E2-diffuser.glb"
+    },
+    "bhs:stella-T1-E3": {
+      "body": "meshes/T1-E3-body.glb",
+      "diffuser": "meshes/T1-E3-diffuser.glb"
+    },
+    "bhs:stella-T1-E4": {
+      "body": "meshes/T1-E4-body.glb",
+      "diffuser": "meshes/T1-E4-diffuser.glb"
+    },
+    "bhs:stella-T1-E5": {
+      "body": "meshes/T1-E5-body.glb",
+      "diffuser": "meshes/T1-E5-diffuser.glb"
+    },
+    "bhs:stella-T1-E6": {
+      "body": "meshes/T1-E6-body.glb",
+      "diffuser": "meshes/T1-E6-diffuser.glb"
+    },
+    "bhs:stella-T2-E1": {
+      "body": "meshes/T2-E1-body.glb",
+      "diffuser": "meshes/T2-E1-diffuser.glb"
+    },
+    "bhs:stella-T2-E2": {
+      "body": "meshes/T2-E2-body.glb",
+      "diffuser": "meshes/T2-E2-diffuser.glb"
+    },
+    "bhs:stella-T2-E3": {
+      "body": "meshes/T2-E3-body.glb",
+      "diffuser": "meshes/T2-E3-diffuser.glb"
+    },
+    "bhs:stella-T2-E4": {
+      "body": "meshes/T2-E4-body.glb",
+      "diffuser": "meshes/T2-E4-diffuser.glb"
+    },
+    "bhs:stella-T2-E5": {
+      "body": "meshes/T2-E5-body.glb",
+      "diffuser": "meshes/T2-E5-diffuser.glb"
+    },
+    "bhs:stella-T2-E6": {
+      "body": "meshes/T2-E6-body.glb",
+      "diffuser": "meshes/T2-E6-diffuser.glb"
+    }
+  }
+}

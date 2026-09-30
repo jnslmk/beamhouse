@@ -1,0 +1,490 @@
+{
+  "patch": {
+    "kind": "snapshot",
+    "fixtures": [
+      {
+        "id": 1,
+        "definition": "bhs:stella-octangula-edge",
+        "mode": "default",
+        "addresses": [
+          {
+            "universe": 3,
+            "address": 1,
+            "footprint": 69
+          }
+        ]
+      },
+      {
+        "id": 2,
+        "definition": "bhs:stella-octangula-edge",
+        "mode": "default",
+        "addresses": [
+          {
+            "universe": 3,
+            "address": 70,
+            "footprint": 69
+          }
+        ]
+      },
+      {
+        "id": 3,
+        "definition": "bhs:stella-octangula-edge",
+        "mode": "default",
+        "addresses": [
+          {
+            "universe": 3,
+            "address": 139,
+            "footprint": 69
+          }
+        ]
+      },
+      {
+        "id": 4,
+        "definition": "bhs:stella-octangula-edge",
+        "mode": "default",
+        "addresses": [
+          {
+            "universe": 3,
+            "address": 208,
+            "footprint": 69
+          }
+        ]
+      },
+      {
+        "id": 5,
+        "definition": "bhs:stella-octangula-edge",
+        "mode": "default",
+        "addresses": [
+          {
+            "universe": 3,
+            "address": 277,
+            "footprint": 69
+          }
+        ]
+      },
+      {
+        "id": 6,
+        "definition": "bhs:stella-octangula-edge",
+        "mode": "default",
+        "addresses": [
+          {
+            "universe": 3,
+            "address": 346,
+            "footprint": 69
+          }
+        ]
+      },
+      {
+        "id": 7,
+        "definition": "bhs:stella-octangula-edge",
+        "mode": "default",
+        "addresses": [
+          {
+            "universe": 3,
+            "address": 415,
+            "footprint": 69
+          }
+        ]
+      },
+      {
+        "id": 8,
+        "definition": "bhs:stella-octangula-edge",
+        "mode": "default",
+        "addresses": [
+          {
+            "universe": 3,
+            "address": 484,
+            "footprint": 27
+          },
+          {
+            "universe": 4,
+            "address": 1,
+            "footprint": 42
+          }
+        ]
+      },
+      {
+        "id": 9,
+        "definition": "bhs:stella-octangula-edge",
+        "mode": "default",
+        "addresses": [
+          {
+            "universe": 4,
+            "address": 43,
+            "footprint": 69
+          }
+        ]
+      },
+      {
+        "id": 10,
+        "definition": "bhs:stella-octangula-edge",
+        "mode": "default",
+        "addresses": [
+          {
+            "universe": 4,
+            "address": 112,
+            "footprint": 69
+          }
+        ]
+      },
+      {
+        "id": 11,
+        "definition": "bhs:stella-octangula-edge",
+        "mode": "default",
+        "addresses": [
+          {
+            "universe": 4,
+            "address": 181,
+            "footprint": 69
+          }
+        ]
+      },
+      {
+        "id": 12,
+        "definition": "bhs:stella-octangula-edge",
+        "mode": "default",
+        "addresses": [
+          {
+            "universe": 4,
+            "address": 250,
+            "footprint": 69
+          }
+        ]
+      }
+    ]
+  },
+  "definitions": {
+    "bhs:stella-octangula-edge": {
+      "kind": "strip",
+      "pixels": 23,
+      "pitchMm": 65.21739130434783,
+      "channelsPerPixel": 3,
+      "primitive": "Cylinder"
+    }
+  },
+  "fixtures": [
+    {
+      "id": 1,
+      "definition": "bhs:stella-octangula-edge",
+      "mode": "default",
+      "addresses": [
+        {
+          "universe": 3,
+          "address": 1,
+          "footprint": 69
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "definition": "bhs:stella-octangula-edge",
+      "mode": "default",
+      "addresses": [
+        {
+          "universe": 3,
+          "address": 70,
+          "footprint": 69
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "definition": "bhs:stella-octangula-edge",
+      "mode": "default",
+      "addresses": [
+        {
+          "universe": 3,
+          "address": 139,
+          "footprint": 69
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "definition": "bhs:stella-octangula-edge",
+      "mode": "default",
+      "addresses": [
+        {
+          "universe": 3,
+          "address": 208,
+          "footprint": 69
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "definition": "bhs:stella-octangula-edge",
+      "mode": "default",
+      "addresses": [
+        {
+          "universe": 3,
+          "address": 277,
+          "footprint": 69
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "definition": "bhs:stella-octangula-edge",
+      "mode": "default",
+      "addresses": [
+        {
+          "universe": 3,
+          "address": 346,
+          "footprint": 69
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "definition": "bhs:stella-octangula-edge",
+      "mode": "default",
+      "addresses": [
+        {
+          "universe": 3,
+          "address": 415,
+          "footprint": 69
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "definition": "bhs:stella-octangula-edge",
+      "mode": "default",
+      "addresses": [
+        {
+          "universe": 3,
+          "address": 484,
+          "footprint": 27
+        },
+        {
+          "universe": 4,
+          "address": 1,
+          "footprint": 42
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "definition": "bhs:stella-octangula-edge",
+      "mode": "default",
+      "addresses": [
+        {
+          "universe": 4,
+          "address": 43,
+          "footprint": 69
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "definition": "bhs:stella-octangula-edge",
+      "mode": "default",
+      "addresses": [
+        {
+          "universe": 4,
+          "address": 112,
+          "footprint": 69
+        }
+      ]
+    },
+    {
+      "id": 11,
+      "definition": "bhs:stella-octangula-edge",
+      "mode": "default",
+      "addresses": [
+        {
+          "universe": 4,
+          "address": 181,
+          "footprint": 69
+        }
+      ]
+    },
+    {
+      "id": 12,
+      "definition": "bhs:stella-octangula-edge",
+      "mode": "default",
+      "addresses": [
+        {
+          "universe": 4,
+          "address": 250,
+          "footprint": 69
+        }
+      ]
+    }
+  ],
+  "density": 0.32,
+  "beamLength": 10,
+  "overrides": {
+    "1": {
+      "pos": [
+        -0.375,
+        0.30618621784789724,
+        -0.21650635094610968
+      ],
+      "rot": [
+        0,
+        -30.000000000000004,
+        54.73561031724534
+      ]
+    },
+    "2": {
+      "pos": [
+        0.375,
+        0.30618621784789724,
+        -0.21650635094610968
+      ],
+      "rot": [
+        0,
+        30.000000000000004,
+        -54.73561031724534
+      ]
+    },
+    "3": {
+      "pos": [
+        0.0,
+        -0.30618621784789724,
+        -0.43301270189221935
+      ],
+      "rot": [
+        0,
+        -180.0,
+        0.0
+      ]
+    },
+    "4": {
+      "pos": [
+        -0.375,
+        -0.30618621784789724,
+        0.21650635094610968
+      ],
+      "rot": [
+        0,
+        -60.00000000000001,
+        0.0
+      ]
+    },
+    "5": {
+      "pos": [
+        0.375,
+        -0.30618621784789724,
+        0.21650635094610968
+      ],
+      "rot": [
+        0,
+        60.00000000000001,
+        0.0
+      ]
+    },
+    "6": {
+      "pos": [
+        0.0,
+        0.30618621784789724,
+        0.43301270189221935
+      ],
+      "rot": [
+        0,
+        -90.0,
+        -54.73561031724534
+      ]
+    },
+    "7": {
+      "pos": [
+        0.375,
+        -0.30618621784789724,
+        0.21650635094610968
+      ],
+      "rot": [
+        0,
+        -30.000000000000004,
+        54.73561031724534
+      ]
+    },
+    "8": {
+      "pos": [
+        0.375,
+        0.30618621784789724,
+        -0.21650635094610968
+      ],
+      "rot": [
+        0,
+        119.99999999999999,
+        0.0
+      ]
+    },
+    "9": {
+      "pos": [
+        -0.375,
+        0.30618621784789724,
+        -0.21650635094610968
+      ],
+      "rot": [
+        0,
+        -119.99999999999999,
+        0.0
+      ]
+    },
+    "10": {
+      "pos": [
+        -0.375,
+        -0.30618621784789724,
+        0.21650635094610968
+      ],
+      "rot": [
+        0,
+        30.000000000000004,
+        -54.73561031724534
+      ]
+    },
+    "11": {
+      "pos": [
+        0.0,
+        -0.30618621784789724,
+        -0.43301270189221935
+      ],
+      "rot": [
+        0,
+        90.0,
+        54.73561031724534
+      ]
+    },
+    "12": {
+      "pos": [
+        0.0,
+        0.30618621784789724,
+        0.43301270189221935
+      ],
+      "rot": [
+        0,
+        -0.0,
+        0.0
+      ]
+    }
+  },
+  "views": {
+    "iso": {
+      "position": [
+        2.5,
+        1.9,
+        2.5
+      ],
+      "target": [
+        0,
+        0,
+        0
+      ]
+    },
+    "underside": {
+      "position": [
+        2.5,
+        -1.9,
+        2.5
+      ],
+      "target": [
+        0,
+        0,
+        0
+      ]
+    }
+  }
+}
