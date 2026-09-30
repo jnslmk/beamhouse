@@ -62,6 +62,63 @@ export interface LocalFixture {
   marks?: string[];
 }
 
+/** Only a single break can infer its whole strip footprint from the definition. */
+export function fixtureBreakFootprint(
+  addresses: readonly unknown[],
+  address: BreakAddress,
+  stripFootprint: number | null,
+): number {
+  return addresses.length === 1 ? (stripFootprint ?? address.footprint) : address.footprint;
+}
+
+export function patchOverlaps(
+  fixtures: readonly LocalFixture[],
+  definitions: Readonly<Record<string, BhsDefinition | { footprint: number }>>,
+): Map<number, Set<number>> {
+  const overlaps = new Map<number, Set<number>>();
+  const ranges = fixtures.map((fixture) => {
+    const resolved = definitions[fixture.definition];
+    const stripFootprint =
+      resolved && "pixels" in resolved
+        ? resolved.pixels * resolved.channelsPerPixel
+        : resolved && "footprint" in resolved
+          ? resolved.footprint
+          : null;
+    return {
+      fixture,
+      ranges: fixture.addresses.map((address) => ({
+        universe: address.universe,
+        from: address.address,
+        to: address.address + fixtureBreakFootprint(fixture.addresses, address, stripFootprint) - 1,
+      })),
+    };
+  });
+  for (let left = 0; left < ranges.length; left += 1) {
+    for (let right = left + 1; right < ranges.length; right += 1) {
+      const a = ranges[left]!;
+      const b = ranges[right]!;
+      const shared = a.ranges.some((first) =>
+        b.ranges.some(
+          (second) =>
+            first.universe === second.universe &&
+            first.from <= second.to &&
+            second.from <= first.to,
+        ),
+      );
+      if (!shared) continue;
+      for (const [one, other] of [
+        [a.fixture.id, b.fixture.id],
+        [b.fixture.id, a.fixture.id],
+      ] as const) {
+        const entry = overlaps.get(one) ?? new Set<number>();
+        entry.add(other);
+        overlaps.set(one, entry);
+      }
+    }
+  }
+  return overlaps;
+}
+
 export interface PersistedScene {
   overrides: Record<string, Placement>;
   views: Record<string, CameraView>;
@@ -378,7 +435,11 @@ export class SceneCommands {
       Object.values(this.#scene.fixtures).some(
         (fixture) =>
           fixture.definition === id &&
-          fixture.addresses.some((address) => address.address + footprint - 1 > 512),
+          fixture.addresses.some(
+            (address) =>
+              address.address + fixtureBreakFootprint(fixture.addresses, address, footprint) - 1 >
+              512,
+          ),
       )
     )
       return "This shared definition would run a fixture past slot 512.";
@@ -628,7 +689,11 @@ export function apply(command: SceneCommand, scene: PersistedScene): PersistedSc
       Object.values(after.fixtures).some(
         (fixture) =>
           fixture.definition === command.id &&
-          fixture.addresses.some((address) => address.address + footprint - 1 > 512),
+          fixture.addresses.some(
+            (address) =>
+              address.address + fixtureBreakFootprint(fixture.addresses, address, footprint) - 1 >
+              512,
+          ),
       )
     )
       return scene;
@@ -731,7 +796,7 @@ function fixtureAddError(command: unknown, scene: PersistedScene): string | null
   const footprint = resolved?.kind === "strip" ? resolved.pixels * resolved.channelsPerPixel : null;
   for (const address of addresses) {
     if (!isBreakAddress(address)) return "Each break needs a universe, address, and footprint.";
-    const slots = footprint ?? address.footprint;
+    const slots = fixtureBreakFootprint(addresses, address, footprint);
     if (address.address + slots - 1 > 512)
       return `Universe ${address.universe}.${address.address} runs past slot 512.`;
   }
@@ -933,7 +998,8 @@ function normalizeLocalFixture(
     definition?.kind === "strip" ? definition.pixels * definition.channelsPerPixel : null;
   if (
     fixture.addresses.some(
-      (address) => address.address + (footprint ?? address.footprint) - 1 > 512,
+      (address) =>
+        address.address + fixtureBreakFootprint(fixture.addresses, address, footprint) - 1 > 512,
     )
   )
     return null;

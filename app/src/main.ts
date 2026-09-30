@@ -1,18 +1,20 @@
 import type { UniverseFrame, UniverseHealth, UniversesMessage } from "@beamhouse/wire";
 import { parseGdtf, proxyPrimitive, type GdtfGeometryNode } from "gdtf-ts";
-import { Box3, BufferAttribute, BufferGeometry, Group, Vector3, type Object3D } from "three";
+import { Box3, Group, Vector3, type Object3D } from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { LiveFeed } from "./live-feed.ts";
+import { loadLedProfile } from "./strip-template.ts";
 import {
   gledSceneFixtures,
   referenceSceneDefinitions,
   referenceSceneFixtures,
   referenceScenePlacements,
   referenceStrips,
+  resolvedReferenceDefinitions,
   resolvedReferenceDefinition,
   stageSingerDefinitionId,
   stageTrussDefinitionId,
-  universesForStrips,
+  textureBytesForFixture,
 } from "./reference-rig.ts";
 // Vendored stage inputs: boot GDTF copies of definitions/authored plus CC0/CC-BY GLBs.
 import par38GdtfUrl from "./stage/Beamhouse@generic PAR38@v1.gdtf?url";
@@ -49,6 +51,8 @@ import {
   distributeTargets,
   rotateTargets,
   samePlacement,
+  patchOverlaps,
+  fixtureBreakFootprint,
   SceneCommands,
   type ArrayDef,
   type BhsDefinition,
@@ -79,6 +83,7 @@ root.innerHTML = `
       <button class="chip" type="button" data-chip-tab="fixtures" data-render-toggle aria-pressed="false"><span>Render</span><b id="render-status">live</b></button>
       <button class="chip" type="button" data-chip-tab="fixtures" data-hold-toggle aria-pressed="false"><span>Hold</span><b id="hold-status">off</b></button>
       <button class="chip" type="button" data-chip-tab="fixtures"><span>Snap</span><b id="snap-status">0.25 m</b></button>
+      <button class="chip" type="button" data-ground-toggle aria-pressed="true"><span>Ground</span><b id="ground-status">on</b></button>
       <button class="chip" type="button" data-chip-tab="fixtures" data-takeover><span>Camera</span><b id="ownership-status">claiming</b></button>
       <button class="chip" type="button" data-share title="Copy a frozen snapshot link"><span>Share</span><b data-share-state>link</b></button>
     </div>
@@ -267,6 +272,7 @@ let selectedIds: number[] = [];
 let fixtureSelectionBound = false;
 let holdActive = false;
 let renderMode: "live" | "intensity" = "live";
+let groundVisible = true;
 const heldIds = new Set<number>();
 /** Per-fixture hang values for Zoom channels with no wire (ADR-0037 decision 7). */
 const zoomOverrides = new Map<number, number>();
@@ -577,54 +583,6 @@ async function loadStageMesh(
   }
 }
 
-/** LED-profile spoke halves: aluminium body plus diffuser, Y-up, centred, diffuser UVs along the tube. */
-async function loadLedProfile(
-  bodyUrl: string,
-  diffuserUrl: string,
-): Promise<{ body: Group; diffuser: Group } | null> {
-  try {
-    const [bodyRoot, diffuserRoot] = await Promise.all(
-      [bodyUrl, diffuserUrl].map(async (url) => {
-        const response = await fetch(url);
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        return (await new GLTFLoader().parseAsync(await response.arrayBuffer(), "")).scene;
-      }),
-    );
-    if (!bodyRoot || !diffuserRoot) return null;
-    const body = new Group();
-    body.add(bodyRoot);
-    const diffuser = new Group();
-    diffuser.add(diffuserRoot);
-    // The previz export is Z-up with the tube running along X: tip it so the
-    // diffuser hangs underneath (+90 about X maps +Z to -Y), then centre both
-    // halves on the same point so the stack survives.
-    for (const half of [body, diffuser]) half.rotation.x = Math.PI / 2;
-    const centre = new Box3().setFromObject(body).expandByObject(diffuser).getCenter(new Vector3());
-    body.position.sub(centre);
-    diffuser.position.sub(centre);
-    // The export carries no UVs: pixel texels run the tube's length (local X).
-    const seen = new Set<object>();
-    diffuser.traverse((entry) => {
-      if (!("geometry" in entry) || !(entry.geometry instanceof BufferGeometry)) return;
-      const geometry = entry.geometry;
-      if (seen.has(geometry)) return;
-      seen.add(geometry);
-      geometry.computeBoundingBox();
-      const bounds = geometry.boundingBox;
-      if (!bounds) return;
-      const span = Math.max(bounds.max.x - bounds.min.x, 1e-6);
-      const position = geometry.getAttribute("position") as BufferAttribute;
-      const uv = new Float32Array(position.count * 2);
-      for (let index = 0; index < position.count; index += 1)
-        uv[index * 2] = (position.getX(index) - bounds.min.x) / span;
-      geometry.setAttribute("uv", new BufferAttribute(uv, 2));
-    });
-    return { body, diffuser };
-  } catch {
-    return null;
-  }
-}
-
 async function loadBhsPreviewAssets(assets: BhsPreviewAssets, scenePath: string): Promise<void> {
   viewportApi.clearStripTemplates();
   const sceneUrl = new URL(scenePath, location.href);
@@ -665,6 +623,7 @@ commands.onReload((path) => {
 });
 const scenePath = new URLSearchParams(location.search).get("scene");
 pendingPatchPath = scenePath ?? commands.patchPath();
+void maybeIngestPatch();
 // The owning page applies control-channel requests; followers never see them.
 commands.onRequest((requestId, request) => void handleAgentRequest(requestId, request));
 required("#viewport").dataset.feed = resolvingFeed();
@@ -698,6 +657,12 @@ required("[data-hold-toggle]").addEventListener("click", () => {
   fixtureGate.invalidate();
   required("#hold-status").textContent = holdActive ? "on" : "off";
   required("[data-hold-toggle]").setAttribute("aria-pressed", String(holdActive));
+});
+required<HTMLButtonElement>("[data-ground-toggle]").addEventListener("click", () => {
+  groundVisible = !groundVisible;
+  viewportApi.setGroundVisible(groundVisible);
+  required("#ground-status").textContent = groundVisible ? "on" : "off";
+  required("[data-ground-toggle]").setAttribute("aria-pressed", String(groundVisible));
 });
 required("[data-render-toggle]").addEventListener("click", () => {
   renderMode = renderMode === "live" ? "intensity" : "live";
@@ -1033,16 +998,7 @@ function sceneStripPixels(
   for (const fixture of fixtures) {
     const definition = definitions[fixture.definition];
     if (definition?.kind !== "strip") continue;
-    const bytes = new Uint8Array(definition.pixels * definition.channelsPerPixel);
-    let offset = 0;
-    for (const address of fixture.addresses) {
-      const slots = effectiveFrames().get(address.universe);
-      if (!slots) continue;
-      const length = Math.min(address.footprint, bytes.length - offset);
-      bytes.set(slots.subarray(address.address - 1, address.address - 1 + length), offset);
-      offset += length;
-      if (offset === bytes.length) break;
-    }
+    const bytes = textureBytesForFixture(fixture, definition, effectiveFrames());
     pixels.set(fixture.id, bytes);
   }
   return pixels;
@@ -1100,22 +1056,28 @@ document.documentElement.dataset.ready = "true";
 
 function renderHealth(message: UniversesMessage): void {
   renderStripTrust(message);
-  const universe = message.universes.find((candidate) => candidate.universe === 1);
+  const numbers = commands.isBhsScene() ? subscriptionUniverses(visibleFixtures()) : [1];
+  const universes = numbers.map((number) =>
+    message.universes.find((candidate) => candidate.universe === number),
+  );
+  const contended = universes.some((universe) => (universe?.sources.length ?? 0) > 1);
+  const stale = universes.some((universe, index) =>
+    universe && universe.sources.length > 0
+      ? universe.stale
+      : receivedUniverses.has(numbers[index]!),
+  );
+  const waiting =
+    universes.length === 0 ||
+    universes.some(
+      (universe, index) => !universe?.sources.length && !receivedUniverses.has(numbers[index]!),
+    );
   const status = required("#universe-status");
   const health = required("#universe-health");
-  if (!universe || universe.sources.length === 0) {
-    const retainedFrame = receivedUniverses.has(1);
-    status.textContent = retainedFrame ? "1 · stale" : "1 · waiting";
-    status.dataset.contention = "false";
-    health.dataset.stale = String(retainedFrame);
-    setFixtureTrust(retainedFrame, false);
-  } else {
-    const contended = universe.sources.length > 1;
-    status.textContent = `1 · ${contended ? "contended" : universe.stale ? "stale" : "live"}`;
-    status.dataset.contention = String(contended);
-    health.dataset.stale = String(universe.stale);
-    setFixtureTrust(universe.stale, contended);
-  }
+  status.textContent = `${numbers.join(", ") || "—"} · ${contended ? "contended" : stale ? "stale" : waiting ? "waiting" : "live"}`;
+  status.dataset.contention = String(contended);
+  health.dataset.stale = String(stale);
+  // The three reference cube badges describe universe 1, not the native scene union.
+  if (!commands.isBhsScene()) setFixtureTrust(stale, contended);
   health.innerHTML =
     message.universes.map(universeSection).join("") ||
     `<div class="empty-state">Waiting for an sACN or Art-Net source…</div>`;
@@ -1155,7 +1117,17 @@ function renderStripTrust(message: UniversesMessage): void {
     const contended = universes.some((universe) => (universe?.sources.length ?? 0) > 1);
     const label = trustLabel(stale, contended);
     const item = document.querySelector<HTMLElement>(`[data-texture-strip="${strip.id}"]`);
+    if (commands.isBhsScene()) {
+      if (item) item.hidden = true;
+      const marker = document.querySelector<HTMLElement>(`[data-strip-mark="${strip.id}"]`);
+      if (marker) {
+        marker.textContent = "";
+        marker.dataset.visible = "false";
+      }
+      continue;
+    }
     if (item) {
+      item.hidden = false;
       item.dataset.stale = String(stale);
       item.dataset.contended = String(contended);
       item.textContent = `Spoke ${strip.id} · 23 px${label ? ` · ${label}` : ""}`;
@@ -1233,7 +1205,10 @@ function syncSceneFixtures(): void {
   liveFeed?.setUniverses(subscriptionUniverses(fixtures));
 }
 function renderSceneFixtures(fixtures: readonly LocalFixture[]): void {
-  const overlaps = patchOverlaps(fixtures);
+  const overlaps = patchOverlaps(fixtures, {
+    ...resolvedReferenceDefinitions,
+    ...commands.definitions(),
+  });
   const item = (fixture: LocalFixture) => {
     const definition = commands.definitions()[fixture.definition];
     const detail =
@@ -1390,50 +1365,6 @@ function breakTrust(addresses: readonly BreakAddress[]): {
   return { stale, contended };
 }
 
-function breakRanges(fixture: LocalFixture): { universe: number; from: number; to: number }[] {
-  const inline = commands.definitions()[fixture.definition];
-  const resolved = inline ?? resolvedReferenceDefinition(fixture.definition);
-  const stripFootprint =
-    resolved && "pixels" in resolved
-      ? resolved.pixels * resolved.channelsPerPixel
-      : resolved && "footprint" in resolved
-        ? resolved.footprint
-        : null;
-  return fixture.addresses.map((address) => {
-    const slots = stripFootprint ?? address.footprint;
-    return { universe: address.universe, from: address.address, to: address.address + slots - 1 };
-  });
-}
-
-function patchOverlaps(fixtures: readonly LocalFixture[]): Map<number, Set<number>> {
-  const overlaps = new Map<number, Set<number>>();
-  const ranges = fixtures.map((fixture) => ({ fixture, ranges: breakRanges(fixture) }));
-  for (let left = 0; left < ranges.length; left += 1) {
-    for (let right = left + 1; right < ranges.length; right += 1) {
-      const a = ranges[left]!;
-      const b = ranges[right]!;
-      const shared = a.ranges.some((first) =>
-        b.ranges.some(
-          (second) =>
-            first.universe === second.universe &&
-            first.from <= second.to &&
-            second.from <= first.to,
-        ),
-      );
-      if (!shared) continue;
-      for (const [one, other] of [
-        [a.fixture.id, b.fixture.id],
-        [b.fixture.id, a.fixture.id],
-      ] as const) {
-        const entry = overlaps.get(one) ?? new Set<number>();
-        entry.add(other);
-        overlaps.set(one, entry);
-      }
-    }
-  }
-  return overlaps;
-}
-
 function renderIssues(fixtures: readonly LocalFixture[], overlaps: Map<number, Set<number>>): void {
   const rows: string[] = [];
   if (patchIssue) rows.push(`<li data-issue="patch:source">${escapeHtml(patchIssue)}</li>`);
@@ -1465,14 +1396,15 @@ function renderIssues(fixtures: readonly LocalFixture[], overlaps: Map<number, S
         `<li data-issue="mvr:${fixture.id}:${index}">Fixture ${fixture.id} · ${escapeHtml(mark)}</li>`,
       );
   }
+  const label = commands.isBhsScene()
+    ? (commands.patchPath()?.split("/").pop() ?? "scene")
+    : "reference";
   required("[data-issues]").innerHTML =
     rows.length === 0
-      ? `<li data-issues-empty>No patch issues in the reference rig.</li>`
+      ? `<li data-issues-empty>No patch issues in ${escapeHtml(label)}.</li>`
       : rows.join("");
   required("#patch-status").textContent =
-    rows.length === 0
-      ? "reference"
-      : `reference · ${rows.length} issue${rows.length === 1 ? "" : "s"}`;
+    rows.length === 0 ? label : `${label} · ${rows.length} issue${rows.length === 1 ? "" : "s"}`;
 }
 
 function bindFixtureRows(): void {
@@ -1590,10 +1522,8 @@ function localAddresses(): LocalFixture["addresses"] {
 
 function subscriptionUniverses(fixtures: readonly LocalFixture[]): number[] {
   return [
-    1,
-    ...universesForStrips(referenceStrips),
-    ...fixtures.flatMap((fixture) => fixture.addresses.map((address) => address.universe)),
-  ];
+    ...new Set(fixtures.flatMap((fixture) => fixture.addresses.map((address) => address.universe))),
+  ].sort((left, right) => left - right);
 }
 function localFixtureLevels(changed: ReadonlySet<number>): Map<number, number> {
   const levels = new Map<number, number>();
@@ -1613,7 +1543,7 @@ function localFixtureLevels(changed: ReadonlySet<number>): Map<number, number> {
     for (const address of fixture.addresses) {
       const slots = effectiveFrames().get(address.universe);
       if (!slots) continue;
-      const footprint = stripFootprint ?? address.footprint;
+      const footprint = fixtureBreakFootprint(fixture.addresses, address, stripFootprint);
       for (const value of slots.subarray(address.address - 1, address.address - 1 + footprint))
         level = Math.max(level, value ?? 0);
     }
@@ -2098,7 +2028,10 @@ function answerAgentQuery(name: string, params: Record<string, unknown>): unknow
   switch (name) {
     case "rig.list": {
       const fixtures = visibleFixtures();
-      const overlaps = patchOverlaps(fixtures);
+      const overlaps = patchOverlaps(fixtures, {
+        ...resolvedReferenceDefinitions,
+        ...commands.definitions(),
+      });
       return {
         feed: resolvingFeed(),
         sceneFixtures: fixtures.map((fixture) => ({
@@ -2127,13 +2060,22 @@ function answerAgentQuery(name: string, params: Record<string, unknown>): unknow
           // On-demand query: bypass the idle gate by asking for every fixture.
           level:
             localFixtureLevels(new Set(fixtures.map((fixture) => fixture.id))).get(scene.id) ?? 0,
-          marks: fixtureMarksFor(scene, patchOverlaps(fixtures)),
+          marks: fixtureMarksFor(
+            scene,
+            patchOverlaps(fixtures, {
+              ...resolvedReferenceDefinitions,
+              ...commands.definitions(),
+            }),
+          ),
         };
       throw new Error(`unknown fixture ${String(params.id)}`);
     }
     case "issues.list": {
       const fixtures = visibleFixtures();
-      const overlaps = patchOverlaps(fixtures);
+      const overlaps = patchOverlaps(fixtures, {
+        ...resolvedReferenceDefinitions,
+        ...commands.definitions(),
+      });
       return {
         overlaps: [...overlaps.entries()].map(([slot, ids]) => ({ slot, fixtures: [...ids] })),
         fixtures: fixtures.map((fixture) => ({

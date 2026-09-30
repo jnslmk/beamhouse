@@ -233,6 +233,24 @@ export function parseBhs(text: string): BhsDocument {
 
   return parsed as BhsDocument;
 }
+/** Decode the relative URL the bridge fetches, rejecting filesystem/URL escapes. */
+export function previewAssetPath(path: string): string {
+  const decoded = decodeURIComponent(path);
+  if (
+    !decoded ||
+    /[\\:\0?#]/.test(decoded) ||
+    decoded.startsWith("/") ||
+    decoded.split("/").some((segment) => segment === ".." || segment === "")
+  )
+    throw new BhsDefinitionError("Preview assets must use relative file URLs without traversal");
+  const normalized = decoded
+    .split("/")
+    .filter((segment) => segment !== ".")
+    .join("/");
+  if (!normalized) throw new BhsDefinitionError("Preview asset URL must name a file");
+  return normalized;
+}
+
 function validateAssetsBlock(value: unknown): void {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     throw new BhsDefinitionError('"assets" must be an object');
@@ -244,18 +262,13 @@ function validateAssetsBlock(value: unknown): void {
     const entry = asset as Record<string, unknown>;
     for (const key of ["body", "diffuser"]) {
       const path = entry[key];
-      if (
-        typeof path !== "string" ||
-        path.length === 0 ||
-        path.startsWith("/") ||
-        path.includes("://") ||
-        path.split("/").includes("..")
-      ) {
+      if (typeof path !== "string") {
         throw new BhsDefinitionError(
           `Preview asset "${id}.${key}" must be a non-empty relative URL`,
           id,
         );
       }
+      previewAssetPath(path);
     }
   }
 }

@@ -25,6 +25,7 @@ let page: Page;
 let httpPort = 0;
 let sacnPort = 0;
 let artnetPort = 0;
+let startupScenePath: string | null = null;
 
 describe("running Beamhouse", () => {
   beforeAll(async () => {
@@ -83,6 +84,7 @@ describe("running Beamhouse", () => {
     await browser?.close();
     bridge?.kill("SIGTERM");
     if (bridge) await childExit(bridge);
+    if (startupScenePath) rmSync(resolve(repository, startupScenePath), { force: true });
   });
 
   test(
@@ -95,6 +97,11 @@ describe("running Beamhouse", () => {
         stderr: "pipe",
       });
       if (!build.success) throw new Error(build.stderr.toString());
+      startupScenePath = `shows/startup-${process.pid}.bhs`;
+      writeFileSync(
+        resolve(repository, startupScenePath),
+        readFileSync(resolve(repository, "tests/fixtures/star-tent.bhs")),
+      );
       httpPort = await freeTcpPort();
       sacnPort = await freeUdpPort();
       artnetPort = await freeUdpPort();
@@ -129,6 +136,20 @@ describe("running Beamhouse", () => {
       await expectCount(page.locator("[data-fixture]"), 3);
       await page.locator('[data-status="live"]').waitFor();
       await page.locator("#ownership-status", { hasText: "owner" }).waitFor();
+    },
+    BROWSER_TEST_TIMEOUT,
+  );
+  test(
+    "toggles the viewport ground plane and grid",
+    async () => {
+      const canvas = page.locator("#viewport canvas");
+      const withGround = await canvas.screenshot();
+      const toggle = page.locator("[data-ground-toggle]");
+      expect(await toggle.getAttribute("aria-pressed")).toBe("true");
+      await toggle.click();
+      expect(await toggle.getAttribute("aria-pressed")).toBe("false");
+      const withoutGround = await canvas.screenshot();
+      expect(withoutGround.equals(withGround)).toBe(false);
     },
     BROWSER_TEST_TIMEOUT,
   );
@@ -2649,6 +2670,53 @@ describe("running Beamhouse", () => {
       expect(await pools()).toBe(String(pools0 + 7));
     },
     BROWSER_HEAVY_TIMEOUT,
+  );
+  test(
+    "ingests a BHS scene supplied on the initial URL even when ownership arrives during boot",
+    async () => {
+      const scenePath = startupScenePath;
+      if (!scenePath) throw new Error("startup scene was not prepared before the bridge started");
+      const { promise: ownerAnnounced, resolve: releaseAssets } = Promise.withResolvers<void>();
+      page.on("websocket", (socket) => {
+        socket.on("framereceived", (frame) => {
+          if (typeof frame.payload !== "string") return;
+          let message: unknown;
+          try {
+            message = JSON.parse(frame.payload);
+          } catch {
+            return;
+          }
+          if (
+            typeof message === "object" &&
+            message !== null &&
+            "op" in message &&
+            message.op === "control.owner"
+          )
+            releaseAssets();
+        });
+      });
+      await page.route("**/*gdtf*", async (route) => {
+        await ownerAnnounced;
+        await route.continue();
+      });
+      await page.goto(`http://127.0.0.1:${httpPort}?scene=${scenePath}`, {
+        waitUntil: "domcontentloaded",
+      });
+      await page.locator('html[data-ready="true"]').waitFor({ timeout: BROWSER_TEST_TIMEOUT });
+      await page.waitForFunction(
+        () =>
+          document.querySelector("#ownership-status")?.textContent === "owner" &&
+          document.querySelectorAll("[data-local-fixtures] [data-local-fixture]").length === 10,
+        null,
+        { timeout: 10_000 },
+      );
+      const addresses = await page
+        .locator("[data-local-fixtures] [data-local-fixture] [data-break]")
+        .evaluateAll((rows) => rows.map((row) => (row as HTMLElement).dataset.break));
+      expect(addresses).toContain("2.001");
+      expect(addresses).toContain("3.139");
+    },
+    BROWSER_TEST_TIMEOUT,
   );
 });
 async function injectGdtf(filename: string): Promise<string> {

@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
+import { FXAAPass } from "three/addons/postprocessing/FXAAPass.js";
 import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
 import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
 import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js";
@@ -89,6 +90,7 @@ export interface Viewport {
   setRenderMode(mode: "live" | "intensity"): void;
   setGizmoMode(mode: "translate" | "rotate"): void;
   setSnap(step: number | null): void;
+  setGroundVisible(visible: boolean): void;
   setSceneFixtures(
     fixtures: readonly LocalFixture[],
     definitions: Readonly<Record<string, BhsDefinition>>,
@@ -137,9 +139,9 @@ export function createViewport(
   renderer.toneMappingExposure = 1.15;
   host.append(renderer.domElement);
 
-  // Post chain (ADR-0017): RenderPass → UnrealBloomPass → OutputPass into the
-  // composer's default HalfFloat HDR target. The composer bypasses the
-  // canvas MSAA from `antialias` above, so the targets carry 4x MSAA
+  // Post chain (ADR-0017): RenderPass → UnrealBloomPass → OutputPass → FXAAPass.
+  // The composer uses a HalfFloat HDR target and bypasses the
+  // canvas MSAA from `antialias` above, so its targets carry 4x MSAA
   // themselves — this is what smooths the beam spokes + gizmo edges.
   // OutputPass reads tone mapping + color space off the renderer, so
   // ACES/sRGB stay renderer settings.
@@ -155,6 +157,8 @@ export function createViewport(
   );
   composer.addPass(bloom);
   composer.addPass(new OutputPass());
+  // Smooth subpixel CAD highlights after tone mapping, where FXAA measures contrast.
+  composer.addPass(new FXAAPass());
 
   const controls = new OrbitControls(camera, renderer.domElement);
   controls.enableDamping = true;
@@ -233,16 +237,6 @@ export function createViewport(
   const grid = new THREE.GridHelper(30, 30, 0x4a4743, 0x292724);
   grid.position.y = 0.003;
   scene.add(grid);
-
-  // Spoke-hub occluder: the ten star arms converge exactly at (0, 3, 0), so
-  // their emissive roots stack into one blob. A small dark puck caps the
-  // convergence — a physical mount hub the lines terminate into (slice-4).
-  const hubCap = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.11, 0.11, 0.08, 24),
-    new THREE.MeshStandardMaterial({ color: 0x121110, metalness: 0, roughness: 0.9 }),
-  );
-  hubCap.position.set(0, 3, 0);
-  scene.add(hubCap);
 
   const colors = builtInReference ? [0xffa52f, 0x49a4ff, 0xf05baa] : [];
   const activeStripFixtures = builtInReference ? stripFixtures : [];
@@ -388,7 +382,7 @@ export function createViewport(
   // share geometry; every fixture owns its diffuser material (its texture is).
   const stripTemplates = new Map<
     string,
-    { body: THREE.Object3D; diffuser: THREE.Object3D; length: number }
+    { body: THREE.Object3D; diffuser: THREE.Object3D; length: number; centre: THREE.Vector3 }
   >();
   const cloneBody = (template: THREE.Object3D): THREE.Object3D => {
     const clone = template.clone();
@@ -437,6 +431,7 @@ export function createViewport(
   }
   const localTexels = new Map<number, LocalTexels>();
   const localStripLengths = new Map<number, number>();
+  const localStripCentres = new Map<number, THREE.Vector3>();
   const localMarkers = new Map<number, HTMLElement>();
   const buildStaticsMesh = (id: number, statics: FixtureStatics): THREE.Object3D => {
     const size = statics.size;
@@ -512,7 +507,12 @@ export function createViewport(
   const buildStripMesh = (
     id: number,
     count: number,
-    template: { body: THREE.Object3D; diffuser: THREE.Object3D; length: number },
+    template: {
+      body: THREE.Object3D;
+      diffuser: THREE.Object3D;
+      length: number;
+      centre: THREE.Vector3;
+    },
   ): THREE.Group => {
     const pixels = new Float32Array(count * 4);
     const texture = new THREE.DataTexture(pixels, count, 1, THREE.RGBAFormat, THREE.FloatType);
@@ -521,15 +521,21 @@ export function createViewport(
     texture.minFilter = THREE.LinearFilter;
     texture.generateMipmaps = false;
     const diffuserMaterial = new THREE.MeshStandardMaterial({
-      color: 0x141312,
-      map: texture,
+      color: 0xf2f0e9,
       emissiveMap: texture,
       emissive: 0xffffff,
-      // Grade fallback (one step): pull the spoke hub below the bloom
-      // threshold so the starburst core keeps separation instead of a blob.
       emissiveIntensity: 0.8,
-      roughness: 0.35,
+      roughness: 0.7,
     });
+    diffuserMaterial.onBeforeCompile = (shader) => {
+      // Transmitted LED color must not be whitened by the unlit plastic reflection.
+      shader.fragmentShader = shader.fragmentShader.replace(
+        "#include <emissivemap_fragment>",
+        `#include <emissivemap_fragment>
+        float ledEmission = max(totalEmissiveRadiance.r, max(totalEmissiveRadiance.g, totalEmissiveRadiance.b));
+        diffuseColor.rgb *= 1.0 - smoothstep(0.0, 0.04, ledEmission);`,
+      );
+    };
     const group = new THREE.Group();
     // Both halves borrow the loaded template geometry; materials/textures are local.
     group.userData.sharedGeometry = true;
@@ -542,6 +548,7 @@ export function createViewport(
     localTexels.set(id, { texture, pixels, count });
     localMaterials.set(id, diffuserMaterial);
     localStripLengths.set(id, template.length);
+    localStripCentres.set(id, template.centre);
     return group;
   };
   let gdtfPreview: THREE.Object3D | null = null;
@@ -587,6 +594,7 @@ export function createViewport(
     }
     localFixtures.clear();
     localStripLengths.clear();
+    localStripCentres.clear();
     localMarkers.clear();
     localDefinitions.clear();
     for (const fixture of nextFixtures) {
@@ -867,10 +875,10 @@ export function createViewport(
         [document.querySelector<HTMLElement>(`[data-strip-probe="${id}-end"]`), length / 2],
       ] as const) {
         if (!element) continue;
-        const endpoint = new THREE.Vector3(x, 0, 0)
-          .applyQuaternion(mesh.quaternion)
-          .add(mesh.position)
-          .project(camera);
+        const endpoint = new THREE.Vector3(x, 0, 0);
+        const centre = localStripCentres.get(id);
+        if (centre) endpoint.add(centre);
+        endpoint.applyQuaternion(mesh.quaternion).add(mesh.position).project(camera);
         element.style.left = `${(endpoint.x * 0.5 + 0.5) * host.clientWidth}px`;
         element.style.top = `${(-endpoint.y * 0.5 + 0.5) * host.clientHeight}px`;
       }
@@ -907,6 +915,10 @@ export function createViewport(
         if (entry.cone.visible) cones += 1;
       }
       host.dataset.fixtureCones = String(cones);
+    },
+    setGroundVisible(visible) {
+      floor.visible = visible;
+      grid.visible = visible;
     },
     setEditable(nextEditable) {
       editable = nextEditable;
@@ -964,7 +976,7 @@ export function createViewport(
     },
     setSceneFixtureLevels(levels) {
       for (const [id, material] of localMaterials) {
-        if (!levels.has(id)) continue;
+        if (!levels.has(id) || localTexels.has(id)) continue;
         const level = (levels.get(id) ?? 0) / 255;
         material.emissive.setRGB(level, level, level);
         material.emissiveIntensity = level;
@@ -983,10 +995,13 @@ export function createViewport(
     defineStageMesh,
     showGdtfFixture,
     defineStripTemplate(definitionId, body, diffuser) {
+      // Body connectors may shift the stack centre away from the luminous tube.
+      const bounds = new THREE.Box3().setFromObject(diffuser);
       stripTemplates.set(definitionId, {
         body,
         diffuser,
-        length: new THREE.Box3().setFromObject(body).getSize(new THREE.Vector3()).x,
+        length: bounds.max.x - bounds.min.x,
+        centre: bounds.getCenter(new THREE.Vector3()),
       });
     },
     clearStripTemplates() {

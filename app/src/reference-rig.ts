@@ -1,4 +1,5 @@
 import type { BhsDefinition, LocalFixture, Placement } from "./scene.ts";
+import { fixtureBreakFootprint } from "./scene.ts";
 import { mintLinearRGB, type LinearRGB } from "./resolve.ts";
 export type { LinearRGB };
 export interface BreakAddress {
@@ -250,6 +251,28 @@ export function universesForStrips(strips: readonly StripFixture[]): number[] {
   return [
     ...new Set(strips.flatMap((strip) => strip.addresses.map(({ universe }) => universe))),
   ].sort((left, right) => left - right);
+}
+
+/** Concatenate wire breaks without moving later pixels when a universe is absent. */
+export function textureBytesForFixture(
+  fixture: LocalFixture,
+  definition: Extract<BhsDefinition, { kind: "strip" }>,
+  frames: ReadonlyMap<number, Uint8Array>,
+): Uint8Array {
+  const texture = new Uint8Array(definition.pixels * definition.channelsPerPixel);
+  let offset = 0;
+  for (const address of fixture.addresses) {
+    const length = Math.min(
+      fixtureBreakFootprint(fixture.addresses, address, texture.length),
+      texture.length - offset,
+    );
+    const slots = frames.get(address.universe);
+    if (slots)
+      texture.set(slots.subarray(address.address - 1, address.address - 1 + length), offset);
+    offset += length;
+    if (offset === texture.length) break;
+  }
+  return texture;
 }
 
 export function textureBytesForStrip(

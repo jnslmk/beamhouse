@@ -6,8 +6,16 @@ import {
   referenceStrips,
   textureBytesForStrip,
   universesForStrips,
+  textureBytesForFixture,
   type StripFixture,
 } from "../app/src/reference-rig.ts";
+import {
+  apply,
+  normalize,
+  patchOverlaps,
+  type BhsDefinition,
+  type LocalFixture,
+} from "../app/src/scene.ts";
 
 const repository = resolve(import.meta.dir, "..");
 const authoritativeBreaks = [
@@ -134,4 +142,83 @@ test("gled2 breaks cover LEDs 0-229 exactly once: no gap, no overlap", () => {
     }
   }
   expect(owned).toEqual(new Array<number>(230).fill(1));
+});
+
+test("23px split at U3.484/U4.1 keeps pixel order and does not overlap the next fixture", () => {
+  const definition: Extract<BhsDefinition, { kind: "strip" }> = {
+    kind: "strip",
+    pixels: 23,
+    pitchMm: 1500 / 23,
+    channelsPerPixel: 3,
+    primitive: "Cylinder",
+  };
+  const split: LocalFixture = {
+    id: 8,
+    definition: "bhs:stella",
+    mode: "default",
+    addresses: [
+      { universe: 3, address: 484, footprint: 27 },
+      { universe: 4, address: 1, footprint: 42 },
+    ],
+  };
+  const next: LocalFixture = {
+    id: 9,
+    definition: "bhs:stella",
+    mode: "default",
+    addresses: [{ universe: 4, address: 43, footprint: 69 }],
+  };
+  const definitions = { "bhs:stella": definition };
+  expect(patchOverlaps([split, next], definitions)).toEqual(new Map());
+  const overlapping = { ...next, addresses: [{ universe: 4, address: 42, footprint: 69 }] };
+  expect(patchOverlaps([split, overlapping], definitions)).toEqual(
+    new Map([
+      [8, new Set([9])],
+      [9, new Set([8])],
+    ]),
+  );
+  const pixels = Uint8Array.from({ length: 69 }, (_, index) => index + 1);
+  const first = new Uint8Array(512);
+  const second = new Uint8Array(512);
+  first.set(pixels.subarray(0, 27), 483);
+  first.set([250, 251], 510); // WLED's unused universe padding is not a pixel.
+  second.set(pixels.subarray(27));
+  second.fill(255, 42, 111); // The next fixture must not bleed into the split strip.
+  expect(
+    textureBytesForFixture(
+      split,
+      definition,
+      new Map([
+        [3, first],
+        [4, second],
+      ]),
+    ),
+  ).toEqual(pixels);
+  expect(textureBytesForFixture(split, definition, new Map([[4, second]]))).toEqual(
+    Uint8Array.from([...new Uint8Array(27), ...pixels.subarray(27)]),
+  );
+  const scene = normalize({ definitions, fixtures: { 8: split, 9: next } });
+  expect(scene.fixtures[8]).toEqual(split);
+  const changed = apply(
+    {
+      kind: "definition.set",
+      id: "bhs:stella",
+      value: { ...definition, pitchMm: 60 },
+    },
+    scene,
+  );
+  expect(changed.definitions["bhs:stella"]).toEqual({ ...definition, pitchMm: 60 });
+  const added = apply(
+    {
+      kind: "fixture.add",
+      fixture: { ...split, id: -1 },
+      placement: { position: [0, 0, 0], rotation: [0, 0, 0] },
+    },
+    scene,
+  );
+  expect(added.fixtures[-1]).toEqual({ ...split, id: -1 });
+  const outside = {
+    ...split,
+    addresses: [{ universe: 3, address: 500, footprint: 27 }, split.addresses[1]!],
+  };
+  expect(normalize({ definitions, fixtures: { 8: outside } }).fixtures).toEqual({});
 });
