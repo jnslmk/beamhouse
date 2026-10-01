@@ -11,7 +11,7 @@ declare global {
 }
 
 // Exercise the real Three material, scalar/RGB update paths, and GPU shader together.
-test("CAD diffusers stay milky through dim backgrounds and retain spatial RGB color", async () => {
+test("CAD diffusers retain dim RGB hue, white off regions and smooth spatial transitions", async () => {
   const repository = resolve(import.meta.dir, "..");
   mkdirSync(join(repository, ".codex-tmp"), { recursive: true });
   const directory = mkdtempSync(join(repository, ".codex-tmp/diffuser-render-"));
@@ -132,59 +132,95 @@ test("CAD diffusers stay milky through dim backgrounds and retain spatial RGB co
         canvas.height = image.height;
         const context = canvas.getContext("2d")!;
         context.drawImage(image, 0, 0);
-        // Projected texel centres for the fixed camera and one-metre CAD diffuser.
-        return [201, 240, 279].map((x) =>
-          Array.from(context.getImageData(x, Math.floor(canvas.height / 2), 1, 1).data).slice(0, 3),
+        const profile = Array.from({ length: 79 }, (_, index) =>
+          Array.from(
+            context.getImageData(201 + index, Math.floor(canvas.height / 2), 1, 1).data,
+          ).slice(0, 3),
         );
+        // Projected texel centres for the fixed camera and one-metre CAD diffuser.
+        return { centres: [profile[0]!, profile[39]!, profile[78]!], profile };
       }, screenshot.toString("base64"));
     };
-    const uniform = async (rgb: number[], resolved: boolean) =>
-      (await sample([rgb, rgb, rgb], resolved))[1]!;
+    const colors = [
+      [0, 1, 1], // cyan
+      [1, 0, 0], // red
+      [1, 0, 1], // magenta
+    ];
+    const difference = (left: number[], right: number[]) =>
+      Math.max(...left.map((channel, index) => Math.abs(channel - right[index]!)));
+    const expectHue = (rgb: number[], color: number[]) => {
+      expect(Math.max(...rgb)).toBeGreaterThan(150);
+      for (let lit = 0; lit < 3; lit += 1) {
+        if (!color[lit]) continue;
+        for (let unlit = 0; unlit < 3; unlit += 1) {
+          if (!color[unlit]) expect(rgb[lit]! - rgb[unlit]!).toBeGreaterThan(25);
+        }
+      }
+    };
+    // Three texels per capture keep this at 30 screenshots, below the old 36.
     for (const resolved of [false, true]) {
-      const off = await uniform([0, 0, 0], resolved);
-      expect(Math.min(...off)).toBeGreaterThan(150);
-      expect(Math.max(...off) - Math.min(...off)).toBeLessThan(60);
-      for (const value of [1, 4, 8, 12, 16, 24, 32]) {
-        const dim = await uniform([0, value, value], resolved);
-        expect(Math.min(...dim)).toBeGreaterThan(150);
-        expect(Math.max(...dim) - Math.min(...dim)).toBeLessThan(60);
-        expect(
-          Math.max(...dim.map((channel, index) => Math.abs(channel - off[index]!))),
-        ).toBeLessThan(20);
-      }
-      // Adjacent samples at the fade's beginning, middle and bright end bound GPU readbacks.
-      for (const value of [32, 64, 94]) {
-        const previous = await uniform([0, value, value], resolved);
-        const transition = await uniform([0, value + 2, value + 2], resolved);
-        expect(
-          Math.max(...transition.map((channel, index) => Math.abs(channel - previous[index]!))),
-        ).toBeLessThan(25);
-      }
-      const cyan = await uniform([0, 96, 96], resolved);
-      expect(cyan[1]!).toBeGreaterThan(90);
-      expect(cyan[1]! - cyan[0]!).toBeGreaterThan(40);
-      expect(cyan[2]! - cyan[0]!).toBeGreaterThan(40);
-      const red = await uniform([96, 0, 0], resolved);
-      expect(red[0]! - Math.max(red[1]!, red[2]!)).toBeGreaterThan(40);
-      const mixed = await sample(
-        [
-          [0, 96, 96],
-          [0, 12, 12],
-          [0, 0, 0],
-        ],
+      const off = await sample(
+        colors.map(() => [0, 0, 0]),
         resolved,
       );
-      expect(mixed[0]![1]! - mixed[0]![0]!).toBeGreaterThan(40);
-      expect(mixed[0]![2]! - mixed[0]![0]!).toBeGreaterThan(40);
-      expect(Math.min(...mixed[1]!)).toBeGreaterThan(150);
-      expect(Math.max(...mixed[1]!) - Math.min(...mixed[1]!)).toBeLessThan(60);
-      expect(
-        Math.max(...mixed[2]!.map((channel, index) => Math.abs(channel - off[index]!))),
-      ).toBeLessThan(10);
-      const offAgain = await uniform([0, 0, 0], resolved);
-      expect(
-        Math.max(...offAgain.map((value, index) => Math.abs(value - off[index]!))),
-      ).toBeLessThan(3);
+      for (const rgb of off.centres) {
+        expect(Math.min(...rgb)).toBeGreaterThan(150);
+        expect(Math.max(...rgb) - Math.min(...rgb)).toBeLessThan(60);
+      }
+      let previous = off;
+      // First byte steps must leave white continuously, without a black switch.
+      for (const value of [1, 2, 4]) {
+        const nearZero = await sample(
+          colors.map((color) => color.map((channel) => channel * value)),
+          resolved,
+        );
+        for (const [index, rgb] of nearZero.centres.entries()) {
+          expect(Math.max(...rgb)).toBeGreaterThan(150);
+          expect(difference(rgb, previous.centres[index]!)).toBeLessThan(40);
+        }
+        previous = nearZero;
+      }
+      // These are already-dimmed output bytes, representative of the 35% show.
+      let dim = off;
+      for (const value of [8, 12, 24, 32, 64]) {
+        dim = await sample(
+          colors.map((color) => color.map((channel) => channel * value)),
+          resolved,
+        );
+        for (const [index, rgb] of dim.centres.entries()) expectHue(rgb, colors[index]!);
+      }
+      for (const value of [96, 255]) {
+        const bright = await sample(
+          colors.map((color) => color.map((channel) => channel * value)),
+          resolved,
+        );
+        for (const [index, rgb] of bright.centres.entries()) {
+          expectHue(rgb, colors[index]!);
+          expect(Math.max(...rgb)).toBeGreaterThanOrEqual(Math.max(...dim.centres[index]!));
+        }
+        dim = bright;
+      }
+      for (const color of colors) {
+        const mixed = await sample(
+          [[0, 0, 0], color.map((channel) => channel * 12), color.map((channel) => channel * 96)],
+          resolved,
+        );
+        expect(difference(mixed.centres[0]!, off.centres[0]!)).toBeLessThan(10);
+        expectHue(mixed.centres[1]!, color);
+        expectHue(mixed.centres[2]!, color);
+        // Read every screen pixel between centres, not just the texels: an
+        // interpolated off/dim/bright boundary must not hide a dark gap.
+        for (const [index, rgb] of mixed.profile.entries()) {
+          expect(Math.max(...rgb)).toBeGreaterThan(150);
+          if (index > 0) expect(difference(rgb, mixed.profile[index - 1]!)).toBeLessThan(25);
+        }
+      }
+      const offAgain = await sample(
+        colors.map(() => [0, 0, 0]),
+        resolved,
+      );
+      for (const [index, rgb] of offAgain.centres.entries())
+        expect(difference(rgb, off.centres[index]!)).toBeLessThan(3);
     }
     expect(errors).toEqual([]);
   } finally {

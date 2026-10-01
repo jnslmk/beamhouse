@@ -528,12 +528,13 @@ export function createViewport(
       roughness: 0.7,
     });
     diffuserMaterial.onBeforeCompile = (shader) => {
-      // Keep dim backgrounds milky; fade reflection only as the LED color becomes bright.
+      // Tint reflection toward the sampled LED hue, retaining white at exact zero.
       shader.fragmentShader = shader.fragmentShader.replace(
         "#include <emissivemap_fragment>",
         `#include <emissivemap_fragment>
         float ledEmission = max(totalEmissiveRadiance.r, max(totalEmissiveRadiance.g, totalEmissiveRadiance.b));
-        diffuseColor.rgb *= 1.0 - smoothstep(0.08, 0.3, ledEmission);`,
+        // A small white floor makes the tint continuous at zero without dimming its peak.
+        diffuseColor.rgb *= (vec3(0.008) + totalEmissiveRadiance) / (0.008 + ledEmission);`,
       );
     };
     const group = new THREE.Group();

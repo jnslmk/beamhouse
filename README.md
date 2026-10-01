@@ -28,10 +28,12 @@ centre, including body connectors; diffuser UVs use the assembled diffuser's X e
 zero stays at its -X end across multiple solids. A split-universe strip's ordered address
 footprints describe its successive channel runs (for example, 27 + 42 slots for 23 RGB pixels),
 not a full-strip footprint at each address.
-Off and dim CAD diffuser regions retain an opaque milky-white/grey surface. Reflection fades
-gradually at each sampled pixel as its LED emission brightens, keeping bright RGB colors
-recognizable without a dark low-brightness band or a fixture-wide fallback. This viewport-only
-blend leaves source RGB bytes, animation and DMX output unchanged; scalar fixture levels do not
+Off CAD diffuser regions retain an opaque milky-white/grey surface. Lit regions smoothly tint
+that surface toward each sampled pixel's LED hue, so dim cyan, red and magenta remain visible
+at reduced show brightness (including representative RGB channel bytes 8–64 at 35% output).
+The blend retains the strongest reflected channel rather than fading the surface to black,
+avoiding dark transition bands between off, dim and bright regions. This viewport-only correction
+leaves source RGB bytes, animation and DMX output unchanged; scalar fixture levels do not
 re-dim RGB strips.
 The viewport combines 4× MSAA with FXAA after tone mapping to reduce broken subpixel
 CAD highlights. FXAA adds one fullscreen pass and slightly softens fine detail; it
@@ -57,5 +59,6 @@ UDP sends. Git hooks run formatting on staged files and then typechecking and th
 runs the same checks on every push and pull request.
 
 For the focused CAD diffuser GPU regression, run `bun test tests/diffuser-render.test.ts`.
-It renders the actual viewport through both RGB-byte and resolved-state updates, checking dim
-background transitions, bright colors and mixed bright/dim/off regions with screenshot readback.
+It renders the actual viewport through both RGB-byte and resolved-state updates, checking
+near-zero continuity, dim cyan/red/magenta hue, stronger output and spatial mixed off/dim/bright
+regions with 30 screenshot readbacks, including every screen pixel between the sampled texel centres.
