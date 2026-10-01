@@ -10,7 +10,9 @@ export function configFromEnvironment(
     hostname: environment.BEAMHOUSE_HOST ?? "0.0.0.0",
     httpPort: numberFrom(environment.BEAMHOUSE_PORT, 7070),
     sacnPort: numberFrom(environment.BEAMHOUSE_SACN_PORT, 5568),
-    artnetPort: numberFrom(environment.BEAMHOUSE_ARTNET_PORT, 6454),
+    // gled2 owns 6454 for its Art-Net input (ADR-0002), so 6455 is the default
+    // everywhere, not just where bridge/.env happens to be loaded.
+    artnetPort: numberFrom(environment.BEAMHOUSE_ARTNET_PORT, 6455),
     appDirectory: environment.BEAMHOUSE_APP_DIR ?? resolve(baseDirectory, "../../app/dist"),
     watchDirectory: environment.BEAMHOUSE_WATCH_DIR ?? resolve(baseDirectory, "../../shows"),
     sacnStaleMs: numberFrom(environment.BEAMHOUSE_SACN_STALE_MS, 2_500),

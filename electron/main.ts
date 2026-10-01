@@ -1,15 +1,21 @@
 import { createRequire } from "node:module";
 import type { BrowserWindow as BrowserWindowType } from "electron";
 import type * as Electron from "electron";
+import { existsSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import { configFromEnvironment } from "../bridge/src/config.ts";
 import { startBridge, type BridgeConfig, type RunningBridge } from "../bridge/src/server.ts";
 import { sceneFromArgv } from "./scene-arg.ts";
 
 const electron = createRequire(import.meta.url)("electron") as typeof Electron;
-const { app, BrowserWindow, Menu, shell } = electron;
+const { app, BrowserWindow, Menu, shell, dialog } = electron;
 const hasLock = app.requestSingleInstanceLock();
+// bin.js redirects this process's stdout/stderr here and passes the path along;
+// launches that never went through it (AppImage, `electron .`) still get a path
+// to name in the failure dialog.
+const logPath = process.env.BEAMHOUSE_LOG ?? resolve(tmpdir(), "beamhouse.log");
 let bridge: RunningBridge | null = null;
 let window: BrowserWindowType | null = null;
 
@@ -30,6 +36,29 @@ function windowUrl(running: RunningBridge, scene: string | null): string {
   return url.href;
 }
 
+// A GUI launch has no console to read, so a bind failure has to be said out
+// loud: which addresses were attempted, what the operating system said, and
+// where the child's output went. Then quit rather than sit there windowless.
+function failStartup(config: BridgeConfig, error: unknown): void {
+  console.error("Beamhouse failed to start its bridge:", error);
+  dialog.showErrorBox(
+    "Beamhouse could not start",
+    [
+      "Beamhouse could not start its bridge. Another program may already own one of these ports:",
+      "",
+      `  HTTP     ${config.hostname}:${config.httpPort}`,
+      `  sACN     ${config.hostname}:${config.sacnPort}`,
+      `  Art-Net  ${config.hostname}:${config.artnetPort}`,
+      "",
+      error instanceof Error ? error.message : String(error),
+      // bin.js creates this file, but a direct electron/AppImage launch has none —
+      // naming a nonexistent path would send the user on a dead end.
+      ...(existsSync(logPath) ? ["", `Details: ${logPath}`] : []),
+    ].join("\n"),
+  );
+  app.quit();
+}
+
 async function createWindow(): Promise<void> {
   const config = configFromEnvironment(process.env, [], app.getAppPath());
   const appRoot = app.isPackaged ? app.getAppPath() : resolve(app.getAppPath(), "../..");
@@ -44,7 +73,12 @@ async function createWindow(): Promise<void> {
   } catch (error) {
     console.error("Beamhouse could not open the passed scene:", error);
   }
-  bridge = await startBridge({ ...config, appDirectory, watchDirectory });
+  try {
+    bridge = await startBridge({ ...config, appDirectory, watchDirectory });
+  } catch (error) {
+    failStartup(config, error);
+    return;
+  }
 
   window = new BrowserWindow({
     width: 1440,

@@ -12,7 +12,7 @@ bun install
 bun run start
 ```
 
-Open <http://localhost:7070>. The bridge listens for sACN on UDP 5568 and Art-Net on UDP 6454.
+Open <http://localhost:7070>. The bridge listens for sACN on UDP 5568 and Art-Net on UDP 6455.
 Art-Net Port-Address 0 is presented as Beamhouse universe 1.
 
 To open a saved scene in the desktop app, run `bun run beamhouse -- path/to/scene.bhs`. If
