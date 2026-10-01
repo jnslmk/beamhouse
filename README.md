@@ -28,8 +28,11 @@ centre, including body connectors; diffuser UVs use the assembled diffuser's X e
 zero stays at its -X end across multiple solids. A split-universe strip's ordered address
 footprints describe its successive channel runs (for example, 27 + 42 slots for 23 RGB pixels),
 not a full-strip footprint at each address.
-Unlit CAD diffusers retain an opaque milky-white surface. Lit pixels preserve their RGB color
-instead of mixing it with white plastic reflection; scalar fixture levels do not re-dim RGB strips.
+Off and dim CAD diffuser regions retain an opaque milky-white/grey surface. Reflection fades
+gradually at each sampled pixel as its LED emission brightens, keeping bright RGB colors
+recognizable without a dark low-brightness band or a fixture-wide fallback. This viewport-only
+blend leaves source RGB bytes, animation and DMX output unchanged; scalar fixture levels do not
+re-dim RGB strips.
 The viewport combines 4× MSAA with FXAA after tone mapping to reduce broken subpixel
 CAD highlights. FXAA adds one fullscreen pass and slightly softens fine detail; it
 does not change the imported geometry or material properties.
@@ -52,3 +55,7 @@ The process test starts the real bridge and browser, sends both UDP protocols, c
 sequence diagnostics, staleness, termination, last-writer-wins frames, and audits the bridge for
 UDP sends. Git hooks run formatting on staged files and then typechecking and the test suite; CI
 runs the same checks on every push and pull request.
+
+For the focused CAD diffuser GPU regression, run `bun test tests/diffuser-render.test.ts`.
+It renders the actual viewport through both RGB-byte and resolved-state updates, checking dim
+background transitions, bright colors and mixed bright/dim/off regions with screenshot readback.

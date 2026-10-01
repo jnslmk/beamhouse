@@ -6,12 +6,12 @@ import { chromium, type Browser } from "playwright";
 
 declare global {
   interface Window {
-    __diffuserTestSetPixels?: (rgb: number[]) => void;
+    __diffuserTestSetPixels?: (rgb: number[], resolved: boolean) => void;
   }
 }
 
 // Exercise the real Three material, scalar/RGB update paths, and GPU shader together.
-test("CAD diffusers are white when off and retain RGB color without scalar double-dimming", async () => {
+test("CAD diffusers stay milky through dim backgrounds and retain spatial RGB color", async () => {
   const repository = resolve(import.meta.dir, "..");
   mkdirSync(join(repository, ".codex-tmp"), { recursive: true });
   const directory = mkdtempSync(join(repository, ".codex-tmp/diffuser-render-"));
@@ -37,11 +37,20 @@ test("CAD diffusers are white when off and retain RGB color without scalar doubl
         "bhs:diffuser": {kind: "strip", pixels: 3, pitchMm: 1000 / 3, channelsPerPixel: 3, primitive: "Cube"}
       });
       api.setCameraView({position: [0, 0.5, 4], target: [0, 0.5, 0]});
-      window.__diffuserTestSetPixels = (rgb) => {
+      window.__diffuserTestSetPixels = (rgb, resolved) => {
         api.setSceneFixtureLevels(new Map([[1, Math.max(...rgb)]]));
-        api.setSceneFixturePixels(new Map([[1, Uint8Array.from([...rgb, ...rgb, ...rgb])]]));
+        if (resolved) {
+          api.setSceneFixtureStates(new Map([[1, {
+            status: "ok", unbound: false, panDeg: 0, tiltDeg: 0, zoomDeg: null,
+            color: [1, 1, 1], level: Math.max(...rgb) / 255, shutterOpen: true,
+            beam: {kind: "glow", angleDeg: 0}, pixels: rgb.map((value) => value / 255),
+            bodySize: [1, 0.08, 0.08], notes: []
+          }]]));
+        } else {
+          api.setSceneFixturePixels(new Map([[1, Uint8Array.from(rgb)]]));
+        }
       };
-      window.__diffuserTestSetPixels([0, 0, 0]);
+      window.__diffuserTestSetPixels(new Array(9).fill(0), false);
     `,
     );
     // Resolve workspace packages before entering Bun's build hooks.
@@ -99,11 +108,14 @@ test("CAD diffusers are white when off and retain RGB color without scalar doubl
     });
     await page.goto(String(server.url));
     await page.waitForFunction(() => typeof window.__diffuserTestSetPixels === "function");
-    const sample = async (rgb: number[]) => {
-      await page.evaluate((rgb) => {
-        if (!window.__diffuserTestSetPixels) throw new Error("diffuser test entry is not ready");
-        window.__diffuserTestSetPixels(rgb);
-      }, rgb);
+    const sample = async (pixels: number[][], resolved: boolean) => {
+      await page.evaluate(
+        ({ rgb, resolved }) => {
+          if (!window.__diffuserTestSetPixels) throw new Error("diffuser test entry is not ready");
+          window.__diffuserTestSetPixels(rgb, resolved);
+        },
+        { rgb: pixels.flat(), resolved },
+      );
       await page.evaluate(
         () =>
           new Promise<void>((resolve) =>
@@ -120,25 +132,60 @@ test("CAD diffusers are white when off and retain RGB color without scalar doubl
         canvas.height = image.height;
         const context = canvas.getContext("2d")!;
         context.drawImage(image, 0, 0);
-        return Array.from(
-          context.getImageData(Math.floor(canvas.width / 2), Math.floor(canvas.height / 2), 1, 1)
-            .data,
-        ).slice(0, 3);
+        // Projected texel centres for the fixed camera and one-metre CAD diffuser.
+        return [201, 240, 279].map((x) =>
+          Array.from(context.getImageData(x, Math.floor(canvas.height / 2), 1, 1).data).slice(0, 3),
+        );
       }, screenshot.toString("base64"));
     };
-    const off = await sample([0, 0, 0]);
-    expect(Math.min(...off)).toBeGreaterThan(150);
-    expect(Math.max(...off) - Math.min(...off)).toBeLessThan(60);
-    const cyan = await sample([0, 96, 96]);
-    expect(cyan[1]!).toBeGreaterThan(90);
-    expect(cyan[1]! - cyan[0]!).toBeGreaterThan(40);
-    expect(cyan[2]! - cyan[0]!).toBeGreaterThan(40);
-    const red = await sample([96, 0, 0]);
-    expect(red[0]! - Math.max(red[1]!, red[2]!)).toBeGreaterThan(40);
-    const offAgain = await sample([0, 0, 0]);
-    expect(Math.max(...offAgain.map((value, index) => Math.abs(value - off[index]!)))).toBeLessThan(
-      3,
-    );
+    const uniform = async (rgb: number[], resolved: boolean) =>
+      (await sample([rgb, rgb, rgb], resolved))[1]!;
+    for (const resolved of [false, true]) {
+      const off = await uniform([0, 0, 0], resolved);
+      expect(Math.min(...off)).toBeGreaterThan(150);
+      expect(Math.max(...off) - Math.min(...off)).toBeLessThan(60);
+      for (const value of [1, 4, 8, 12, 16, 24, 32]) {
+        const dim = await uniform([0, value, value], resolved);
+        expect(Math.min(...dim)).toBeGreaterThan(150);
+        expect(Math.max(...dim) - Math.min(...dim)).toBeLessThan(60);
+        expect(
+          Math.max(...dim.map((channel, index) => Math.abs(channel - off[index]!))),
+        ).toBeLessThan(20);
+      }
+      // Adjacent samples at the fade's beginning, middle and bright end bound GPU readbacks.
+      for (const value of [32, 64, 94]) {
+        const previous = await uniform([0, value, value], resolved);
+        const transition = await uniform([0, value + 2, value + 2], resolved);
+        expect(
+          Math.max(...transition.map((channel, index) => Math.abs(channel - previous[index]!))),
+        ).toBeLessThan(25);
+      }
+      const cyan = await uniform([0, 96, 96], resolved);
+      expect(cyan[1]!).toBeGreaterThan(90);
+      expect(cyan[1]! - cyan[0]!).toBeGreaterThan(40);
+      expect(cyan[2]! - cyan[0]!).toBeGreaterThan(40);
+      const red = await uniform([96, 0, 0], resolved);
+      expect(red[0]! - Math.max(red[1]!, red[2]!)).toBeGreaterThan(40);
+      const mixed = await sample(
+        [
+          [0, 96, 96],
+          [0, 12, 12],
+          [0, 0, 0],
+        ],
+        resolved,
+      );
+      expect(mixed[0]![1]! - mixed[0]![0]!).toBeGreaterThan(40);
+      expect(mixed[0]![2]! - mixed[0]![0]!).toBeGreaterThan(40);
+      expect(Math.min(...mixed[1]!)).toBeGreaterThan(150);
+      expect(Math.max(...mixed[1]!) - Math.min(...mixed[1]!)).toBeLessThan(60);
+      expect(
+        Math.max(...mixed[2]!.map((channel, index) => Math.abs(channel - off[index]!))),
+      ).toBeLessThan(10);
+      const offAgain = await uniform([0, 0, 0], resolved);
+      expect(
+        Math.max(...offAgain.map((value, index) => Math.abs(value - off[index]!))),
+      ).toBeLessThan(3);
+    }
     expect(errors).toEqual([]);
   } finally {
     await browser?.close();

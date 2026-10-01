@@ -528,12 +528,12 @@ export function createViewport(
       roughness: 0.7,
     });
     diffuserMaterial.onBeforeCompile = (shader) => {
-      // Transmitted LED color must not be whitened by the unlit plastic reflection.
+      // Keep dim backgrounds milky; fade reflection only as the LED color becomes bright.
       shader.fragmentShader = shader.fragmentShader.replace(
         "#include <emissivemap_fragment>",
         `#include <emissivemap_fragment>
         float ledEmission = max(totalEmissiveRadiance.r, max(totalEmissiveRadiance.g, totalEmissiveRadiance.b));
-        diffuseColor.rgb *= 1.0 - smoothstep(0.0, 0.04, ledEmission);`,
+        diffuseColor.rgb *= 1.0 - smoothstep(0.08, 0.3, ledEmission);`,
       );
     };
     const group = new THREE.Group();
