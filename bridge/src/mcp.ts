@@ -61,6 +61,7 @@ const COMMAND_KINDS = new Set([
   "definition.set",
   "camera.saveView",
   "rotate",
+  "ground.set",
 ]);
 
 const QUERY_NAMES = new Set([
@@ -127,6 +128,8 @@ export function validateCommandInput(params: unknown): string | null {
         return "rotate with an explicit pivot needs an exact point";
       return null;
     }
+    case "ground.set":
+      return typeof params.visible === "boolean" ? null : "ground.set needs a boolean visible";
     default:
       return null;
   }

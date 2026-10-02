@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { PersistedScene } from "../app/src/scene.ts";
-import { apply, applyPatchIngest, undoEntry } from "../app/src/scene.ts";
+import { apply, applyPatchIngest, normalize, undoEntry } from "../app/src/scene.ts";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import {
@@ -833,6 +833,7 @@ function sceneWithData(): PersistedScene {
     },
     patchKind: null,
     atmosphere: { density: 0.32, beamLengthM: 10 },
+    ground: true,
   };
 }
 
@@ -1066,5 +1067,48 @@ describe("write separation", () => {
     expect(undone.scene.overrides["1"]).toEqual(scene.overrides["1"]);
     // Patch is untouched before, after, and undone
     expect(docUndone.patch).toEqual(docBefore.patch);
+  });
+});
+
+// ── Ground visibility: stored per scene, off only when the document says so ──
+
+describe("stored ground visibility", () => {
+  test("document without a ground key parses and normalizes to on", () => {
+    const doc = parseBhs(
+      '{"patch":{"kind":"snapshot","fixtures":[]},"density":0.32,"beamLength":10}',
+    );
+    expect(doc.ground).toBeUndefined();
+    expect(normalize({ atmosphere: { density: 0.32, beamLengthM: 10 } }).ground).toBe(true);
+  });
+
+  test("document with ground:false round-trips byte-identical", () => {
+    const text =
+      '{"patch":{"kind":"snapshot","fixtures":[]},"density":0.32,"beamLength":10,"ground":false}';
+    expect(serializeBhs(parseBhs(text))).toBe(text);
+  });
+
+  test("ground.set turns the stored scene off and back on", () => {
+    const off = apply({ kind: "ground.set", visible: false }, sceneWithData());
+    expect(off.ground).toBe(false);
+    expect(sceneToDocument(off).ground).toBe(false);
+    expect(apply({ kind: "ground.set", visible: true }, off).ground).toBe(true);
+  });
+
+  test("undo of a ground.set restores the prior ground state", () => {
+    const scene = sceneWithData();
+    const after = apply({ kind: "ground.set", visible: false }, scene);
+    const undone = undoEntry(
+      [{ command: {} as never, before: structuredClone(scene), after, agent: false }],
+      1,
+    )!;
+    expect(undone.scene.ground).toBe(true);
+  });
+
+  test("rejects a non-boolean ground", () => {
+    expect(() =>
+      parseBhs(
+        '{"patch":{"kind":"snapshot","fixtures":[]},"density":0.32,"beamLength":10,"ground":"off"}',
+      ),
+    ).toThrow(BhsError);
   });
 });

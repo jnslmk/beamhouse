@@ -272,7 +272,6 @@ let selectedIds: number[] = [];
 let fixtureSelectionBound = false;
 let holdActive = false;
 let renderMode: "live" | "intensity" = "live";
-let groundVisible = true;
 const heldIds = new Set<number>();
 /** Per-fixture hang values for Zoom channels with no wire (ADR-0037 decision 7). */
 const zoomOverrides = new Map<number, number>();
@@ -337,6 +336,10 @@ const viewportApi = createViewport(
 const { fixtures: editableFixtures } = viewportApi;
 // Stored atmosphere fixed points drive the beam shader; no default lives here.
 viewportApi.setAtmosphere(commands.atmosphere().density, commands.atmosphere().beamLengthM);
+// Ground visibility is stored scene state, so boot renders the stored choice.
+viewportApi.setGroundVisible(commands.ground());
+required("#ground-status").textContent = commands.ground() ? "on" : "off";
+required("[data-ground-toggle]").setAttribute("aria-pressed", String(commands.ground()));
 // Beamhouse-side convergence: gdtf-ts owns bytes → definition, this layer owns
 // definition → display, including the canonical-mesh cache.
 const gdtfMeshCache = new Map<string, Object3D>();
@@ -611,8 +614,12 @@ commands.onChanged(() => {
   if (!viewerSnapshot) syncSceneFixtures();
   // Viewer mode supplies its own atmosphere from the snapshot; live scene changes
   // must not override it.
-  if (!viewerActive)
+  if (!viewerActive) {
     viewportApi.setAtmosphere(commands.atmosphere().density, commands.atmosphere().beamLengthM);
+    viewportApi.setGroundVisible(commands.ground());
+    required("#ground-status").textContent = commands.ground() ? "on" : "off";
+    required("[data-ground-toggle]").setAttribute("aria-pressed", String(commands.ground()));
+  }
   renderPlacementEditor();
   void maybeIngestPatch();
 });
@@ -659,10 +666,8 @@ required("[data-hold-toggle]").addEventListener("click", () => {
   required("[data-hold-toggle]").setAttribute("aria-pressed", String(holdActive));
 });
 required<HTMLButtonElement>("[data-ground-toggle]").addEventListener("click", () => {
-  groundVisible = !groundVisible;
-  viewportApi.setGroundVisible(groundVisible);
-  required("#ground-status").textContent = groundVisible ? "on" : "off";
-  required("[data-ground-toggle]").setAttribute("aria-pressed", String(groundVisible));
+  // Stored, so a follower page and a reloaded scene render the same ground.
+  commands.apply({ kind: "ground.set", visible: !commands.ground() });
 });
 required("[data-render-toggle]").addEventListener("click", () => {
   renderMode = renderMode === "live" ? "intensity" : "live";
@@ -1927,6 +1932,11 @@ function applyAgentCommand(name: string, params: Record<string, unknown>): unkno
       { kind: "definition.set", id: params.id, value: params.value as BhsDefinition },
       { agent: true },
     );
+    return { history: commands.historyCount() };
+  }
+  if (name === "ground.set") {
+    if (typeof params.visible !== "boolean") throw new Error("ground.set needs a boolean visible");
+    commands.apply({ kind: "ground.set", visible: params.visible }, { agent: true });
     return { history: commands.historyCount() };
   }
   throw new Error(`unknown command ${name}`);

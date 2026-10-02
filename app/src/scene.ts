@@ -138,6 +138,8 @@ export interface PersistedScene {
   patchKind: "mizer" | "mvr" | "bhs" | null;
   /** Scene-wide atmosphere (ADR-0013.4, ADR-0013.6): stored, never defaulted at read. */
   atmosphere: SceneAtmosphere;
+  /** Ground plane + grid visibility: view chrome, stored per scene, defaults on. */
+  ground: boolean;
 }
 
 export interface SceneAtmosphere {
@@ -193,6 +195,7 @@ export type SceneCommand =
       placement: Placement;
       definition?: { id: string; value: BhsDefinition };
     }
+  | { kind: "ground.set"; visible: boolean }
   | { kind: "definition.set"; id: string; value: BhsDefinition };
 
 /** One entry on the undo/redo stack, recording the full scene before and after the command. */
@@ -240,6 +243,8 @@ function describeCommand(command: SceneCommand): string {
       return `camera ${command.name}`;
     case "fixture.add":
       return `add fixture ${command.fixture.id}`;
+    case "ground.set":
+      return `ground ${command.visible ? "on" : "off"}`;
     case "definition.set":
       return `define ${command.id}`;
     default: {
@@ -332,6 +337,10 @@ export class SceneCommands {
   atmosphere(): SceneAtmosphere {
     return this.#scene.atmosphere;
   }
+  /** Ground visibility, read verbatim from the stored scene. */
+  ground(): boolean {
+    return this.#scene.ground;
+  }
   definitions(): Readonly<Record<string, BhsDefinition>> {
     return this.#scene.definitions;
   }
@@ -408,6 +417,8 @@ export class SceneCommands {
         density: document.density,
         beamLengthM: document.beamLength,
       },
+      // An absent key means the pre-ground document default; explicit false is off.
+      ground: document.ground !== false,
     });
     if (sameScene(this.#scene, after)) return;
     this.#scene = after;
@@ -679,6 +690,8 @@ export function apply(command: SceneCommand, scene: PersistedScene): PersistedSc
     after.arrays[command.id] = { ...command.array, id: command.id, memberIds };
   } else if (command.kind === "camera.saveView") {
     after.views[command.name] = command.view;
+  } else if (command.kind === "ground.set") {
+    after.ground = command.visible;
   } else if (command.kind === "definition.set") {
     if (!isBhsId(command.id) || !isBhsDefinition(command.value) || !after.definitions[command.id])
       return scene;
@@ -728,6 +741,7 @@ function isCommandKind(value: unknown): value is SceneCommand {
     value.kind === "placement.clear" ||
     value.kind === "array.set" ||
     value.kind === "camera.saveView" ||
+    value.kind === "ground.set" ||
     value.kind === "fixture.add" ||
     value.kind === "definition.set"
   );
@@ -908,6 +922,7 @@ export function normalize(value: unknown): PersistedScene {
       patch: {},
       patchKind: null,
       atmosphere: { density: SCENE_DENSITY, beamLengthM: SCENE_BEAM_LENGTH_M },
+      ground: true,
     };
   const scene = value as Partial<PersistedScene>;
   const arrays: Record<string, ArrayDef> = {};
@@ -963,6 +978,8 @@ export function normalize(value: unknown): PersistedScene {
         ? scene.patchKind
         : null,
     atmosphere: normalizeAtmosphere(scene.atmosphere),
+    // Absent or malformed ground is the on state; only false is a stored choice.
+    ground: scene.ground !== false,
   };
 }
 

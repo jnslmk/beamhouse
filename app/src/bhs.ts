@@ -23,6 +23,7 @@ export interface BhsDocument {
   readonly fixtures?: readonly LocalFixture[];
   readonly density?: number;
   readonly beamLength?: number;
+  readonly ground?: boolean;
   readonly overrides?: Readonly<
     Record<
       string,
@@ -128,6 +129,7 @@ const KNOWN_TOP_LEVEL_KEYS: Record<string, true> = {
   density: true,
   beamLength: true,
   views: true,
+  ground: true,
 };
 const FORBIDDEN_OPTICS_KEYS: Record<string, true> = {
   BeamType: true,
@@ -445,6 +447,9 @@ function validateSceneProperties(obj: Record<string, unknown>): void {
   ) {
     throw new BhsError('"beamLength" must be a finite number between 1 and 40');
   }
+  if ("ground" in obj && typeof obj.ground !== "boolean") {
+    throw new BhsError('"ground" must be a boolean when present');
+  }
 }
 
 function validateViewsBlock(value: unknown): void {
@@ -602,6 +607,7 @@ export function sceneToDocument(scene: PersistedScene): BhsDocument {
     ...(Object.keys(scene.assets ?? {}).length > 0 ? { assets: scene.assets } : {}),
     density: scene.atmosphere.density,
     beamLength: scene.atmosphere.beamLengthM,
+    ground: scene.ground,
     ...(Object.keys(overrides).length > 0 ? { overrides } : {}),
     ...(Object.keys(scene.views).length > 0 ? { views: scene.views } : {}),
   };
